@@ -1,0 +1,45 @@
+# Rust
+/target/
+# Cargo.lock is intentionally tracked — this is a binary crate (reproducible builds)
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# IDE – JetBrains (RustRover, CLion, IntelliJ)
+.idea/
+*.iml
+
+# IDE – VS Code
+.vscode/
+*.code-workspace
+
+# IDE – Vim / Neovim
+*.swp
+*.swo
+*~
+
+# Editor – Helix
+.helix/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Build / release artefacts
+*.pdb
+*.d
+
+# Coverage / profiling
+lcov.info
+*.profdata
+*.profraw
+tarpaulin-report.html
+cobertura.xml
+
+# OS – Windows
+Thumbs.db
+Desktop.ini
