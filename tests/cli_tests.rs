@@ -140,8 +140,14 @@ fn config_show_after_init_prints_toml() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("[skills]"), "expected TOML output with [skills], got: {stdout}");
-    assert!(stdout.contains("[preferences]"), "expected [preferences] section");
+    assert!(
+        stdout.contains("[skills]"),
+        "expected TOML output with [skills], got: {stdout}"
+    );
+    assert!(
+        stdout.contains("[preferences]"),
+        "expected [preferences] section"
+    );
     assert!(stdout.contains("claude"), "expected claude agent in output");
 }
 
@@ -155,7 +161,10 @@ fn skills_manager_scan_no_config_prints_no_skills() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
-    assert!(stdout.contains("No skills found."), "unexpected stdout: {stdout}");
+    assert!(
+        stdout.contains("No skills found."),
+        "unexpected stdout: {stdout}"
+    );
 }
 
 #[test]
@@ -182,7 +191,10 @@ fn skills_manager_scan_finds_skills() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
-    assert!(stdout.contains("code-review"), "unexpected stdout: {stdout}");
+    assert!(
+        stdout.contains("code-review"),
+        "unexpected stdout: {stdout}"
+    );
 }
 
 #[test]
@@ -195,14 +207,21 @@ fn skills_manager_list_no_config_prints_hint() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
-    assert!(stdout.contains("config init"), "unexpected stdout: {stdout}");
+    assert!(
+        stdout.contains("config init"),
+        "unexpected stdout: {stdout}"
+    );
 }
 
 #[test]
 fn skills_manager_list_with_empty_targets_prints_no_skills() {
     let home = TempDir::new().unwrap();
     let mut config = skills_manager::config::Config::default_config();
-    config.skills.central_dir = home.path().join("missing-sources").to_string_lossy().into_owned();
+    config.skills.central_dir = home
+        .path()
+        .join("missing-sources")
+        .to_string_lossy()
+        .into_owned();
     config.skills.scan_parent_dirs = vec![];
     config.skills.max_scan_depth = 10;
     for agent in config.agents.values_mut() {
@@ -227,5 +246,138 @@ fn skills_manager_list_with_empty_targets_prints_no_skills() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
-    assert!(stdout.contains("No skills found."), "unexpected stdout: {stdout}");
+    assert!(
+        stdout.contains("No skills found."),
+        "unexpected stdout: {stdout}"
+    );
+}
+
+fn write_config(home: &TempDir, config: &skills_manager::config::Config) {
+    let config_path = config_path_for_home(home);
+    fs::create_dir_all(config_path.parent().expect("config parent")).expect("create config parent");
+    fs::write(&config_path, config.to_toml().expect("config toml")).expect("write config");
+}
+
+#[test]
+fn import_unknown_skill_prints_not_found() {
+    let home = TempDir::new().unwrap();
+    let skills_root = home.path().join("skill-sources");
+    fs::create_dir_all(&skills_root).unwrap();
+
+    let mut config = skills_manager::config::Config::default_config();
+    config.skills.central_dir = skills_root.to_string_lossy().into_owned();
+    config.skills.scan_parent_dirs = vec![];
+    config.skills.max_scan_depth = 10;
+    write_config(&home, &config);
+
+    let output = config_bin_with_home(&home)
+        .args(["import", "nonexistent/skill"])
+        .output()
+        .expect("import runs");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.to_lowercase().contains("not found"), "unexpected stdout: {stdout}");
+}
+
+#[test]
+fn remove_unknown_skill_prints_not_in_inventory() {
+    let home = TempDir::new().unwrap();
+    let skills_root = home.path().join("skill-sources");
+    fs::create_dir_all(&skills_root).unwrap();
+
+    let mut config = skills_manager::config::Config::default_config();
+    config.skills.central_dir = skills_root.to_string_lossy().into_owned();
+    config.skills.scan_parent_dirs = vec![];
+    config.skills.max_scan_depth = 10;
+    write_config(&home, &config);
+
+    let output = config_bin_with_home(&home)
+        .args(["remove", "nonexistent/skill"])
+        .output()
+        .expect("remove runs");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stdout_lower = stdout.to_lowercase();
+    assert!(
+        stdout_lower.contains("not found") || stdout_lower.contains("nothing to remove"),
+        "unexpected stdout: {stdout}"
+    );
+}
+
+#[test]
+fn doctor_with_no_config_warns() {
+    let home = TempDir::new().unwrap();
+    let output = config_bin_with_home(&home)
+        .args(["doctor"])
+        .output()
+        .expect("doctor runs");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stdout_lower = stdout.to_lowercase();
+    assert!(stdout.contains("WARN") || stdout_lower.contains("no config"), "unexpected stdout: {stdout}");
+}
+
+#[test]
+fn doctor_with_valid_config_shows_checks() {
+    let home = TempDir::new().unwrap();
+    let skills_root = home.path().join("skill-sources");
+    fs::create_dir_all(&skills_root).unwrap();
+
+    let mut config = skills_manager::config::Config::default_config();
+    config.skills.central_dir = skills_root.to_string_lossy().into_owned();
+    config.skills.scan_parent_dirs = vec![];
+    config.skills.max_scan_depth = 10;
+    for agent in config.agents.values_mut() {
+        let dir = home.path().join(format!("{}-skills", agent.display_name.to_lowercase()));
+        fs::create_dir_all(&dir).unwrap();
+        agent.global_dir = dir.to_string_lossy().into_owned();
+        agent.project_dir = None;
+        agent.shared_target_ids.clear();
+    }
+    config.shared_targets.clear();
+    write_config(&home, &config);
+
+    let output = config_bin_with_home(&home)
+        .args(["doctor"])
+        .output()
+        .expect("doctor runs");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("Config"), "unexpected stdout: {stdout}");
+    assert!(stdout.contains("Git"), "unexpected stdout: {stdout}");
+}
+
+#[test]
+fn import_non_interactive_with_ambiguous_skill() {
+    let home = TempDir::new().unwrap();
+    let skills_root = home.path().join("skill-sources");
+    let first = skills_root.join("one").join("myskill");
+    let second = skills_root.join("two").join("myskill");
+    fs::create_dir_all(&first).unwrap();
+    fs::create_dir_all(&second).unwrap();
+    fs::write(first.join("SKILL.md"), "# first").unwrap();
+    fs::write(second.join("SKILL.md"), "# second").unwrap();
+
+    let mut config = skills_manager::config::Config::default_config();
+    config.skills.central_dir = skills_root.to_string_lossy().into_owned();
+    config.skills.scan_parent_dirs = vec![];
+    config.skills.max_scan_depth = 10;
+    write_config(&home, &config);
+
+    let output = config_bin_with_home(&home)
+        .args(["import", "myskill"])
+        .output()
+        .expect("import runs");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stdout_lower = stdout.to_lowercase();
+    assert!(
+        stdout_lower.contains("ambiguous") || stdout_lower.contains("not found"),
+        "unexpected stdout: {stdout}"
+    );
 }

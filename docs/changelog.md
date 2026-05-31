@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-06-01
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-06-01 00:19 | Implemented the human-readable CLI workflow for import, remove, and doctor, plus shared command helpers and CLI coverage for ambiguous and missing skills. | `docs/features/v1/prd-005-human-readable-cli-workflow.md`, `roadmap.md` |
+
 ## 2026-05-31
 
 | Time | Change | Docs |

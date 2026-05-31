@@ -1,7 +1,7 @@
 ---
 title: Human-readable CLI workflow
 summary: Provide scriptable but user-first CLI commands for listing, scanning, importing, removing, config inspection, and diagnostics.
-status: planned
+status: done
 roadmap: v1
 ---
 
