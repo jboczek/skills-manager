@@ -43,3 +43,7 @@ cobertura.xml
 # OS – Windows
 Thumbs.db
 Desktop.ini
+
+# Docs – temp planning files and generated previews (never commit)
+docs/temp/
+docs/preview/

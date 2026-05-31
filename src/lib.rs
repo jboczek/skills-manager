@@ -25,7 +25,7 @@ pub fn dispatch(cli: cli::Cli) -> Result<()> {
         Some(cli::Commands::Scan) => commands::scan::run(),
         Some(cli::Commands::Import) => commands::import::run(),
         Some(cli::Commands::Remove) => commands::remove::run(),
-        Some(cli::Commands::Config) => commands::config::run(),
+        Some(cli::Commands::Config(args)) => commands::config::run(args),
         Some(cli::Commands::Doctor) => commands::doctor::run(),
         None => commands::tui::run(),
     }
