@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-05-31
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-05-31 08:38 | Added the Rust CLI/TUI foundation crate, placeholder command routing, and the initial verification test suite. | `README.md`, `features/v1/prd-001-rust-project-foundation.md` |
+
 ## 2026-05-30
 
 | Time | Change | Docs |

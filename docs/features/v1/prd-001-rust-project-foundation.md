@@ -1,7 +1,7 @@
 ---
 title: Rust project foundation
 summary: Create the buildable Rust CLI/TUI foundation that all V1 Skills Manager work depends on.
-status: planned
+status: done
 roadmap: v1
 ---
 
