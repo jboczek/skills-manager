@@ -7,6 +7,8 @@ pub mod errors;
 pub mod git;
 pub mod inventory;
 pub mod output;
+pub mod plan;
+pub mod plan_apply;
 pub mod scanner;
 pub mod symlink;
 pub mod tui;
