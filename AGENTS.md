@@ -22,3 +22,5 @@ Before implementation, make a plan and add it to temp file named after the PRD `
 - Create a new branch for each feature or bugfix, named after the PRD or issue it addresses (e.g., `prd-001` or `issue-123`).
 - Use simple, descriptive commit messages that explain the "what" and "why" of each change.
 - Avoid large, monolithic commits. Instead, break your work into smaller, logical commits that are easier to review and understand.
+- Never commit files you did not create or change. Always run `git diff --cached --stat` before committing to verify only intended files are staged.
+- Never commit files under `docs/temp/` or `docs/preview/` — these are ignored by `.gitignore` and must stay local only.

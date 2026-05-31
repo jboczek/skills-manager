@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
 
 #[derive(Debug, Parser)]
@@ -13,12 +15,32 @@ pub struct Cli {
     pub command: Option<Commands>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Subcommand)]
+#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
 pub enum Commands {
     List,
     Scan,
     Import,
     Remove,
-    Config,
+    Config(ConfigArgs),
     Doctor,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Parser)]
+pub struct ConfigArgs {
+    /// Override the config file path.
+    #[arg(long, value_name = "PATH")]
+    pub config: Option<PathBuf>,
+
+    #[command(subcommand)]
+    pub subcommand: ConfigSubcommand,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Subcommand)]
+pub enum ConfigSubcommand {
+    /// Initialize config file with defaults (does not overwrite existing).
+    Init,
+    /// Print the resolved config file path.
+    Path,
+    /// Print the current configuration.
+    Show,
 }
