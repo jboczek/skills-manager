@@ -4,6 +4,7 @@
 
 | Time | Change | Docs |
 |---|---|---|
+| 2026-05-31 09:30 | Implemented inventory building and `list`, including exposure resolution for symlinks and physical copies, duplicate disambiguation, and CLI coverage for missing config and empty targets. | `docs/features/v1/prd-004-inventory-and-exposure-resolution.md` |
 | 2026-05-31 08:38 | Added the Rust CLI/TUI foundation crate, placeholder command routing, and the initial verification test suite. | `README.md`, `features/v1/prd-001-rust-project-foundation.md` |
 
 ## 2026-05-30

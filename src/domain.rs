@@ -53,4 +53,5 @@ pub struct InventoryRow {
     pub source: SkillSource,
     pub scope: Scope,
     pub exposures: Vec<SkillExposure>,
+    pub disambiguation_index: Option<usize>,
 }

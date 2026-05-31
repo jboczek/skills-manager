@@ -184,3 +184,48 @@ fn skills_manager_scan_finds_skills() {
     let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
     assert!(stdout.contains("code-review"), "unexpected stdout: {stdout}");
 }
+
+#[test]
+fn skills_manager_list_no_config_prints_hint() {
+    let home = TempDir::new().unwrap();
+    let output = config_bin_with_home(&home)
+        .args(["list"])
+        .output()
+        .expect("list runs");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
+    assert!(stdout.contains("config init"), "unexpected stdout: {stdout}");
+}
+
+#[test]
+fn skills_manager_list_with_empty_targets_prints_no_skills() {
+    let home = TempDir::new().unwrap();
+    let mut config = skills_manager::config::Config::default_config();
+    config.skills.central_dir = home.path().join("missing-sources").to_string_lossy().into_owned();
+    config.skills.scan_parent_dirs = vec![];
+    config.skills.max_scan_depth = 10;
+    for agent in config.agents.values_mut() {
+        agent.global_dir = home
+            .path()
+            .join(format!("missing-{}", agent.display_name.to_lowercase()))
+            .to_string_lossy()
+            .into_owned();
+        agent.project_dir = None;
+        agent.shared_target_ids.clear();
+    }
+    config.shared_targets.clear();
+
+    let config_path = config_path_for_home(&home);
+    fs::create_dir_all(config_path.parent().expect("config parent")).expect("create config parent");
+    fs::write(&config_path, config.to_toml().expect("config toml")).expect("write config");
+
+    let output = config_bin_with_home(&home)
+        .args(["list"])
+        .output()
+        .expect("list runs");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
+    assert!(stdout.contains("No skills found."), "unexpected stdout: {stdout}");
+}

@@ -1,7 +1,7 @@
 ---
 title: Inventory and exposure resolution
 summary: Build the consolidated view of discovered skills, agent availability, scope, source, and connection type.
-status: planned
+status: done
 roadmap: v1
 ---
 
