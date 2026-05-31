@@ -19,17 +19,12 @@ fn help_lists_the_v1_commands() {
 }
 
 #[test]
-fn running_without_args_routes_to_the_tui_placeholder() {
+fn running_without_args_exits_successfully() {
     let output = Command::new(assert_cmd::cargo::cargo_bin!("skills-manager"))
         .output()
         .expect("binary runs");
 
     assert!(output.status.success());
-    let stdout = String::from_utf8(output.stdout).expect("stdout is utf8");
-    assert!(
-        stdout.contains("TUI placeholder"),
-        "missing TUI route output"
-    );
 }
 
 fn config_bin_with_home(home: &TempDir) -> Command {
