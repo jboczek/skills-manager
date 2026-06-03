@@ -1,7 +1,7 @@
 ---
 title: Inventory and exposure resolution
 summary: Build the consolidated view of discovered skills, agent availability, scope, source, and connection type.
-status: planned
+status: done
 roadmap: v1
 ---
 
@@ -79,6 +79,10 @@ The display identity rule for V1 should be `repo-name/skill-name` when repositor
 - Two skills share the same `repo-name/skill-name` display namespace.
 - Codex and Copilot both derive availability from the same config-only shared target.
 
+## Progress notes
+
+- 2026-06-03: `skills-manager list` is implemented and documented. Numbered duplicate rows include source path, origin, or exposure path context, and shared `.agents` target availability is verified through Codex/Copilot without rendering `.agents` as a table column.
+
 ## Dependencies
 
 - Roadmap items `002` and `003`.
@@ -86,5 +90,4 @@ The display identity rule for V1 should be `repo-name/skill-name` when repositor
 
 ## Open questions
 
-- How much path detail should be shown next to numbered namespace collision choices?
 - Should broken symlinks be listed as missing exposures, warnings, or both?
