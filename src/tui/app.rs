@@ -403,6 +403,57 @@ impl App {
         self.scan_table.reset(self.scan_results.len());
     }
 
+    pub fn start_import_from_selected_scan_row(&mut self) -> anyhow::Result<()> {
+        self.error_message = None;
+        self.info_message = None;
+
+        let Some(selected) = self.selected_scan_result() else {
+            self.info_message = Some("No scan row selected.".to_string());
+            return Ok(());
+        };
+
+        let target_agents = self.enabled_agent_targets();
+        self.start_import_for_scan_result(selected, target_agents);
+        Ok(())
+    }
+
+    pub fn start_import_from_selected_list_row(&mut self) -> anyhow::Result<()> {
+        self.error_message = None;
+        self.info_message = None;
+
+        let Some(row) = self.selected_inventory_row() else {
+            self.info_message = Some("No inventory row selected.".to_string());
+            return Ok(());
+        };
+
+        let target_agents = self.missing_enabled_agent_targets(&row);
+        if target_agents.is_empty() {
+            self.info_message =
+                Some("Selected skill already has all enabled-agent exposures.".to_string());
+            return Ok(());
+        }
+
+        let skill_id = display_inventory_row(&row);
+        let matches = helpers::find_scan_results_by_id(&skill_id, &self.scan_results);
+        match matches.len() {
+            0 => {
+                self.info_message =
+                    Some("Selected skill has no scanned source to import from.".to_string());
+            }
+            1 => {
+                self.start_import_for_scan_result(matches[0].clone(), target_agents);
+            }
+            _ => {
+                self.mode = Mode::Import;
+                self.import_step = ImportStep::Disambiguate {
+                    matches: matches.into_iter().cloned().collect(),
+                };
+            }
+        }
+
+        Ok(())
+    }
+
     /// Handle import flow step progression.
     pub fn advance_import(&mut self, input: &str) -> anyhow::Result<()> {
         match self.import_step.clone() {
@@ -704,6 +755,77 @@ impl App {
             .collect();
 
         ChangePlan::new(changes)
+    }
+
+    fn selected_scan_result(&self) -> Option<ScanResult> {
+        self.scan_table
+            .selected
+            .and_then(|index| self.scan_results.get(index))
+            .cloned()
+    }
+
+    fn selected_inventory_row(&self) -> Option<InventoryRow> {
+        self.list_table
+            .selected
+            .and_then(|index| self.inventory.get(index))
+            .cloned()
+    }
+
+    fn enabled_agent_targets(&self) -> Vec<AgentTarget> {
+        helpers::agent_targets_from(&self.config, &self.current_dir)
+            .into_iter()
+            .filter(|agent| agent.enabled)
+            .collect()
+    }
+
+    fn missing_enabled_agent_targets(&self, row: &InventoryRow) -> Vec<AgentTarget> {
+        let exposed_agent_ids = row
+            .exposures
+            .iter()
+            .map(|exposure| exposure.agent_id.0.clone())
+            .collect::<HashSet<_>>();
+
+        self.enabled_agent_targets()
+            .into_iter()
+            .filter(|agent| !exposed_agent_ids.contains(&agent.agent_id))
+            .collect()
+    }
+
+    fn start_import_for_scan_result(
+        &mut self,
+        selected: ScanResult,
+        target_agents: Vec<AgentTarget>,
+    ) {
+        self.mode = Mode::Import;
+
+        if target_agents.is_empty() {
+            self.import_step = ImportStep::Done {
+                message: "No enabled agents available.".to_string(),
+            };
+            self.info_message = Some("No enabled agents available.".to_string());
+            return;
+        }
+
+        if target_agents.len() == 1 {
+            let plan = self.build_import_plan(&selected, &target_agents);
+            self.import_step = if plan.is_empty() {
+                self.info_message = Some("Nothing to do.".to_string());
+                ImportStep::Done {
+                    message: "Nothing to do.".to_string(),
+                }
+            } else {
+                ImportStep::ConfirmPlan {
+                    plan,
+                    selected: Box::new(selected),
+                    target_agents,
+                }
+            };
+            return;
+        }
+
+        self.import_step = ImportStep::SelectAgents {
+            selected: Box::new(selected),
+        };
     }
 
     fn build_remove_plan(&self, row: &InventoryRow) -> ChangePlan {

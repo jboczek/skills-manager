@@ -85,6 +85,12 @@ fn handle_key_with_table_height(
         KeyCode::Char('q') if app.input.is_empty() => {
             return Ok(true);
         }
+        KeyCode::Char('i') if app.input.is_empty() && app.mode == Mode::Scan => {
+            app.start_import_from_selected_scan_row()?;
+        }
+        KeyCode::Char('i') if app.input.is_empty() && app.mode == Mode::List => {
+            app.start_import_from_selected_list_row()?;
+        }
         KeyCode::Char('/') if app.input.is_empty() => {
             app.input.push('/');
             app.open_command_menu();
@@ -271,6 +277,33 @@ mod tests {
 
         assert_eq!(app.scan_table.selected, Some(3));
         assert_eq!(app.scan_table.viewport_offset, 1);
+    }
+
+    #[test]
+    fn i_in_scan_starts_import_for_selected_result() {
+        let mut app = test_app();
+        app.mode = Mode::Scan;
+        app.scan_results = vec![scan_result("repo-a/one")];
+        app.scan_table.reset(app.scan_results.len());
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('i')), 3).expect("key handled");
+
+        assert_eq!(app.mode, Mode::Import);
+        assert!(matches!(app.import_step, ImportStep::SelectAgents { .. }));
+    }
+
+    #[test]
+    fn i_in_list_starts_import_for_selected_row_missing_exposures() {
+        let mut app = test_app();
+        app.mode = Mode::List;
+        app.inventory = vec![inventory_row("one")];
+        app.scan_results = vec![scan_result("repo-a/one")];
+        app.list_table.reset(app.inventory.len());
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('i')), 3).expect("key handled");
+
+        assert_eq!(app.mode, Mode::Import);
+        assert!(matches!(app.import_step, ImportStep::SelectAgents { .. }));
     }
 
     #[test]
