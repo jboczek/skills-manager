@@ -492,6 +492,27 @@ impl App {
         Ok(())
     }
 
+    pub fn refresh_active_table(&mut self) -> anyhow::Result<()> {
+        self.error_message = None;
+        self.info_message = None;
+
+        match self.mode {
+            Mode::List => {
+                self.refresh_inventory()?;
+                self.enter_list_mode();
+                self.info_message = Some(format!("Loaded {} skill row(s).", self.inventory.len()));
+            }
+            Mode::Scan => {
+                self.reload_scan_results()?;
+                self.enter_scan_mode();
+                self.info_message = Some(format!("Found {} skill(s).", self.scan_results.len()));
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
+
     /// Handle import flow step progression.
     pub fn advance_import(&mut self, input: &str) -> anyhow::Result<()> {
         match self.import_step.clone() {

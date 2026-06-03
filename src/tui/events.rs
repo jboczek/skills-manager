@@ -94,6 +94,11 @@ fn handle_key_with_table_height(
         KeyCode::Char('x') if app.input.is_empty() && app.mode == Mode::List => {
             app.start_remove_from_selected_list_row()?;
         }
+        KeyCode::Char('r')
+            if app.input.is_empty() && matches!(app.mode, Mode::List | Mode::Scan) =>
+        {
+            app.refresh_active_table()?;
+        }
         KeyCode::Char('/') if app.input.is_empty() => {
             app.input.push('/');
             app.open_command_menu();
@@ -195,6 +200,25 @@ mod tests {
         for (id, agent) in &mut app.config.agents {
             agent.enabled = id == agent_id;
         }
+    }
+
+    fn point_config_to_missing_paths(app: &mut App) {
+        app.config.skills.central_dir = app
+            .current_dir
+            .join("missing-refresh-source")
+            .to_string_lossy()
+            .into_owned();
+        app.config.skills.scan_parent_dirs.clear();
+        for agent in app.config.agents.values_mut() {
+            agent.global_dir = app
+                .current_dir
+                .join(format!("missing-{}", agent.display_name.to_lowercase()))
+                .to_string_lossy()
+                .into_owned();
+            agent.project_dir = None;
+            agent.shared_target_ids.clear();
+        }
+        app.config.shared_targets.clear();
     }
 
     #[test]
@@ -393,6 +417,38 @@ mod tests {
             RemoveStep::ConfirmPlan { plan, .. } => assert!(!plan.is_empty()),
             _ => panic!("expected remove plan preview"),
         }
+    }
+
+    #[test]
+    fn r_in_scan_refreshes_and_clears_stale_selection() {
+        let mut app = test_app();
+        point_config_to_missing_paths(&mut app);
+        app.mode = Mode::Scan;
+        app.scan_results = vec![scan_result("repo-a/one")];
+        app.scan_table.reset(app.scan_results.len());
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('r')), 3).expect("key handled");
+
+        assert_eq!(app.mode, Mode::Scan);
+        assert!(app.scan_results.is_empty());
+        assert_eq!(app.scan_table.selected, None);
+        assert_eq!(app.scan_table.viewport_offset, 0);
+    }
+
+    #[test]
+    fn r_in_list_refreshes_and_clears_stale_selection() {
+        let mut app = test_app();
+        point_config_to_missing_paths(&mut app);
+        app.mode = Mode::List;
+        app.inventory = vec![inventory_row("one")];
+        app.list_table.reset(app.inventory.len());
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('r')), 3).expect("key handled");
+
+        assert_eq!(app.mode, Mode::List);
+        assert!(app.inventory.is_empty());
+        assert_eq!(app.list_table.selected, None);
+        assert_eq!(app.list_table.viewport_offset, 0);
     }
 
     #[test]
