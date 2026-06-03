@@ -3,6 +3,7 @@ use ratatui::layout::Rect;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::config::Config;
+use crate::domain::{ConnectionKind, InventoryRow};
 use crate::output::render_inventory;
 use crate::tui::app::{App, ImportStep, Mode, RemoveStep};
 use crate::tui::components::{dialog, table};
@@ -154,6 +155,10 @@ fn render_remove(frame: &mut Frame, area: Rect, app: &App) {
                 .join("\n");
             render_text_panel(frame, area, " Remove ", &body);
         }
+        RemoveStep::SelectExposure { selected } => {
+            let body = removable_exposure_lines(selected);
+            render_text_panel(frame, area, " Remove ", &body);
+        }
         RemoveStep::ConfirmPlan { plan, .. } => {
             render_text_panel(frame, area, " Remove Plan ", &plan.render());
         }
@@ -191,6 +196,38 @@ fn render_text_panel(frame: &mut Frame, area: Rect, title: &str, body: &str) {
             .wrap(Wrap { trim: false }),
         area,
     );
+}
+
+fn removable_exposure_lines(row: &InventoryRow) -> String {
+    row.exposures
+        .iter()
+        .filter(|exposure| {
+            matches!(
+                exposure.connection,
+                ConnectionKind::Symlink | ConnectionKind::PhysicalCopy
+            )
+        })
+        .enumerate()
+        .map(|(index, exposure)| {
+            format!(
+                "{}. {}  {}  {}",
+                index + 1,
+                exposure.agent_id.0,
+                exposure.path.display(),
+                connection_label(exposure.connection)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn connection_label(connection: ConnectionKind) -> &'static str {
+    match connection {
+        ConnectionKind::Symlink => "symlink",
+        ConnectionKind::PhysicalCopy => "copy",
+        ConnectionKind::Missing => "missing",
+        ConnectionKind::Unknown => "unknown",
+    }
 }
 
 #[cfg(test)]

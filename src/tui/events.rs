@@ -91,6 +91,9 @@ fn handle_key_with_table_height(
         KeyCode::Char('i') if app.input.is_empty() && app.mode == Mode::List => {
             app.start_import_from_selected_list_row()?;
         }
+        KeyCode::Char('x') if app.input.is_empty() && app.mode == Mode::List => {
+            app.start_remove_from_selected_list_row()?;
+        }
         KeyCode::Char('/') if app.input.is_empty() => {
             app.input.push('/');
             app.open_command_menu();
@@ -304,6 +307,38 @@ mod tests {
 
         assert_eq!(app.mode, Mode::Import);
         assert!(matches!(app.import_step, ImportStep::SelectAgents { .. }));
+    }
+
+    #[test]
+    fn x_in_list_starts_remove_plan_for_single_exposure() {
+        let mut app = test_app();
+        app.mode = Mode::List;
+        app.inventory = vec![inventory_row("one")];
+        app.list_table.reset(app.inventory.len());
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('x')), 3).expect("key handled");
+
+        assert_eq!(app.mode, Mode::Remove);
+        assert!(matches!(app.remove_step, RemoveStep::ConfirmPlan { .. }));
+    }
+
+    #[test]
+    fn x_in_list_prompts_for_multiple_exposures() {
+        let mut app = test_app();
+        let mut row = inventory_row("one");
+        row.exposures.push(SkillExposure {
+            agent_id: AgentId("claude".to_string()),
+            path: std::path::PathBuf::from("/skills/one-claude"),
+            connection: ConnectionKind::Symlink,
+        });
+        app.mode = Mode::List;
+        app.inventory = vec![row];
+        app.list_table.reset(app.inventory.len());
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('x')), 3).expect("key handled");
+
+        assert_eq!(app.mode, Mode::Remove);
+        assert!(matches!(app.remove_step, RemoveStep::SelectExposure { .. }));
     }
 
     #[test]

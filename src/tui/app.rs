@@ -5,7 +5,7 @@ use std::process::Command;
 
 use crate::commands::helpers;
 use crate::config::{Config, expand_tilde};
-use crate::domain::{AgentId, ConnectionKind, InventoryRow};
+use crate::domain::{AgentId, ConnectionKind, InventoryRow, SkillExposure};
 use crate::git;
 use crate::inventory::AgentTarget;
 use crate::plan::{ChangePlan, StagedChange};
@@ -105,6 +105,9 @@ pub enum RemoveStep {
     EnterSkill,
     Disambiguate {
         matches: Vec<InventoryRow>,
+    },
+    SelectExposure {
+        selected: Box<InventoryRow>,
     },
     ConfirmPlan {
         plan: ChangePlan,
@@ -454,6 +457,41 @@ impl App {
         Ok(())
     }
 
+    pub fn start_remove_from_selected_list_row(&mut self) -> anyhow::Result<()> {
+        self.error_message = None;
+        self.info_message = None;
+
+        let Some(selected) = self.selected_inventory_row() else {
+            self.info_message = Some("No inventory row selected.".to_string());
+            return Ok(());
+        };
+
+        let removable_exposures = Self::removable_exposures(&selected);
+        self.mode = Mode::Remove;
+        match removable_exposures.len() {
+            0 => {
+                self.remove_step = RemoveStep::Done {
+                    message: "Selected row has no removable exposures.".to_string(),
+                };
+                self.info_message = Some("Selected row has no removable exposures.".to_string());
+            }
+            1 => {
+                let plan = self.build_remove_plan_for_exposure(&selected, &removable_exposures[0]);
+                self.remove_step = RemoveStep::ConfirmPlan {
+                    plan,
+                    selected: Box::new(selected),
+                };
+            }
+            _ => {
+                self.remove_step = RemoveStep::SelectExposure {
+                    selected: Box::new(selected),
+                };
+            }
+        }
+
+        Ok(())
+    }
+
     /// Handle import flow step progression.
     pub fn advance_import(&mut self, input: &str) -> anyhow::Result<()> {
         match self.import_step.clone() {
@@ -608,6 +646,23 @@ impl App {
                     self.remove_step = RemoveStep::Disambiguate { matches };
                 }
             },
+            RemoveStep::SelectExposure { selected } => {
+                let removable_exposures = Self::removable_exposures(&selected);
+                match parse_selection(input, removable_exposures.len()) {
+                    Some(index) => {
+                        let plan = self
+                            .build_remove_plan_for_exposure(&selected, &removable_exposures[index]);
+                        self.remove_step = RemoveStep::ConfirmPlan { plan, selected };
+                    }
+                    None => {
+                        self.error_message = Some(format!(
+                            "Enter a number between 1 and {}",
+                            removable_exposures.len()
+                        ));
+                        self.remove_step = RemoveStep::SelectExposure { selected };
+                    }
+                }
+            }
             RemoveStep::ConfirmPlan { plan, selected } => {
                 let normalized = input.trim().to_ascii_lowercase();
                 if normalized == "y" {
@@ -664,6 +719,7 @@ impl App {
         match self.remove_step {
             RemoveStep::EnterSkill => "Enter skill identifier (e.g. repo-a/code-review):",
             RemoveStep::Disambiguate { .. } => "Enter number to select:",
+            RemoveStep::SelectExposure { .. } => "Enter exposure number to remove:",
             RemoveStep::ConfirmPlan { .. } => "Apply this plan? [y/N]:",
             RemoveStep::ConfirmPhysical { .. } => "Type 'yes' to confirm permanent deletion:",
             RemoveStep::Done { .. } => "Press Enter to return to home.",
@@ -829,33 +885,52 @@ impl App {
     }
 
     fn build_remove_plan(&self, row: &InventoryRow) -> ChangePlan {
-        let skill_name = display_inventory_row(row);
-        let changes = row
-            .exposures
+        let changes = Self::removable_exposures(row)
             .iter()
-            .filter_map(|exposure| {
-                let display_name = self
-                    .config
-                    .agents
-                    .get(&exposure.agent_id.0)
-                    .map(|agent| agent.display_name.clone())
-                    .unwrap_or_else(|| exposure.agent_id.0.clone());
-                match exposure.connection {
-                    ConnectionKind::Symlink => Some(StagedChange::DetachSkill {
-                        skill_name: skill_name.clone(),
-                        agent_id: AgentId(display_name),
-                        target_path: exposure.path.clone(),
-                    }),
-                    ConnectionKind::PhysicalCopy => Some(StagedChange::DeletePhysicalCopy {
-                        skill_name: skill_name.clone(),
-                        agent_id: AgentId(display_name),
-                        target_path: exposure.path.clone(),
-                    }),
-                    ConnectionKind::Missing | ConnectionKind::Unknown => None,
-                }
-            })
+            .flat_map(|exposure| self.build_remove_plan_for_exposure(row, exposure).changes)
             .collect();
         ChangePlan::new(changes)
+    }
+
+    fn build_remove_plan_for_exposure(
+        &self,
+        row: &InventoryRow,
+        exposure: &SkillExposure,
+    ) -> ChangePlan {
+        let skill_name = display_inventory_row(row);
+        let display_name = self
+            .config
+            .agents
+            .get(&exposure.agent_id.0)
+            .map(|agent| agent.display_name.clone())
+            .unwrap_or_else(|| exposure.agent_id.0.clone());
+        let change = match exposure.connection {
+            ConnectionKind::Symlink => Some(StagedChange::DetachSkill {
+                skill_name,
+                agent_id: AgentId(display_name),
+                target_path: exposure.path.clone(),
+            }),
+            ConnectionKind::PhysicalCopy => Some(StagedChange::DeletePhysicalCopy {
+                skill_name,
+                agent_id: AgentId(display_name),
+                target_path: exposure.path.clone(),
+            }),
+            ConnectionKind::Missing | ConnectionKind::Unknown => None,
+        };
+        ChangePlan::new(change.into_iter().collect())
+    }
+
+    fn removable_exposures(row: &InventoryRow) -> Vec<SkillExposure> {
+        row.exposures
+            .iter()
+            .filter(|exposure| {
+                matches!(
+                    exposure.connection,
+                    ConnectionKind::Symlink | ConnectionKind::PhysicalCopy
+                )
+            })
+            .cloned()
+            .collect()
     }
 
     fn apply_plan_and_refresh(&mut self, plan: &ChangePlan) -> anyhow::Result<String> {
