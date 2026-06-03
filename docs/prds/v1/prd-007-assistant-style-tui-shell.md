@@ -1,7 +1,7 @@
 ---
 title: Assistant-style TUI shell
 summary: Make the default skills-manager experience a full-screen assistant-style terminal UI for list, scan, import, remove, config, and help flows.
-status: planned
+status: done
 roadmap: v1
 ---
 
@@ -184,6 +184,14 @@ Later list behavior:
 - Physical-copy deletion warnings are visually distinct.
 - Terminal state is restored after exit.
 - TUI behavior is covered by unit tests for command parsing and state transitions where practical.
+
+## Progress notes
+
+- 2026-06-03: Implemented the assistant-style TUI shell with ratatui/crossterm. Running `skills-manager` with no subcommand opens the TUI in interactive terminals.
+- 2026-06-03: Added home, list, scan, import, remove, config, help, and quit modes with a fixed header/status/main/prompt/footer layout.
+- 2026-06-03: Added prompt command parsing for plain and slash commands, sticky prompt rendering with current directory and Git branch, and key handling for enter, escape, help, quit, list movement, slash input, and Ctrl-C.
+- 2026-06-03: Added guided import/remove flows that use the shared staged plan/apply behavior, show plan previews, require confirmation, visually distinguish physical-copy deletion, apply confirmed changes, rescan inventory, and render results.
+- 2026-06-03: Updated TUI inventory rendering so duplicate display identities include numbered labels and source context.
 
 ## Edge cases
 

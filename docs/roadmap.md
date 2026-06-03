@@ -13,7 +13,7 @@ V1 PRDs live under `docs/prds/v1/` and are linked from their roadmap items below
 - `docs/bigpicture.md`
 - `docs/interview.md`
 - `docs/skills_manager_rust_guidelines.md`
-- Current repository state: Rust CLI crate with configuration, source scanning, inventory/list, and human-readable CLI workflow slices implemented.
+- Current repository state: Rust CLI/TUI crate with configuration, source scanning, inventory/list, safe import/remove plans, human-readable CLI workflow, and assistant-style TUI shell slices implemented.
 
 ## Roadmap Principles
 
@@ -110,7 +110,8 @@ Create the first usable Rust CLI/TUI that can discover skills, show effective av
 - **PRD candidate:** Yes. PRD: [`docs/prds/v1/prd-007-assistant-style-tui-shell.md`](prds/v1/prd-007-assistant-style-tui-shell.md)
 - **Dependencies:** 004, 005, 006.
 - **Validation signal:** A user can launch the app, inspect status, run list/scan/config flows, complete import/remove with staged plan review and confirmation, and quit cleanly from the TUI.
-- **Notes / risks:** The table matters, but the app should not become a raw admin grid without the broader assistant-like shell.
+- **Status:** Done.
+- **Notes / risks:** Advanced table cell toggling remains deferred to V2 item 011.
 
 ### Version Validation
 
@@ -254,7 +255,7 @@ V3 works if Skills Manager becomes the trusted local place to curate, audit, and
 | 004 | Inventory and exposure resolution | V1 | [`docs/prds/v1/prd-004-inventory-and-exposure-resolution.md`](prds/v1/prd-004-inventory-and-exposure-resolution.md) | High | Done | 002, 003 |
 | 005 | Human-readable CLI workflow | V1 | [`docs/prds/v1/prd-005-human-readable-cli-workflow.md`](prds/v1/prd-005-human-readable-cli-workflow.md) | Medium | Done | 002, 003, 004, 006 for mutations |
 | 006 | Safe import and removal plans | V1 | [`docs/prds/v1/prd-006-safe-import-and-removal-plans.md`](prds/v1/prd-006-safe-import-and-removal-plans.md) | High | Drafted | 004 |
-| 007 | Assistant-style TUI shell | V1 | [`docs/prds/v1/prd-007-assistant-style-tui-shell.md`](prds/v1/prd-007-assistant-style-tui-shell.md) | High | Drafted | 004, 005, 006 |
+| 007 | Assistant-style TUI shell | V1 | [`docs/prds/v1/prd-007-assistant-style-tui-shell.md`](prds/v1/prd-007-assistant-style-tui-shell.md) | High | Done | 004, 005, 006 |
 | 008 | Arbitrary project targeting | V2 | `docs/prds/008-arbitrary-project-targeting.md` | Medium | Later | 004, 006, 007 |
 | 009 | Git URL import into managed source directory | V2 | `docs/prds/009-git-url-import-into-managed-source-directory.md` | Medium | Later | 003, 006 |
 | 010 | Manual install migration | V2 | `docs/prds/010-manual-install-migration.md` | Medium | Later | 004, 006 |

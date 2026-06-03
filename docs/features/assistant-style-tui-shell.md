@@ -1,0 +1,93 @@
+# Assistant-style TUI Shell
+
+The assistant-style TUI shell is the default interactive Skills Manager experience. Running `skills-manager` without a subcommand opens a full-screen terminal interface for inspecting inventory, scanning source roots, importing skills, removing exposures, viewing config, and reading help.
+
+## Launch
+
+Run:
+
+```bash
+skills-manager
+```
+
+In an interactive terminal, the app enters a ratatui/crossterm alternate-screen UI. In non-interactive contexts, it exits successfully instead of trying to take over stdin/stdout.
+
+## Layout
+
+The shell uses fixed regions:
+
+- header with app name and purpose
+- status feed with loaded skill and agent counts
+- main content panel for the current mode
+- sticky prompt with current directory and Git branch when available
+- footer with mode-specific shortcuts
+
+The prompt remains visible across modes and accepts both plain commands and slash commands.
+
+## Commands
+
+Supported prompt commands:
+
+```text
+list
+/list
+scan
+/scan
+import <skill>
+/import <skill>
+remove <skill>
+/remove <skill>
+config
+/config
+help
+/help
+quit
+/quit
+q
+```
+
+Unknown commands keep the user in the shell and show an error message with a help hint.
+
+## Modes
+
+Home mode shows loaded skill and enabled-agent counts with suggested commands.
+
+List mode refreshes inventory from the shared inventory service and renders rows with skill, source, Claude, Codex, Copilot, scope, and connection columns. Duplicate display identities include numbered labels such as `(1)` and `(2)` with path, origin, or exposure context.
+
+Scan mode runs the shared scanner and shows discovered skills with source type, repository, and origin context.
+
+Config mode shows the resolved config path and current TOML. Rich config editing remains outside V1.
+
+Help mode lists prompt commands and key behavior.
+
+Import mode guides the user through skill selection, ambiguity resolution, target-agent selection, staged plan preview, confirmation, apply, rescan, and result rendering.
+
+Remove mode guides the user through exposed-skill selection, ambiguity resolution, staged plan preview, confirmation, apply, rescan, and result rendering.
+
+## Key Behavior
+
+The implemented V1 key behavior is:
+
+- `Enter`: submit prompt input or confirm the current guided step
+- `Esc`: cancel the current action and return home
+- `?`: open help when the prompt is empty
+- `q`: quit when the prompt is empty
+- `Up` / `Down`: move through list rows
+- `/`: begin a slash command in the always-visible prompt
+- `Ctrl-C`: quit
+
+Tab and left/right panel switching are reserved for future modes with multiple active sections or editable table columns.
+
+## Safety
+
+Import and remove flows use the same shared staged plan and apply modules as the CLI. Filesystem changes are not applied until the user confirms the rendered plan.
+
+Imports create symlink exposures for selected enabled agents and skip existing target paths rather than overwriting them.
+
+Removals detach symlinks without deleting source skills. Physical-copy removals are visually distinguished as destructive and require a second exact `yes` confirmation before deletion.
+
+After a plan is applied, the TUI refreshes inventory and renders the resulting state.
+
+## V1 Boundaries
+
+V1 does not include advanced table cell toggling, space-to-stage exposure edits, rich config editing, remote Git imports, arbitrary project targeting, or stable machine-readable output.

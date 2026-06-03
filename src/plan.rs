@@ -25,6 +25,7 @@ pub enum StagedChange {
     },
 }
 
+#[derive(Debug, Clone)]
 pub struct ChangePlan {
     pub changes: Vec<StagedChange>,
 }
