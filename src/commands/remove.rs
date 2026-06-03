@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 use crate::cli::RemoveArgs;
 use crate::commands::helpers;
@@ -30,7 +30,10 @@ pub fn run(args: RemoveArgs) -> Result<()> {
             return Ok(());
         }
         _ => {
-            println!("Found multiple inventory entries matching '{}':", args.skill);
+            println!(
+                "Found multiple inventory entries matching '{}':",
+                args.skill
+            );
             helpers::print_inventory_disambiguation(&matches);
             let Some(selected) = choose_inventory_row(&matches)? else {
                 return Ok(());
@@ -59,10 +62,11 @@ pub fn run(args: RemoveArgs) -> Result<()> {
     };
     let mut changes = Vec::new();
     for exposure in &selected.exposures {
-        if agent_filter
-            .as_ref()
-            .is_some_and(|requested| !requested.iter().any(|agent_id| agent_id == &exposure.agent_id.0))
-        {
+        if agent_filter.as_ref().is_some_and(|requested| {
+            !requested
+                .iter()
+                .any(|agent_id| agent_id == &exposure.agent_id.0)
+        }) {
             continue;
         }
 
@@ -113,6 +117,16 @@ pub fn run(args: RemoveArgs) -> Result<()> {
         println!("Aborted.");
         return Ok(());
     }
+    if plan.has_physical_deletes() {
+        match helpers::read_line("This plan includes permanent deletion. Type 'yes' to confirm: ")?
+        {
+            Some(answer) if physical_delete_confirmation_allows(&answer) => {}
+            _ => {
+                println!("Aborted.");
+                return Ok(());
+            }
+        }
+    }
 
     let result = plan_apply::apply_plan(&plan);
     match result.failed {
@@ -132,7 +146,8 @@ fn choose_inventory_row<'a>(
     matches: &[&'a crate::domain::InventoryRow],
 ) -> Result<Option<&'a crate::domain::InventoryRow>> {
     loop {
-        let Some(input) = helpers::read_line(&format!("Enter number [1-{}]: ", matches.len()))? else {
+        let Some(input) = helpers::read_line(&format!("Enter number [1-{}]: ", matches.len()))?
+        else {
             println!("Aborted.");
             return Ok(None);
         };
@@ -142,5 +157,22 @@ fn choose_inventory_row<'a>(
             return Ok(Some(matches[index - 1]));
         }
         println!("Invalid selection.");
+    }
+}
+
+fn physical_delete_confirmation_allows(answer: &str) -> bool {
+    answer == "yes"
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn physical_delete_confirmation_requires_exact_yes() {
+        assert!(physical_delete_confirmation_allows("yes"));
+        assert!(!physical_delete_confirmation_allows("y"));
+        assert!(!physical_delete_confirmation_allows("YES"));
+        assert!(!physical_delete_confirmation_allows(""));
     }
 }

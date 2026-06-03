@@ -122,7 +122,10 @@ pub fn parse_agents(s: &str) -> Vec<String> {
 
 /// Given a skill identifier (e.g. "repo-a/code-review" or "code-review"),
 /// find matching scan results. Returns empty vec if none, or multiple if ambiguous.
-pub fn find_scan_results_by_id<'a>(skill_id: &str, results: &'a [ScanResult]) -> Vec<&'a ScanResult> {
+pub fn find_scan_results_by_id<'a>(
+    skill_id: &str,
+    results: &'a [ScanResult],
+) -> Vec<&'a ScanResult> {
     results
         .iter()
         .filter(|result| matches_skill_id(skill_id, &result.skill_id))
@@ -130,7 +133,10 @@ pub fn find_scan_results_by_id<'a>(skill_id: &str, results: &'a [ScanResult]) ->
 }
 
 /// Given a skill identifier, find matching inventory rows.
-pub fn find_inventory_rows_by_id<'a>(skill_id: &str, rows: &'a [InventoryRow]) -> Vec<&'a InventoryRow> {
+pub fn find_inventory_rows_by_id<'a>(
+    skill_id: &str,
+    rows: &'a [InventoryRow],
+) -> Vec<&'a InventoryRow> {
     rows.iter()
         .filter(|row| matches_skill_id(skill_id, &display_skill_id(row)))
         .collect()
@@ -259,7 +265,10 @@ mod tests {
 
     #[test]
     fn find_scan_results_by_id_no_match() {
-        let results = vec![scan_result("repo-a/code-review", "/skills/repo-a/code-review")];
+        let results = vec![scan_result(
+            "repo-a/code-review",
+            "/skills/repo-a/code-review",
+        )];
 
         assert!(find_scan_results_by_id("missing", &results).is_empty());
     }

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::fs;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 use crate::cli::ImportArgs;
 use crate::commands::helpers;
@@ -55,7 +55,11 @@ pub fn run(args: ImportArgs) -> Result<()> {
             }
             all_agents
                 .into_iter()
-                .filter(|agent| requested.iter().any(|requested| requested == &agent.agent_id))
+                .filter(|agent| {
+                    requested
+                        .iter()
+                        .any(|requested| requested == &agent.agent_id)
+                })
                 .collect::<Vec<_>>()
         }
         None => all_agents
@@ -73,7 +77,14 @@ pub fn run(args: ImportArgs) -> Result<()> {
         .skill_path
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| selected.skill_id.rsplit('/').next().unwrap_or(&selected.skill_id).to_string());
+        .unwrap_or_else(|| {
+            selected
+                .skill_id
+                .rsplit('/')
+                .next()
+                .unwrap_or(&selected.skill_id)
+                .to_string()
+        });
 
     let mut changes = Vec::new();
     for agent in target_agents {
@@ -115,7 +126,8 @@ pub fn run(args: ImportArgs) -> Result<()> {
         return Ok(());
     }
     if plan.has_physical_deletes() {
-        match helpers::read_line("This plan includes permanent deletion. Type 'yes' to confirm: ")? {
+        match helpers::read_line("This plan includes permanent deletion. Type 'yes' to confirm: ")?
+        {
             Some(answer) if answer == "yes" => {}
             _ => {
                 println!("Aborted.");
@@ -146,9 +158,12 @@ pub fn run(args: ImportArgs) -> Result<()> {
     Ok(())
 }
 
-fn choose_scan_result<'a>(matches: &[&'a scanner::ScanResult]) -> Result<Option<&'a scanner::ScanResult>> {
+fn choose_scan_result<'a>(
+    matches: &[&'a scanner::ScanResult],
+) -> Result<Option<&'a scanner::ScanResult>> {
     loop {
-        let Some(input) = helpers::read_line(&format!("Enter number [1-{}]: ", matches.len()))? else {
+        let Some(input) = helpers::read_line(&format!("Enter number [1-{}]: ", matches.len()))?
+        else {
             println!("Aborted.");
             return Ok(None);
         };
