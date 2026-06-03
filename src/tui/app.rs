@@ -281,9 +281,7 @@ impl App {
             }
             TuiCommand::Scan => {
                 self.reload_scan_results()?;
-                self.mode = Mode::Scan;
-                self.list_scroll = 0;
-                self.list_selected = None;
+                self.enter_scan_mode();
                 self.info_message = Some(format!("Found {} skill(s).", self.scan_results.len()));
             }
             TuiCommand::Import(skill) => {
@@ -398,6 +396,11 @@ impl App {
     pub fn sync_legacy_list_navigation(&mut self) {
         self.list_scroll = self.list_table.viewport_offset;
         self.list_selected = self.list_table.selected;
+    }
+
+    pub fn enter_scan_mode(&mut self) {
+        self.mode = Mode::Scan;
+        self.scan_table.reset(self.scan_results.len());
     }
 
     /// Handle import flow step progression.
@@ -952,6 +955,18 @@ mod tests {
         assert_eq!(app.mode, Mode::List);
         assert_eq!(app.list_table.selected, Some(0));
         assert_eq!(app.list_table.viewport_offset, 0);
+    }
+
+    #[test]
+    fn enter_scan_mode_selects_first_result_when_results_exist() {
+        let mut app = test_app();
+        app.scan_results = vec![scan_result("repo-a/one"), scan_result("repo-a/two")];
+
+        app.enter_scan_mode();
+
+        assert_eq!(app.mode, Mode::Scan);
+        assert_eq!(app.scan_table.selected, Some(0));
+        assert_eq!(app.scan_table.viewport_offset, 0);
     }
 
     #[test]

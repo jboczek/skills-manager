@@ -72,6 +72,13 @@ fn handle_key_with_table_height(
             app.list_table.move_down(app.inventory.len(), table_height);
             app.sync_legacy_list_navigation();
         }
+        KeyCode::Up if app.mode == Mode::Scan => {
+            app.scan_table.move_up(app.scan_results.len(), table_height);
+        }
+        KeyCode::Down if app.mode == Mode::Scan => {
+            app.scan_table
+                .move_down(app.scan_results.len(), table_height);
+        }
         KeyCode::Char('?') if app.input.is_empty() => {
             app.mode = Mode::Help;
         }
@@ -128,6 +135,7 @@ mod tests {
     use crate::domain::{
         AgentId, ConnectionKind, InventoryRow, Scope, SkillExposure, SkillId, SkillSource,
     };
+    use crate::scanner::{ScanResult, SourceKind};
 
     fn test_app() -> App {
         App::new(
@@ -157,6 +165,19 @@ mod tests {
                 path: std::path::PathBuf::from(format!("/skills/{name}")),
                 connection: ConnectionKind::Symlink,
             }],
+            disambiguation_index: None,
+        }
+    }
+
+    fn scan_result(skill_id: &str) -> ScanResult {
+        ScanResult {
+            skill_id: skill_id.to_string(),
+            skill_path: std::path::PathBuf::from(format!("/skills/{skill_id}")),
+            skill_relative_path: None,
+            repo_name: None,
+            repo_path: None,
+            remote_url: None,
+            source_kind: SourceKind::CentralDir,
             disambiguation_index: None,
         }
     }
@@ -230,6 +251,26 @@ mod tests {
 
         assert_eq!(app.list_table.selected, Some(3));
         assert_eq!(app.list_table.viewport_offset, 1);
+    }
+
+    #[test]
+    fn scan_down_uses_table_navigation() {
+        let mut app = test_app();
+        app.mode = Mode::Scan;
+        app.scan_results = vec![
+            scan_result("repo-a/one"),
+            scan_result("repo-a/two"),
+            scan_result("repo-a/three"),
+            scan_result("repo-a/four"),
+        ];
+        app.scan_table.reset(app.scan_results.len());
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Down), 3).expect("key handled");
+        handle_key_with_table_height(&mut app, key(KeyCode::Down), 3).expect("key handled");
+        handle_key_with_table_height(&mut app, key(KeyCode::Down), 3).expect("key handled");
+
+        assert_eq!(app.scan_table.selected, Some(3));
+        assert_eq!(app.scan_table.viewport_offset, 1);
     }
 
     #[test]
