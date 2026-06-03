@@ -15,7 +15,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             area,
             " Home ",
             &format!(
-                "Welcome to Skills Manager.\n\nLoaded skills: {}\nEnabled agents: {}\n\nTry /list, /scan, /import <skill>, /remove <skill>, /config or /help.",
+                "Welcome to Skills Manager.\n\nLoaded skills: {}\nEnabled agents: {}\n\nTry /list, /scan, /config or /help. Use table shortcuts for import and remove actions.",
                 app.inventory.len().max(app.scan_results.len()),
                 app.config
                     .agents
@@ -52,12 +52,11 @@ fn render_config(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn render_help(frame: &mut Frame, area: Rect) {
-    render_text_panel(
-        frame,
-        area,
-        " Help ",
-        "Commands\n  /list              Show current inventory\n  /scan              Scan for available skills\n  /import <skill>    Start import flow\n  /remove <skill>    Start remove flow\n  /config            Show config\n  /help              Show this help\n  /quit              Exit\n\nKeys\n  Enter              Submit prompt\n  Esc                Return home / cancel\n  Up / Down          Scroll list view\n  q                  Quit from home\n  ?                  Help from home",
-    );
+    render_text_panel(frame, area, " Help ", help_text());
+}
+
+fn help_text() -> &'static str {
+    "Commands\n  /list              Show current inventory\n  /scan              Scan for available skills\n  /config            Show config\n  /help              Show this help\n  /quit              Exit\n\nTable actions\n  i                  Import selected scan row, or missing list exposures\n  x                  Remove selected list exposure\n  r                  Refresh current table\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move table or command selection\n  q                  Quit from home\n  ?                  Help from home"
 }
 
 fn render_import(frame: &mut Frame, area: Rect, app: &App) {
@@ -186,4 +185,19 @@ fn render_text_panel(frame: &mut Frame, area: Rect, title: &str, body: &str) {
             .wrap(Wrap { trim: false }),
         area,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn help_points_to_table_actions_instead_of_standalone_mutation_commands() {
+        let text = help_text();
+
+        assert!(!text.contains("/import <skill>"));
+        assert!(!text.contains("/remove <skill>"));
+        assert!(text.contains("Import selected scan row"));
+        assert!(text.contains("Remove selected list exposure"));
+    }
 }

@@ -224,20 +224,24 @@ impl App {
                 self.info_message = Some(format!("Found {} skill(s).", self.scan_results.len()));
             }
             TuiCommand::Import(skill) => {
-                self.refresh_inventory()?;
-                self.mode = Mode::Import;
-                self.import_step = ImportStep::EnterSkill;
-                if !skill.trim().is_empty() {
-                    self.advance_import(&skill)?;
-                }
+                let suffix = if skill.trim().is_empty() {
+                    ""
+                } else {
+                    " The typed skill name was not used."
+                };
+                self.info_message = Some(format!(
+                    "Use table shortcuts: run /scan, select a row, then press i. From /list, press i to create missing enabled-agent exposures.{suffix}"
+                ));
             }
             TuiCommand::Remove(skill) => {
-                self.refresh_inventory()?;
-                self.mode = Mode::Remove;
-                self.remove_step = RemoveStep::EnterSkill;
-                if !skill.trim().is_empty() {
-                    self.advance_remove(&skill)?;
-                }
+                let suffix = if skill.trim().is_empty() {
+                    ""
+                } else {
+                    " The typed skill name was not used."
+                };
+                self.info_message = Some(format!(
+                    "Use table shortcuts: run /list, select an exposed row, then press x to remove it.{suffix}"
+                ));
             }
             TuiCommand::Config => {
                 self.mode = Mode::Config;
@@ -889,6 +893,38 @@ mod tests {
         app.handle_command("help").expect("command succeeds");
 
         assert_eq!(app.mode, Mode::Help);
+    }
+
+    #[test]
+    fn handle_command_import_guides_to_table_shortcut() {
+        let mut app = test_app();
+
+        app.handle_command("/import repo-a/skill")
+            .expect("command succeeds");
+
+        assert_eq!(app.mode, Mode::Home);
+        assert!(matches!(app.import_step, ImportStep::EnterSkill));
+        assert!(
+            app.info_message
+                .as_deref()
+                .is_some_and(|message| message.contains("press i"))
+        );
+    }
+
+    #[test]
+    fn handle_command_remove_guides_to_table_shortcut() {
+        let mut app = test_app();
+
+        app.handle_command("/remove repo-a/skill")
+            .expect("command succeeds");
+
+        assert_eq!(app.mode, Mode::Home);
+        assert!(matches!(app.remove_step, RemoveStep::EnterSkill));
+        assert!(
+            app.info_message
+                .as_deref()
+                .is_some_and(|message| message.contains("press x"))
+        );
     }
 
     #[test]
