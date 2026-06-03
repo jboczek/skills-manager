@@ -191,6 +191,12 @@ mod tests {
         }
     }
 
+    fn enable_only(app: &mut App, agent_id: &str) {
+        for (id, agent) in &mut app.config.agents {
+            agent.enabled = id == agent_id;
+        }
+    }
+
     #[test]
     fn question_mark_opens_help_from_any_mode_when_prompt_is_empty() {
         let mut app = test_app();
@@ -339,6 +345,54 @@ mod tests {
 
         assert_eq!(app.mode, Mode::Remove);
         assert!(matches!(app.remove_step, RemoveStep::SelectExposure { .. }));
+    }
+
+    #[test]
+    fn scan_import_shortcut_stages_plan_when_target_is_unambiguous() {
+        let mut app = test_app();
+        enable_only(&mut app, "codex");
+        app.mode = Mode::Scan;
+        app.scan_results = vec![scan_result("repo-a/one")];
+        app.scan_table.reset(app.scan_results.len());
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('i')), 3).expect("key handled");
+
+        match app.import_step {
+            ImportStep::ConfirmPlan { plan, .. } => assert!(!plan.is_empty()),
+            _ => panic!("expected import plan preview"),
+        }
+    }
+
+    #[test]
+    fn list_import_shortcut_stages_plan_when_missing_target_is_unambiguous() {
+        let mut app = test_app();
+        enable_only(&mut app, "claude");
+        app.mode = Mode::List;
+        app.inventory = vec![inventory_row("one")];
+        app.scan_results = vec![scan_result("repo-a/one")];
+        app.list_table.reset(app.inventory.len());
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('i')), 3).expect("key handled");
+
+        match app.import_step {
+            ImportStep::ConfirmPlan { plan, .. } => assert!(!plan.is_empty()),
+            _ => panic!("expected import plan preview"),
+        }
+    }
+
+    #[test]
+    fn list_remove_shortcut_stages_plan_preview() {
+        let mut app = test_app();
+        app.mode = Mode::List;
+        app.inventory = vec![inventory_row("one")];
+        app.list_table.reset(app.inventory.len());
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('x')), 3).expect("key handled");
+
+        match app.remove_step {
+            RemoveStep::ConfirmPlan { plan, .. } => assert!(!plan.is_empty()),
+            _ => panic!("expected remove plan preview"),
+        }
     }
 
     #[test]
