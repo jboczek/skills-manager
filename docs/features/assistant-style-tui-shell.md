@@ -22,7 +22,7 @@ The shell uses fixed regions:
 - sticky prompt with current directory and Git branch when available
 - footer with mode-specific shortcuts
 
-The prompt remains visible across modes and accepts both plain commands and slash commands.
+The prompt remains visible across modes. Pressing `/` from an empty prompt opens command suggestions with short descriptions.
 
 ## Commands
 
@@ -33,10 +33,6 @@ list
 /list
 scan
 /scan
-import <skill>
-/import <skill>
-remove <skill>
-/remove <skill>
 config
 /config
 help
@@ -48,21 +44,23 @@ q
 
 Unknown commands keep the user in the shell and show an error message with a help hint.
 
+The slash suggestion menu lists `/list`, `/scan`, `/config`, `/help`, and `/quit`. Import and remove are table actions in the TUI. If a user types `/import` or `/remove`, the TUI guides them to the row shortcuts instead of starting standalone prompt workflows.
+
 ## Modes
 
 Home mode shows loaded skill and enabled-agent counts with suggested commands.
 
-List mode refreshes inventory from the shared inventory service and renders rows with skill, source, Claude, Codex, Copilot, scope, and connection columns. Duplicate display identities include numbered labels such as `(1)` and `(2)` with path, origin, or exposure context.
+List mode refreshes inventory from the shared inventory service and renders rows with skill, source, Claude, Codex, Copilot, scope, and connection columns. Duplicate display identities include numbered labels such as `(1)` and `(2)` with path, origin, or exposure context. Selection starts at the first row when rows exist, and the viewport scrolls only after selection moves past the visible top or bottom.
 
-Scan mode runs the shared scanner and shows discovered skills with source type, repository, and origin context.
+Scan mode runs the shared scanner and shows discovered skills with source type, repository, and origin context. Scan rows use the same selection and scrolling model as list rows.
 
 Config mode shows the resolved config path and current TOML. Rich config editing remains outside V1.
 
 Help mode lists prompt commands and key behavior.
 
-Import mode guides the user through skill selection, ambiguity resolution, target-agent selection, staged plan preview, confirmation, apply, rescan, and result rendering.
+Import mode is reached from table shortcuts or existing flow state. It guides the user through ambiguity resolution, target-agent selection, staged plan preview, confirmation, apply, rescan, and result rendering.
 
-Remove mode guides the user through exposed-skill selection, ambiguity resolution, staged plan preview, confirmation, apply, rescan, and result rendering.
+Remove mode is reached from table shortcuts or existing flow state. It guides the user through exposure selection when needed, staged plan preview, confirmation, apply, rescan, and result rendering.
 
 ## Key Behavior
 
@@ -72,15 +70,18 @@ The implemented V1 key behavior is:
 - `Esc`: cancel the current action and return home
 - `?`: open help when the prompt is empty
 - `q`: quit when the prompt is empty
-- `Up` / `Down`: move through list rows
-- `/`: begin a slash command in the always-visible prompt
+- `Up` / `Down`: move through command suggestions, list rows, or scan rows
+- `/`: open slash command suggestions from an empty prompt
+- `i`: import the selected scan row, or import missing enabled-agent exposures from the selected list row
+- `x`: remove the selected list exposure, or choose which exposure to remove when a row has multiple
+- `r`: refresh the active list or scan table
 - `Ctrl-C`: quit
 
-Tab and left/right panel switching are reserved for future modes with multiple active sections or editable table columns.
+Tab, left/right panel switching, and multi-cell exposure toggling are reserved for future modes with multiple active sections or editable table columns.
 
 ## Safety
 
-Import and remove flows use the same shared staged plan and apply modules as the CLI. Filesystem changes are not applied until the user confirms the rendered plan.
+Import and remove shortcuts use the same shared staged plan and apply modules as the CLI. Filesystem changes are not applied until the user confirms the rendered plan.
 
 Imports create symlink exposures for selected enabled agents and skip existing target paths rather than overwriting them.
 
@@ -88,6 +89,6 @@ Removals detach symlinks without deleting source skills. Physical-copy removals 
 
 After a plan is applied, the TUI refreshes inventory and renders the resulting state.
 
-## V1 Boundaries
+## Boundaries
 
-V1 does not include advanced table cell toggling, space-to-stage exposure edits, rich config editing, remote Git imports, arbitrary project targeting, or stable machine-readable output.
+This shell does not include advanced table cell toggling, space-to-stage exposure edits, rich config editing, remote Git imports, arbitrary project targeting, or stable machine-readable output.
