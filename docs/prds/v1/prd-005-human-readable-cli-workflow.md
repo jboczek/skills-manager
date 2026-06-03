@@ -1,7 +1,7 @@
 ---
 title: Human-readable CLI workflow
 summary: Provide scriptable but user-first CLI commands for listing, scanning, importing, removing, config inspection, and diagnostics.
-status: planned
+status: done
 roadmap: v1
 ---
 
@@ -74,6 +74,14 @@ Prompts should be explicit. For example, import can ask `Apply this plan? [y/N]`
 - Mutating commands always show a plan before applying.
 - Import/remove flows rescan and render actual post-apply state.
 - CLI output remains compact enough for terminal use.
+
+## Implementation notes
+
+Implemented in the Rust CLI with handlers under `src/commands/` for `list`, `scan`, `import`, `remove`, `config`, and `doctor`.
+
+Read-only commands render human-readable terminal output. Mutating import and remove commands prepare a plan, require confirmation, apply through the safe plan/apply helpers, rescan inventory, and print the resulting state. Physical-copy removal requires the normal apply confirmation plus a second exact `yes` confirmation before permanent deletion.
+
+Durable usage documentation lives in `docs/features/human-readable-cli-workflow.md` and the README.
 
 ## Edge cases
 

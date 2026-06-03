@@ -2,6 +2,7 @@ use anyhow::Result;
 
 pub mod config;
 pub mod doctor;
+pub mod helpers;
 pub mod import;
 pub mod list;
 pub mod remove;

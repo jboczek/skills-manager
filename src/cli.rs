@@ -19,10 +19,28 @@ pub struct Cli {
 pub enum Commands {
     List,
     Scan,
-    Import,
-    Remove,
+    Import(ImportArgs),
+    Remove(RemoveArgs),
     Config(ConfigArgs),
     Doctor,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Parser)]
+pub struct ImportArgs {
+    /// Skill identifier (e.g. repo-a/code-review)
+    pub skill: String,
+    /// Target agents, comma-separated (e.g. claude,codex). If omitted, import to all enabled agents.
+    #[arg(long, value_name = "AGENTS")]
+    pub to: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Parser)]
+pub struct RemoveArgs {
+    /// Skill identifier (e.g. repo-a/code-review)
+    pub skill: String,
+    /// Source agents, comma-separated (e.g. claude). If omitted, remove from all agents.
+    #[arg(long, value_name = "AGENTS")]
+    pub from: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Parser)]

@@ -13,7 +13,7 @@ V1 PRDs live under `docs/prds/v1/` and are linked from their roadmap items below
 - `docs/bigpicture.md`
 - `docs/interview.md`
 - `docs/skills_manager_rust_guidelines.md`
-- Current repository state: Rust CLI crate with configuration, source scanning, and inventory/list slices implemented.
+- Current repository state: Rust CLI crate with configuration, source scanning, inventory/list, and human-readable CLI workflow slices implemented.
 
 ## Roadmap Principles
 
@@ -252,7 +252,7 @@ V3 works if Skills Manager becomes the trusted local place to curate, audit, and
 | 002 | Configuration and agent definitions | V1 | [`docs/prds/v1/prd-002-configuration-and-agent-definitions.md`](prds/v1/prd-002-configuration-and-agent-definitions.md) | High | Drafted | 001 |
 | 003 | Skill source scanning | V1 | [`docs/prds/v1/prd-003-skill-source-scanning.md`](prds/v1/prd-003-skill-source-scanning.md) | High | Done | 001, 002 |
 | 004 | Inventory and exposure resolution | V1 | [`docs/prds/v1/prd-004-inventory-and-exposure-resolution.md`](prds/v1/prd-004-inventory-and-exposure-resolution.md) | High | Done | 002, 003 |
-| 005 | Human-readable CLI workflow | V1 | [`docs/prds/v1/prd-005-human-readable-cli-workflow.md`](prds/v1/prd-005-human-readable-cli-workflow.md) | Medium | Drafted | 002, 003, 004, 006 for mutations |
+| 005 | Human-readable CLI workflow | V1 | [`docs/prds/v1/prd-005-human-readable-cli-workflow.md`](prds/v1/prd-005-human-readable-cli-workflow.md) | Medium | Done | 002, 003, 004, 006 for mutations |
 | 006 | Safe import and removal plans | V1 | [`docs/prds/v1/prd-006-safe-import-and-removal-plans.md`](prds/v1/prd-006-safe-import-and-removal-plans.md) | High | Drafted | 004 |
 | 007 | Assistant-style TUI shell | V1 | [`docs/prds/v1/prd-007-assistant-style-tui-shell.md`](prds/v1/prd-007-assistant-style-tui-shell.md) | High | Drafted | 004, 005, 006 |
 | 008 | Arbitrary project targeting | V2 | `docs/prds/008-arbitrary-project-targeting.md` | Medium | Later | 004, 006, 007 |
