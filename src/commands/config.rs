@@ -10,12 +10,10 @@ pub fn run(args: ConfigArgs) -> Result<()> {
         .context("cannot determine config file path")?;
 
     match args.subcommand {
-        ConfigSubcommand::Init => {
-            match Config::default_config().write_new(&path)? {
-                WriteOutcome::Created => println!("Created config: {}", path.display()),
-                WriteOutcome::AlreadyExists => println!("Config already exists: {}", path.display()),
-            }
-        }
+        ConfigSubcommand::Init => match Config::default_config().write_new(&path)? {
+            WriteOutcome::Created => println!("Created config: {}", path.display()),
+            WriteOutcome::AlreadyExists => println!("Config already exists: {}", path.display()),
+        },
         ConfigSubcommand::Path => println!("{}", path.display()),
         ConfigSubcommand::Show => {
             if !path.exists() {

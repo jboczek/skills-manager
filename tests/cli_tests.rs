@@ -1,3 +1,6 @@
+use std::fs;
+use std::path::PathBuf;
+
 use assert_cmd::Command;
 use tempfile::TempDir;
 
@@ -33,6 +36,16 @@ fn config_bin_with_home(home: &TempDir) -> Command {
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("skills-manager"));
     cmd.env("HOME", home.path());
     cmd
+}
+
+fn config_path_for_home(home: &TempDir) -> PathBuf {
+    let output = config_bin_with_home(home)
+        .args(["config", "path"])
+        .output()
+        .expect("config path runs");
+
+    assert!(output.status.success());
+    PathBuf::from(String::from_utf8(output.stdout).expect("utf8").trim())
 }
 
 #[test]
@@ -72,13 +85,13 @@ fn config_init_twice_does_not_overwrite() {
     let home = TempDir::new().unwrap();
     let bin = assert_cmd::cargo::cargo_bin!("skills-manager");
 
-    Command::new(&bin)
+    Command::new(bin)
         .args(["config", "init"])
         .env("HOME", home.path())
         .output()
         .expect("first init runs");
 
-    let output = Command::new(&bin)
+    let output = Command::new(bin)
         .args(["config", "init"])
         .env("HOME", home.path())
         .output()
@@ -113,13 +126,13 @@ fn config_show_after_init_prints_toml() {
     let home = TempDir::new().unwrap();
     let bin = assert_cmd::cargo::cargo_bin!("skills-manager");
 
-    Command::new(&bin)
+    Command::new(bin)
         .args(["config", "init"])
         .env("HOME", home.path())
         .output()
         .expect("init runs");
 
-    let output = Command::new(&bin)
+    let output = Command::new(bin)
         .args(["config", "show"])
         .env("HOME", home.path())
         .output()
@@ -127,7 +140,63 @@ fn config_show_after_init_prints_toml() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("[skills]"), "expected TOML output with [skills], got: {stdout}");
-    assert!(stdout.contains("[preferences]"), "expected [preferences] section");
+    assert!(
+        stdout.contains("[skills]"),
+        "expected TOML output with [skills], got: {stdout}"
+    );
+    assert!(
+        stdout.contains("[preferences]"),
+        "expected [preferences] section"
+    );
     assert!(stdout.contains("claude"), "expected claude agent in output");
+}
+
+#[test]
+fn skills_manager_scan_no_config_prints_no_skills() {
+    let home = TempDir::new().unwrap();
+    let output = config_bin_with_home(&home)
+        .args(["scan"])
+        .output()
+        .expect("scan runs");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
+    assert!(
+        stdout.contains("No skills found."),
+        "unexpected stdout: {stdout}"
+    );
+}
+
+#[test]
+fn skills_manager_scan_finds_skills() {
+    let home = TempDir::new().unwrap();
+    let skills_root = home.path().join("skill-sources");
+    let skill_dir = skills_root.join("code-review");
+    fs::create_dir_all(&skill_dir).expect("create skill dir");
+    fs::write(skill_dir.join("SKILL.md"), "# Code review").expect("write skill file");
+
+    let mut config = skills_manager::config::Config::default_config();
+    config.skills.central_dir = skills_root.to_string_lossy().into_owned();
+    config.skills.scan_parent_dirs = vec![];
+    config.skills.max_scan_depth = 10;
+
+    let config_path = config_path_for_home(&home);
+    fs::create_dir_all(config_path.parent().expect("config parent")).expect("create config parent");
+    fs::write(&config_path, config.to_toml().expect("config toml")).expect("write config");
+
+    let output = config_bin_with_home(&home)
+        .args(["scan"])
+        .output()
+        .expect("scan runs");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
+    assert!(
+        stdout.contains("code-review"),
+        "unexpected stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains(&skill_dir.to_string_lossy().to_string()),
+        "expected skill path in stdout: {stdout}"
+    );
 }

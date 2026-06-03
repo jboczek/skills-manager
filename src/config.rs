@@ -135,8 +135,9 @@ impl Config {
     /// Fails if the file already exists (use `create_new` semantics).
     pub fn write_new(&self, path: &Path) -> anyhow::Result<WriteOutcome> {
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create config directory: {}", parent.display()))?;
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!("failed to create config directory: {}", parent.display())
+            })?;
         }
         let toml_str = self.to_toml()?;
         match std::fs::OpenOptions::new()
@@ -149,8 +150,12 @@ impl Config {
                     .with_context(|| format!("failed to write config: {}", path.display()))?;
                 Ok(WriteOutcome::Created)
             }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(WriteOutcome::AlreadyExists),
-            Err(e) => Err(e).with_context(|| format!("failed to create config: {}", path.display())),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                Ok(WriteOutcome::AlreadyExists)
+            }
+            Err(e) => {
+                Err(e).with_context(|| format!("failed to create config: {}", path.display()))
+            }
         }
     }
 }
@@ -256,7 +261,10 @@ confirm_physical_delete = true
         let cfg = Config::parse(EXAMPLE_TOML).expect("valid TOML should parse");
         assert_eq!(cfg.skills.central_dir, "~/skills");
         assert_eq!(cfg.agents["claude"].display_name, "Claude");
-        assert_eq!(cfg.agents["codex"].project_dir, Some(".codex/skills".to_string()));
+        assert_eq!(
+            cfg.agents["codex"].project_dir,
+            Some(".codex/skills".to_string())
+        );
         assert_eq!(cfg.agents["copilot"].shared_target_ids, vec!["agents"]);
     }
 
