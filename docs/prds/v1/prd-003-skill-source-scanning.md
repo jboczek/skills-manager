@@ -1,7 +1,7 @@
 ---
 title: Skill source scanning
 summary: Discover skills from configured source locations by finding SKILL.md files without mutating the filesystem.
-status: planned
+status: done
 roadmap: v1
 ---
 
@@ -70,6 +70,16 @@ The scanner should produce a data structure containing at least:
 
 The scanner should be callable from tests with explicit config values and temporary directories. Avoid reading the real user config in scanner unit tests.
 
+## Implementation status
+
+Implemented in the PRD-003 branch.
+
+- `skills-manager scan` loads the user config when present, falls back to safe defaults when missing, expands configured `~` prefixes, scans `central_dir` before `scan_parent_dirs`, and prints human-readable scan rows.
+- Scan rows include the display skill namespace, source marker, skill path, repository name, and remote origin. Missing repository or origin data is rendered as `unknown`.
+- Source scanning uses `ignore`, respects configured `max_scan_depth`, does not follow symlinked directories, and deduplicates identical skill roots reached through overlapping scan paths.
+- Repository root discovery walks to the nearest ancestor containing `.git`; origin resolution shells out to `git -C <repo_path> remote get-url origin`.
+- Scanner unit tests cover single-skill, multi-skill, nested-skill, symlink, overlap, missing directory, and duplicate namespace cases. CLI tests cover scan behavior with and without config.
+
 ## Success criteria
 
 - `skills-manager scan` finds single-skill, multi-skill, and nested-skill repositories.
@@ -91,7 +101,7 @@ The scanner should be callable from tests with explicit config values and tempor
 - Roadmap items `001` and `002`.
 - Feeds roadmap items `004`, `005`, `006`, and `007`.
 
-## Open questions
+## Resolved decisions
 
-- Should permission errors fail the scan or be collected as warnings? V1 should likely continue scanning and show warnings.
-- How much source path should scan output show by default before it becomes noisy?
+- Permission and origin lookup errors are collected as warnings so one bad source does not stop the whole scan.
+- The CLI prints full skill paths in scan rows for now so users can distinguish duplicate or nested results before later import flows add richer selection UI.

@@ -38,7 +38,9 @@ pub fn run() -> Result<()> {
     }
 
     if let Some(config) = loaded_config.as_ref() {
-        for source_dir in std::iter::once(&config.skills.central_dir).chain(config.skills.scan_parent_dirs.iter()) {
+        for source_dir in
+            std::iter::once(&config.skills.central_dir).chain(config.skills.scan_parent_dirs.iter())
+        {
             let path = helpers::resolve_path(&current_dir, source_dir);
             if path.exists() {
                 println!("PASS: Source directory exists: {}", path.display());
@@ -107,7 +109,11 @@ fn dir_is_writable(path: &std::path::Path) -> bool {
         .map(|duration| duration.as_nanos())
         .unwrap_or_default();
     let probe = path.join(format!(".skills-manager-doctor-{unique}"));
-    match fs::OpenOptions::new().write(true).create_new(true).open(&probe) {
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&probe)
+    {
         Ok(_) => fs::remove_file(probe).is_ok(),
         Err(_) => false,
     }

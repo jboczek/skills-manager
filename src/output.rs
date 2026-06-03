@@ -72,11 +72,28 @@ fn skill_display(row: &InventoryRow) -> String {
 }
 
 fn source_display(row: &InventoryRow) -> String {
-    row.source.repo_name.clone().unwrap_or_else(|| "unknown".to_string())
+    let source = row
+        .source
+        .repo_name
+        .clone()
+        .unwrap_or_else(|| "unknown".to_string());
+
+    if row.disambiguation_index.is_none() {
+        return source;
+    }
+
+    match source_context(row) {
+        Some(context) => format!("{source} ({context})"),
+        None => source,
+    }
 }
 
 fn exposure_mark(row: &InventoryRow, agent_id: &str) -> &'static str {
-    if row.exposures.iter().any(|exposure| exposure.agent_id.0 == agent_id) {
+    if row
+        .exposures
+        .iter()
+        .any(|exposure| exposure.agent_id.0 == agent_id)
+    {
         "✓"
     } else {
         "-"
@@ -113,4 +130,75 @@ fn primary_connection(row: &InventoryRow) -> Option<ConnectionKind> {
             ConnectionKind::Missing => 2,
             ConnectionKind::Unknown => 1,
         })
+}
+
+fn source_context(row: &InventoryRow) -> Option<String> {
+    row.source
+        .repo_path
+        .as_ref()
+        .map(|path| path.display().to_string())
+        .or_else(|| row.source.remote_url.clone())
+        .or_else(|| {
+            row.exposures
+                .first()
+                .map(|exposure| exposure.path.display().to_string())
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use crate::domain::{AgentId, SkillExposure, SkillId, SkillSource};
+
+    use super::*;
+
+    #[test]
+    fn duplicate_rows_include_source_path_context() {
+        let rows = vec![
+            InventoryRow {
+                skill_id: SkillId {
+                    namespace: "repo-a".to_string(),
+                    name: "docs".to_string(),
+                },
+                source: SkillSource {
+                    repo_name: Some("repo-a".to_string()),
+                    repo_path: Some(PathBuf::from("/tmp/repo-a-one")),
+                    remote_url: None,
+                },
+                scope: Scope::ProjectLocal,
+                exposures: vec![SkillExposure {
+                    agent_id: AgentId("codex".to_string()),
+                    path: PathBuf::from("/tmp/repo-a-one/docs"),
+                    connection: ConnectionKind::Symlink,
+                }],
+                disambiguation_index: Some(1),
+            },
+            InventoryRow {
+                skill_id: SkillId {
+                    namespace: "repo-a".to_string(),
+                    name: "docs".to_string(),
+                },
+                source: SkillSource {
+                    repo_name: Some("repo-a".to_string()),
+                    repo_path: Some(PathBuf::from("/tmp/repo-a-two")),
+                    remote_url: None,
+                },
+                scope: Scope::ProjectLocal,
+                exposures: vec![SkillExposure {
+                    agent_id: AgentId("copilot".to_string()),
+                    path: PathBuf::from("/tmp/repo-a-two/docs"),
+                    connection: ConnectionKind::Symlink,
+                }],
+                disambiguation_index: Some(2),
+            },
+        ];
+
+        let output = render_inventory(&rows);
+
+        assert!(output.contains("(1) repo-a/docs"), "{output}");
+        assert!(output.contains("/tmp/repo-a-one"), "{output}");
+        assert!(output.contains("(2) repo-a/docs"), "{output}");
+        assert!(output.contains("/tmp/repo-a-two"), "{output}");
+    }
 }

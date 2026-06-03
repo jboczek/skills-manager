@@ -80,13 +80,13 @@ fn config_init_twice_does_not_overwrite() {
     let home = TempDir::new().unwrap();
     let bin = assert_cmd::cargo::cargo_bin!("skills-manager");
 
-    Command::new(&bin)
+    Command::new(bin)
         .args(["config", "init"])
         .env("HOME", home.path())
         .output()
         .expect("first init runs");
 
-    let output = Command::new(&bin)
+    let output = Command::new(bin)
         .args(["config", "init"])
         .env("HOME", home.path())
         .output()
@@ -121,13 +121,13 @@ fn config_show_after_init_prints_toml() {
     let home = TempDir::new().unwrap();
     let bin = assert_cmd::cargo::cargo_bin!("skills-manager");
 
-    Command::new(&bin)
+    Command::new(bin)
         .args(["config", "init"])
         .env("HOME", home.path())
         .output()
         .expect("init runs");
 
-    let output = Command::new(&bin)
+    let output = Command::new(bin)
         .args(["config", "show"])
         .env("HOME", home.path())
         .output()
@@ -272,7 +272,10 @@ fn import_unknown_skill_prints_not_found() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.to_lowercase().contains("not found"), "unexpected stdout: {stdout}");
+    assert!(
+        stdout.to_lowercase().contains("not found"),
+        "unexpected stdout: {stdout}"
+    );
 }
 
 #[test]
@@ -312,7 +315,10 @@ fn doctor_with_no_config_warns() {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     let stdout_lower = stdout.to_lowercase();
-    assert!(stdout.contains("WARN") || stdout_lower.contains("no config"), "unexpected stdout: {stdout}");
+    assert!(
+        stdout.contains("WARN") || stdout_lower.contains("no config"),
+        "unexpected stdout: {stdout}"
+    );
 }
 
 #[test]
@@ -326,7 +332,9 @@ fn doctor_with_valid_config_shows_checks() {
     config.skills.scan_parent_dirs = vec![];
     config.skills.max_scan_depth = 10;
     for agent in config.agents.values_mut() {
-        let dir = home.path().join(format!("{}-skills", agent.display_name.to_lowercase()));
+        let dir = home
+            .path()
+            .join(format!("{}-skills", agent.display_name.to_lowercase()));
         fs::create_dir_all(&dir).unwrap();
         agent.global_dir = dir.to_string_lossy().into_owned();
         agent.project_dir = None;
@@ -375,4 +383,49 @@ fn import_non_interactive_with_ambiguous_skill() {
         stdout_lower.contains("ambiguous") || stdout_lower.contains("not found"),
         "unexpected stdout: {stdout}"
     );
+}
+
+#[test]
+fn skills_manager_list_maps_shared_agents_target_to_codex_and_copilot() {
+    let home = TempDir::new().unwrap();
+    let project = TempDir::new().unwrap();
+    let shared_skill = project.path().join(".agents").join("shared-skill");
+    fs::create_dir_all(&shared_skill).expect("create shared skill dir");
+    fs::write(shared_skill.join("SKILL.md"), "# Shared skill").expect("write skill file");
+
+    let mut config = skills_manager::config::Config::default_config();
+    config.skills.central_dir = home
+        .path()
+        .join("missing-sources")
+        .to_string_lossy()
+        .into_owned();
+    config.skills.scan_parent_dirs = vec![];
+    for agent in config.agents.values_mut() {
+        agent.global_dir = home
+            .path()
+            .join(format!("missing-{}", agent.display_name.to_lowercase()))
+            .to_string_lossy()
+            .into_owned();
+        agent.project_dir = None;
+    }
+
+    let config_path = config_path_for_home(&home);
+    fs::create_dir_all(config_path.parent().expect("config parent")).expect("create config parent");
+    fs::write(&config_path, config.to_toml().expect("config toml")).expect("write config");
+
+    let output = config_bin_with_home(&home)
+        .current_dir(project.path())
+        .args(["list"])
+        .output()
+        .expect("list runs");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
+    assert!(
+        stdout.contains("shared-skill"),
+        "unexpected stdout: {stdout}"
+    );
+    assert!(stdout.contains("CODEX"), "unexpected stdout: {stdout}");
+    assert!(stdout.contains("COPILOT"), "unexpected stdout: {stdout}");
+    assert!(!stdout.contains("AGENTS"), "unexpected stdout: {stdout}");
 }
