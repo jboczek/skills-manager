@@ -19,7 +19,8 @@
 Before implementation, make a plan and add it to temp file named after the PRD `/docs/temp/prd-xxx-plan.md`. The plan should be a simple step-by-step outline of how. Add the plan file but do not commit it.
 
 ## Feature branches
-- Create a new branch for each feature or bugfix, named after the PRD or issue it addresses (e.g., `prd-001` or `issue-123`).
+- Create a new branch for each feature or bugfix, named after the PRD or issue it addresses (e.g., `prd-001-{feature-name}` or `issue-123`).
+- Do not suggest or perform branch renames unless the user explicitly asks for a branch rename.
 - Use simple, descriptive commit messages that explain the "what" and "why" of each change.
 - Avoid large, monolithic commits. Instead, break your work into smaller, logical commits that are easier to review and understand.
 - Never commit files you did not create or change. Always run `git diff --cached --stat` before committing to verify only intended files are staged.

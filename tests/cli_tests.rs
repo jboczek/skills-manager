@@ -85,13 +85,13 @@ fn config_init_twice_does_not_overwrite() {
     let home = TempDir::new().unwrap();
     let bin = assert_cmd::cargo::cargo_bin!("skills-manager");
 
-    Command::new(&bin)
+    Command::new(bin)
         .args(["config", "init"])
         .env("HOME", home.path())
         .output()
         .expect("first init runs");
 
-    let output = Command::new(&bin)
+    let output = Command::new(bin)
         .args(["config", "init"])
         .env("HOME", home.path())
         .output()
@@ -126,13 +126,13 @@ fn config_show_after_init_prints_toml() {
     let home = TempDir::new().unwrap();
     let bin = assert_cmd::cargo::cargo_bin!("skills-manager");
 
-    Command::new(&bin)
+    Command::new(bin)
         .args(["config", "init"])
         .env("HOME", home.path())
         .output()
         .expect("init runs");
 
-    let output = Command::new(&bin)
+    let output = Command::new(bin)
         .args(["config", "show"])
         .env("HOME", home.path())
         .output()
@@ -140,8 +140,14 @@ fn config_show_after_init_prints_toml() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("[skills]"), "expected TOML output with [skills], got: {stdout}");
-    assert!(stdout.contains("[preferences]"), "expected [preferences] section");
+    assert!(
+        stdout.contains("[skills]"),
+        "expected TOML output with [skills], got: {stdout}"
+    );
+    assert!(
+        stdout.contains("[preferences]"),
+        "expected [preferences] section"
+    );
     assert!(stdout.contains("claude"), "expected claude agent in output");
 }
 
@@ -155,7 +161,10 @@ fn skills_manager_scan_no_config_prints_no_skills() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
-    assert!(stdout.contains("No skills found."), "unexpected stdout: {stdout}");
+    assert!(
+        stdout.contains("No skills found."),
+        "unexpected stdout: {stdout}"
+    );
 }
 
 #[test]
@@ -182,5 +191,12 @@ fn skills_manager_scan_finds_skills() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
-    assert!(stdout.contains("code-review"), "unexpected stdout: {stdout}");
+    assert!(
+        stdout.contains("code-review"),
+        "unexpected stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains(&skill_dir.to_string_lossy().to_string()),
+        "expected skill path in stdout: {stdout}"
+    );
 }
