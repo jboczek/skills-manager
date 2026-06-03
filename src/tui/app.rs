@@ -131,6 +131,67 @@ pub enum Mode {
     Quit,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TableNavigation {
+    pub selected: Option<usize>,
+    pub viewport_offset: usize,
+}
+
+impl TableNavigation {
+    pub fn reset(&mut self, row_count: usize) {
+        self.viewport_offset = 0;
+        self.selected = (row_count > 0).then_some(0);
+    }
+
+    pub fn sync(&mut self, row_count: usize, viewport_height: usize) {
+        if row_count == 0 {
+            self.selected = None;
+            self.viewport_offset = 0;
+            return;
+        }
+
+        let viewport_height = viewport_height.max(1);
+        let selected = self.selected.unwrap_or(0).min(row_count - 1);
+        let max_offset = row_count.saturating_sub(viewport_height);
+        let mut offset = self.viewport_offset.min(max_offset);
+
+        if selected < offset {
+            offset = selected;
+        } else if selected >= offset + viewport_height {
+            offset = selected + 1 - viewport_height;
+        }
+
+        self.selected = Some(selected);
+        self.viewport_offset = offset.min(max_offset);
+    }
+
+    pub fn move_up(&mut self, row_count: usize, viewport_height: usize) {
+        if row_count == 0 {
+            self.sync(row_count, viewport_height);
+            return;
+        }
+
+        let selected = self.selected.unwrap_or(0).saturating_sub(1);
+        self.selected = Some(selected);
+        self.sync(row_count, viewport_height);
+    }
+
+    pub fn move_down(&mut self, row_count: usize, viewport_height: usize) {
+        if row_count == 0 {
+            self.sync(row_count, viewport_height);
+            return;
+        }
+
+        let selected = self
+            .selected
+            .unwrap_or(0)
+            .saturating_add(1)
+            .min(row_count - 1);
+        self.selected = Some(selected);
+        self.sync(row_count, viewport_height);
+    }
+}
+
 pub struct App {
     pub mode: Mode,
     pub input: String,
@@ -139,6 +200,8 @@ pub struct App {
     pub status_messages: Vec<String>,
     pub list_scroll: usize,
     pub list_selected: Option<usize>,
+    pub list_table: TableNavigation,
+    pub scan_table: TableNavigation,
     pub config: Config,
     pub current_dir: PathBuf,
     pub git_branch: Option<String>,
@@ -161,6 +224,8 @@ impl App {
             status_messages: Vec::new(),
             list_scroll: 0,
             list_selected: None,
+            list_table: TableNavigation::default(),
+            scan_table: TableNavigation::default(),
             config,
             current_dir,
             git_branch: None,
@@ -982,6 +1047,80 @@ mod tests {
             app.selected_command_suggestion().map(|item| item.label),
             Some("/list")
         );
+    }
+
+    #[test]
+    fn table_navigation_selects_first_row_when_rows_exist() {
+        let mut nav = TableNavigation::default();
+
+        nav.reset(3);
+
+        assert_eq!(nav.selected, Some(0));
+        assert_eq!(nav.viewport_offset, 0);
+    }
+
+    #[test]
+    fn table_navigation_keeps_viewport_still_before_bottom() {
+        let mut nav = TableNavigation::default();
+        nav.reset(5);
+
+        nav.move_down(5, 3);
+        nav.move_down(5, 3);
+
+        assert_eq!(nav.selected, Some(2));
+        assert_eq!(nav.viewport_offset, 0);
+    }
+
+    #[test]
+    fn table_navigation_scrolls_after_selection_moves_past_bottom() {
+        let mut nav = TableNavigation::default();
+        nav.reset(5);
+
+        nav.move_down(5, 3);
+        nav.move_down(5, 3);
+        nav.move_down(5, 3);
+
+        assert_eq!(nav.selected, Some(3));
+        assert_eq!(nav.viewport_offset, 1);
+    }
+
+    #[test]
+    fn table_navigation_scrolls_after_selection_moves_past_top() {
+        let mut nav = TableNavigation {
+            selected: Some(2),
+            viewport_offset: 2,
+        };
+
+        nav.move_up(5, 3);
+
+        assert_eq!(nav.selected, Some(1));
+        assert_eq!(nav.viewport_offset, 1);
+    }
+
+    #[test]
+    fn table_navigation_clears_selection_for_empty_rows() {
+        let mut nav = TableNavigation {
+            selected: Some(2),
+            viewport_offset: 1,
+        };
+
+        nav.sync(0, 3);
+
+        assert_eq!(nav.selected, None);
+        assert_eq!(nav.viewport_offset, 0);
+    }
+
+    #[test]
+    fn table_navigation_clamps_viewport_after_resize() {
+        let mut nav = TableNavigation {
+            selected: Some(4),
+            viewport_offset: 3,
+        };
+
+        nav.sync(5, 4);
+
+        assert_eq!(nav.selected, Some(4));
+        assert_eq!(nav.viewport_offset, 1);
     }
 
     #[test]
