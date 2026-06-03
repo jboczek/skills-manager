@@ -53,7 +53,10 @@ pub fn run() -> Result<()> {
         })
         .collect();
 
-    let mut rows = inventory::build_inventory(&InventoryConfig { agents, scan_results });
+    let mut rows = inventory::build_inventory(&InventoryConfig {
+        agents,
+        scan_results,
+    });
     inventory::assign_disambiguation_indices(&mut rows);
     println!("{}", output::render_inventory(&rows));
     Ok(())
