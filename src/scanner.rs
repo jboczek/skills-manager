@@ -72,7 +72,9 @@ pub fn assign_disambiguation_indices(results: &mut Vec<ScanResult>) {
     let mut next_indices = HashMap::new();
     for result in results.iter_mut() {
         if counts.get(&result.skill_id).copied().unwrap_or_default() > 1 {
-            let next_index = next_indices.entry(result.skill_id.clone()).or_insert(1usize);
+            let next_index = next_indices
+                .entry(result.skill_id.clone())
+                .or_insert(1usize);
             result.disambiguation_index = Some(*next_index);
             *next_index += 1;
         } else {
@@ -107,7 +109,8 @@ fn scan_root(
             }
         };
 
-        if !entry.file_type().is_some_and(|kind| kind.is_file()) || entry.file_name() != "SKILL.md" {
+        if !entry.file_type().is_some_and(|kind| kind.is_file()) || entry.file_name() != "SKILL.md"
+        {
             continue;
         }
 
@@ -121,19 +124,25 @@ fn scan_root(
 
         let repo_path = git::find_repo_root(&skill_path);
         let repo_name = repo_path.as_deref().and_then(path_name);
-        let skill_relative_path = repo_path
-            .as_deref()
-            .and_then(|repo_root| skill_path.strip_prefix(repo_root).ok().map(Path::to_path_buf));
-        let remote_url = repo_path.as_deref().and_then(|repo_root| match git::origin_url(repo_root) {
-            Ok(url) => url,
-            Err(error) => {
-                warnings.push(format!(
-                    "failed to read origin for {}: {error}",
-                    repo_root.display()
-                ));
-                None
-            }
+        let skill_relative_path = repo_path.as_deref().and_then(|repo_root| {
+            skill_path
+                .strip_prefix(repo_root)
+                .ok()
+                .map(Path::to_path_buf)
         });
+        let remote_url =
+            repo_path
+                .as_deref()
+                .and_then(|repo_root| match git::origin_url(repo_root) {
+                    Ok(url) => url,
+                    Err(error) => {
+                        warnings.push(format!(
+                            "failed to read origin for {}: {error}",
+                            repo_root.display()
+                        ));
+                        None
+                    }
+                });
         let skill_name = path_name(&skill_path).unwrap_or_else(|| skill_path.display().to_string());
         let skill_id = match repo_name.as_deref() {
             Some(repo_name) => format!("{repo_name}/{skill_name}"),
@@ -160,7 +169,8 @@ fn is_symlink(path: &Path) -> bool {
 }
 
 fn path_name(path: &Path) -> Option<String> {
-    path.file_name().map(|name| name.to_string_lossy().into_owned())
+    path.file_name()
+        .map(|name| name.to_string_lossy().into_owned())
 }
 
 #[cfg(test)]

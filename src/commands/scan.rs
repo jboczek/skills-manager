@@ -35,6 +35,11 @@ pub fn run() -> Result<()> {
         .max()
         .unwrap_or(0);
     let source_width = "[central]".len();
+    let path_width = results
+        .iter()
+        .map(|result| result.skill_path.display().to_string().len())
+        .max()
+        .unwrap_or(0);
     let repo_width = results
         .iter()
         .map(|result| result.repo_name.as_deref().unwrap_or("unknown").len())
@@ -47,11 +52,12 @@ pub fn run() -> Result<()> {
             None => result.skill_id,
         };
         let source_display = format!("[{}]", source_label(&result.source_kind));
+        let path_display = result.skill_path.display().to_string();
         let repo = result.repo_name.as_deref().unwrap_or("unknown");
         let origin = result.remote_url.as_deref().unwrap_or("unknown");
 
         println!(
-            "{skill_display:<skill_width$}  {source_display:<source_width$}  {repo:<repo_width$}  {origin}"
+            "{skill_display:<skill_width$}  {source_display:<source_width$}  {path_display:<path_width$}  {repo:<repo_width$}  {origin}"
         );
     }
 
