@@ -24,6 +24,35 @@ pub enum TuiCommand {
     Unknown(String),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CommandSuggestion {
+    pub label: &'static str,
+    pub description: &'static str,
+}
+
+const COMMAND_SUGGESTIONS: [CommandSuggestion; 5] = [
+    CommandSuggestion {
+        label: "/list",
+        description: "Show exposed skills and availability",
+    },
+    CommandSuggestion {
+        label: "/scan",
+        description: "Discover skills from configured sources",
+    },
+    CommandSuggestion {
+        label: "/config",
+        description: "Show current configuration",
+    },
+    CommandSuggestion {
+        label: "/help",
+        description: "Show commands and keybindings",
+    },
+    CommandSuggestion {
+        label: "/quit",
+        description: "Exit Skills Manager",
+    },
+];
+
 /// Parse a command string typed in the prompt.
 /// Accepts "list", "/list", "scan", "/scan", "import <skill>", etc.
 pub fn parse_command(input: &str) -> TuiCommand {
@@ -118,6 +147,7 @@ pub struct App {
     pub remove_step: RemoveStep,
     pub error_message: Option<String>,
     pub info_message: Option<String>,
+    command_menu_selected: Option<usize>,
 }
 
 impl App {
@@ -139,6 +169,7 @@ impl App {
             remove_step: RemoveStep::EnterSkill,
             error_message: None,
             info_message: None,
+            command_menu_selected: None,
         }
     }
 
@@ -164,6 +195,7 @@ impl App {
     pub fn handle_command(&mut self, input: &str) -> anyhow::Result<bool> {
         self.error_message = None;
         self.info_message = None;
+        self.close_command_menu();
 
         match self.mode {
             Mode::Import => {
@@ -226,6 +258,68 @@ impl App {
         }
 
         Ok(false)
+    }
+
+    pub fn command_menu_open(&self) -> bool {
+        self.command_menu_selected.is_some()
+    }
+
+    pub fn open_command_menu(&mut self) {
+        self.command_menu_selected = Some(0);
+        self.normalize_command_suggestion_selection();
+    }
+
+    pub fn close_command_menu(&mut self) {
+        self.command_menu_selected = None;
+    }
+
+    pub fn filtered_command_suggestions(&self) -> Vec<CommandSuggestion> {
+        let query = self
+            .input
+            .trim_start()
+            .strip_prefix('/')
+            .unwrap_or("")
+            .to_ascii_lowercase();
+
+        COMMAND_SUGGESTIONS
+            .iter()
+            .copied()
+            .filter(|suggestion| {
+                query.is_empty()
+                    || suggestion
+                        .label
+                        .trim_start_matches('/')
+                        .starts_with(query.as_str())
+            })
+            .collect()
+    }
+
+    pub fn selected_command_suggestion(&self) -> Option<CommandSuggestion> {
+        let selected = self.command_menu_selected?;
+        self.filtered_command_suggestions().get(selected).copied()
+    }
+
+    pub fn move_command_suggestion_up(&mut self) {
+        let Some(selected) = self.command_menu_selected else {
+            return;
+        };
+        self.command_menu_selected = Some(selected.saturating_sub(1));
+    }
+
+    pub fn move_command_suggestion_down(&mut self) {
+        let Some(selected) = self.command_menu_selected else {
+            return;
+        };
+        let max = self.filtered_command_suggestions().len().saturating_sub(1);
+        self.command_menu_selected = Some(selected.saturating_add(1).min(max));
+    }
+
+    pub fn normalize_command_suggestion_selection(&mut self) {
+        let Some(selected) = self.command_menu_selected else {
+            return;
+        };
+        let max = self.filtered_command_suggestions().len().saturating_sub(1);
+        self.command_menu_selected = Some(selected.min(max));
     }
 
     /// Handle import flow step progression.
@@ -795,6 +889,63 @@ mod tests {
         app.handle_command("help").expect("command succeeds");
 
         assert_eq!(app.mode, Mode::Help);
+    }
+
+    #[test]
+    fn command_suggestions_include_primary_prompt_commands() {
+        let app = test_app();
+        let labels = app
+            .filtered_command_suggestions()
+            .iter()
+            .map(|suggestion| suggestion.label)
+            .collect::<Vec<_>>();
+
+        assert_eq!(labels, vec!["/list", "/scan", "/config", "/help", "/quit"]);
+        assert!(
+            app.filtered_command_suggestions()
+                .iter()
+                .all(|suggestion| !suggestion.description.is_empty())
+        );
+    }
+
+    #[test]
+    fn command_suggestions_filter_by_command_text() {
+        let mut app = test_app();
+        app.input = "/sc".to_string();
+        app.open_command_menu();
+
+        let labels = app
+            .filtered_command_suggestions()
+            .iter()
+            .map(|suggestion| suggestion.label)
+            .collect::<Vec<_>>();
+
+        assert_eq!(labels, vec!["/scan"]);
+    }
+
+    #[test]
+    fn command_suggestions_can_be_selected() {
+        let mut app = test_app();
+        app.open_command_menu();
+
+        assert_eq!(
+            app.selected_command_suggestion().map(|item| item.label),
+            Some("/list")
+        );
+
+        app.move_command_suggestion_down();
+
+        assert_eq!(
+            app.selected_command_suggestion().map(|item| item.label),
+            Some("/scan")
+        );
+
+        app.move_command_suggestion_up();
+
+        assert_eq!(
+            app.selected_command_suggestion().map(|item| item.label),
+            Some("/list")
+        );
     }
 
     #[test]

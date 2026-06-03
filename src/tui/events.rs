@@ -10,6 +10,11 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> anyhow::Result<bool> {
 
     match key.code {
         KeyCode::Esc => {
+            if app.command_menu_open() {
+                app.input.clear();
+                app.close_command_menu();
+                return Ok(false);
+            }
             app.input.clear();
             app.mode = Mode::Home;
             app.import_step = ImportStep::EnterSkill;
@@ -18,6 +23,17 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> anyhow::Result<bool> {
             app.info_message = None;
         }
         KeyCode::Enter => {
+            if app.command_menu_open() {
+                let Some(command) = app.selected_command_suggestion() else {
+                    app.error_message = Some("No matching command.".to_string());
+                    app.input.clear();
+                    app.close_command_menu();
+                    return Ok(false);
+                };
+                let should_quit = app.handle_command(command.label)?;
+                app.input.clear();
+                return Ok(should_quit);
+            }
             let input = app.input.clone();
             let should_quit = app.handle_command(&input)?;
             app.input.clear();
@@ -25,6 +41,19 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> anyhow::Result<bool> {
         }
         KeyCode::Backspace => {
             app.input.pop();
+            if app.command_menu_open() {
+                if app.input.starts_with('/') {
+                    app.normalize_command_suggestion_selection();
+                } else {
+                    app.close_command_menu();
+                }
+            }
+        }
+        KeyCode::Up if app.command_menu_open() => {
+            app.move_command_suggestion_up();
+        }
+        KeyCode::Down if app.command_menu_open() => {
+            app.move_command_suggestion_down();
         }
         KeyCode::Up if app.mode == Mode::List => {
             if app.inventory.is_empty() {
@@ -51,12 +80,23 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> anyhow::Result<bool> {
         KeyCode::Char('q') if app.input.is_empty() => {
             return Ok(true);
         }
+        KeyCode::Char('/') if app.input.is_empty() => {
+            app.input.push('/');
+            app.open_command_menu();
+        }
         KeyCode::Char(c)
             if !key
                 .modifiers
                 .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
         {
             app.input.push(c);
+            if app.command_menu_open() {
+                if app.input.starts_with('/') {
+                    app.normalize_command_suggestion_selection();
+                } else {
+                    app.close_command_menu();
+                }
+            }
         }
         _ => {}
     }
@@ -112,5 +152,65 @@ mod tests {
 
         assert!(!should_quit);
         assert_eq!(app.input, "scanq");
+    }
+
+    #[test]
+    fn slash_opens_command_suggestions_when_prompt_is_empty() {
+        let mut app = test_app();
+
+        handle_key(&mut app, key(KeyCode::Char('/'))).expect("key handled");
+
+        assert_eq!(app.input, "/");
+        assert!(app.command_menu_open());
+    }
+
+    #[test]
+    fn up_and_down_move_command_suggestion_selection() {
+        let mut app = test_app();
+        app.input = "/".to_string();
+        app.open_command_menu();
+
+        handle_key(&mut app, key(KeyCode::Down)).expect("key handled");
+
+        assert_eq!(
+            app.selected_command_suggestion().map(|item| item.label),
+            Some("/scan")
+        );
+
+        handle_key(&mut app, key(KeyCode::Up)).expect("key handled");
+
+        assert_eq!(
+            app.selected_command_suggestion().map(|item| item.label),
+            Some("/list")
+        );
+    }
+
+    #[test]
+    fn enter_runs_selected_command_suggestion() {
+        let mut app = test_app();
+        app.input = "/".to_string();
+        app.open_command_menu();
+        app.move_command_suggestion_down();
+
+        let should_quit = handle_key(&mut app, key(KeyCode::Enter)).expect("key handled");
+
+        assert!(!should_quit);
+        assert_eq!(app.mode, Mode::Scan);
+        assert_eq!(app.input, "");
+        assert!(!app.command_menu_open());
+    }
+
+    #[test]
+    fn escape_closes_command_suggestions_without_changing_mode() {
+        let mut app = test_app();
+        app.mode = Mode::List;
+        app.input = "/".to_string();
+        app.open_command_menu();
+
+        handle_key(&mut app, key(KeyCode::Esc)).expect("key handled");
+
+        assert_eq!(app.mode, Mode::List);
+        assert_eq!(app.input, "");
+        assert!(!app.command_menu_open());
     }
 }
