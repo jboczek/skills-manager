@@ -277,9 +277,7 @@ impl App {
         match parse_command(input) {
             TuiCommand::List => {
                 self.refresh_inventory()?;
-                self.mode = Mode::List;
-                self.list_scroll = 0;
-                self.list_selected = None;
+                self.enter_list_mode();
             }
             TuiCommand::Scan => {
                 self.reload_scan_results()?;
@@ -389,6 +387,17 @@ impl App {
         };
         let max = self.filtered_command_suggestions().len().saturating_sub(1);
         self.command_menu_selected = Some(selected.min(max));
+    }
+
+    pub fn enter_list_mode(&mut self) {
+        self.mode = Mode::List;
+        self.list_table.reset(self.inventory.len());
+        self.sync_legacy_list_navigation();
+    }
+
+    pub fn sync_legacy_list_navigation(&mut self) {
+        self.list_scroll = self.list_table.viewport_offset;
+        self.list_selected = self.list_table.selected;
     }
 
     /// Handle import flow step progression.
@@ -931,6 +940,18 @@ mod tests {
         app.handle_command("list").expect("command succeeds");
 
         assert_eq!(app.mode, Mode::List);
+    }
+
+    #[test]
+    fn enter_list_mode_selects_first_row_when_inventory_exists() {
+        let mut app = test_app();
+        app.inventory = vec![inventory_row("repo-a/one"), inventory_row("repo-a/two")];
+
+        app.enter_list_mode();
+
+        assert_eq!(app.mode, Mode::List);
+        assert_eq!(app.list_table.selected, Some(0));
+        assert_eq!(app.list_table.viewport_offset, 0);
     }
 
     #[test]
