@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::commands::helpers;
-use crate::config::{expand_tilde, Config};
+use crate::config::{Config, expand_tilde};
 use crate::domain::{AgentId, ConnectionKind, InventoryRow};
 use crate::git;
 use crate::inventory::AgentTarget;
@@ -51,28 +51,42 @@ pub fn parse_command(input: &str) -> TuiCommand {
 pub enum ImportStep {
     #[default]
     EnterSkill,
-    Disambiguate { matches: Vec<ScanResult> },
-    SelectAgents { selected: Box<ScanResult> },
+    Disambiguate {
+        matches: Vec<ScanResult>,
+    },
+    SelectAgents {
+        selected: Box<ScanResult>,
+    },
     ConfirmPlan {
         plan: ChangePlan,
         selected: Box<ScanResult>,
         target_agents: Vec<AgentTarget>,
     },
-    ConfirmPhysical { plan: ChangePlan },
-    Done { message: String },
+    ConfirmPhysical {
+        plan: ChangePlan,
+    },
+    Done {
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone, Default)]
 pub enum RemoveStep {
     #[default]
     EnterSkill,
-    Disambiguate { matches: Vec<InventoryRow> },
+    Disambiguate {
+        matches: Vec<InventoryRow>,
+    },
     ConfirmPlan {
         plan: ChangePlan,
         selected: Box<InventoryRow>,
     },
-    ConfirmPhysical { plan: ChangePlan },
-    Done { message: String },
+    ConfirmPhysical {
+        plan: ChangePlan,
+    },
+    Done {
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -245,7 +259,8 @@ impl App {
                     };
                 }
                 None => {
-                    self.error_message = Some(format!("Enter a number between 1 and {}", matches.len()));
+                    self.error_message =
+                        Some(format!("Enter a number between 1 and {}", matches.len()));
                     self.import_step = ImportStep::Disambiguate { matches };
                 }
             },
@@ -362,7 +377,8 @@ impl App {
                     };
                 }
                 None => {
-                    self.error_message = Some(format!("Enter a number between 1 and {}", matches.len()));
+                    self.error_message =
+                        Some(format!("Enter a number between 1 and {}", matches.len()));
                     self.remove_step = RemoveStep::Disambiguate { matches };
                 }
             },
@@ -412,9 +428,7 @@ impl App {
                 "Enter target agents (comma-separated, or Enter for all):"
             }
             ImportStep::ConfirmPlan { .. } => "Apply this plan? [y/N]:",
-            ImportStep::ConfirmPhysical { .. } => {
-                "Type 'yes' to confirm permanent deletion:"
-            }
+            ImportStep::ConfirmPhysical { .. } => "Type 'yes' to confirm permanent deletion:",
             ImportStep::Done { .. } => "Press Enter to return to home.",
         }
     }
@@ -425,15 +439,14 @@ impl App {
             RemoveStep::EnterSkill => "Enter skill identifier (e.g. repo-a/code-review):",
             RemoveStep::Disambiguate { .. } => "Enter number to select:",
             RemoveStep::ConfirmPlan { .. } => "Apply this plan? [y/N]:",
-            RemoveStep::ConfirmPhysical { .. } => {
-                "Type 'yes' to confirm permanent deletion:"
-            }
+            RemoveStep::ConfirmPhysical { .. } => "Type 'yes' to confirm permanent deletion:",
             RemoveStep::Done { .. } => "Press Enter to return to home.",
         }
     }
 
     fn reload_scan_results(&mut self) -> anyhow::Result<()> {
-        self.scan_results = scanner::scan(&helpers::scan_config_from(&self.config, &self.current_dir))?;
+        self.scan_results =
+            scanner::scan(&helpers::scan_config_from(&self.config, &self.current_dir))?;
         scanner::assign_disambiguation_indices(&mut self.scan_results);
         self.rebuild_status_messages();
         Ok(())
@@ -442,7 +455,12 @@ impl App {
     fn resolve_target_agents(&mut self, input: &str) -> Option<Vec<AgentTarget>> {
         let all_agents = helpers::agent_targets_from(&self.config, &self.current_dir);
         if input.trim().is_empty() {
-            return Some(all_agents.into_iter().filter(|agent| agent.enabled).collect());
+            return Some(
+                all_agents
+                    .into_iter()
+                    .filter(|agent| agent.enabled)
+                    .collect(),
+            );
         }
 
         let requested = helpers::parse_agents(input);
@@ -455,7 +473,11 @@ impl App {
 
         let target_agents = all_agents
             .into_iter()
-            .filter(|agent| requested.iter().any(|requested_id| requested_id == &agent.agent_id))
+            .filter(|agent| {
+                requested
+                    .iter()
+                    .any(|requested_id| requested_id == &agent.agent_id)
+            })
             .collect::<Vec<_>>();
         if target_agents.is_empty() {
             self.error_message = Some("No matching target agents found.".to_string());
@@ -465,7 +487,11 @@ impl App {
         Some(target_agents)
     }
 
-    fn build_import_plan(&self, selected: &ScanResult, target_agents: &[AgentTarget]) -> ChangePlan {
+    fn build_import_plan(
+        &self,
+        selected: &ScanResult,
+        target_agents: &[AgentTarget],
+    ) -> ChangePlan {
         let existing_paths = self
             .inventory
             .iter()
@@ -569,7 +595,11 @@ impl App {
             format!(
                 "• Environment loaded: {} skills, {} agents",
                 self.inventory.len().max(self.scan_results.len()),
-                self.config.agents.values().filter(|agent| agent.enabled).count()
+                self.config
+                    .agents
+                    .values()
+                    .filter(|agent| agent.enabled)
+                    .count()
             ),
             "• Scan: OK".to_string(),
         ];

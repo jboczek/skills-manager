@@ -45,17 +45,72 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> anyhow::Result<bool> {
             app.list_selected = Some(next);
             app.list_scroll = next;
         }
-        KeyCode::Char('?') if app.mode == Mode::Home && app.input.is_empty() => {
+        KeyCode::Char('?') if app.input.is_empty() => {
             app.mode = Mode::Help;
         }
-        KeyCode::Char('q') if app.mode == Mode::Home && app.input.is_empty() => {
+        KeyCode::Char('q') if app.input.is_empty() => {
             return Ok(true);
         }
-        KeyCode::Char(c) if !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) => {
+        KeyCode::Char(c)
+            if !key
+                .modifiers
+                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+        {
             app.input.push(c);
         }
         _ => {}
     }
 
     Ok(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    use super::*;
+    use crate::config::Config;
+
+    fn test_app() -> App {
+        App::new(
+            Config::default_config(),
+            std::path::PathBuf::from("/tmp/skills-manager"),
+        )
+    }
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    #[test]
+    fn question_mark_opens_help_from_any_mode_when_prompt_is_empty() {
+        let mut app = test_app();
+        app.mode = Mode::List;
+
+        handle_key(&mut app, key(KeyCode::Char('?'))).expect("key handled");
+
+        assert_eq!(app.mode, Mode::Help);
+    }
+
+    #[test]
+    fn q_quits_from_any_mode_when_prompt_is_empty() {
+        let mut app = test_app();
+        app.mode = Mode::List;
+
+        let should_quit = handle_key(&mut app, key(KeyCode::Char('q'))).expect("key handled");
+
+        assert!(should_quit);
+    }
+
+    #[test]
+    fn q_is_text_when_prompt_has_input() {
+        let mut app = test_app();
+        app.mode = Mode::List;
+        app.input = "scan".to_string();
+
+        let should_quit = handle_key(&mut app, key(KeyCode::Char('q'))).expect("key handled");
+
+        assert!(!should_quit);
+        assert_eq!(app.input, "scanq");
+    }
 }

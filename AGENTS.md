@@ -15,6 +15,7 @@
 6. Touch only what you must. Clean up only your own mess.
 7. After implementation, ask yourself: "Am I proud of this code? Would I want to show it to a senior engineer?" If not, rewrite it until you are.
 8. `/docs/AGENTS.md` is a set of rules for maintaining the documentation in this repository. Follow these rules when updating docs or suggesting doc changes. 
+9. When completing PRD work, update the README, matching `docs/features/` document, PRD status/progress notes, roadmap status, and changelog before considering the branch complete.
 
 Before implementation, make a plan and add it to temp file named after the PRD `/docs/temp/prd-xxx-plan.md`. The plan should be a simple step-by-step outline of how. Add the plan file but do not commit it.
 

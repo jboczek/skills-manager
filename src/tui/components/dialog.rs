@@ -5,12 +5,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use crate::tui::theme::Theme;
 
 /// Render a confirmation dialog box in the center of the screen.
-pub fn render_confirm_dialog(
-    frame: &mut Frame,
-    title: &str,
-    body: &str,
-    is_destructive: bool,
-) {
+pub fn render_confirm_dialog(frame: &mut Frame, title: &str, body: &str, is_destructive: bool) {
     let vertical = Layout::default()
         .direction(Direction::Vertical)
         .constraints([

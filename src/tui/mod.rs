@@ -7,10 +7,10 @@ pub mod theme;
 pub fn run() -> anyhow::Result<()> {
     use crossterm::{
         execute,
-        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+        terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
     };
-    use ratatui::backend::CrosstermBackend;
     use ratatui::Terminal;
+    use ratatui::backend::CrosstermBackend;
     use std::io;
     use std::io::IsTerminal;
 
@@ -75,8 +75,7 @@ pub fn run() -> anyhow::Result<()> {
                 .flatten()
         })
         .unwrap_or_else(crate::config::Config::default_config);
-    let current_dir =
-        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let current_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let mut app = app::App::new(config, current_dir);
     if let Err(error) = app.initialize() {
         app.error_message = Some(error.to_string());

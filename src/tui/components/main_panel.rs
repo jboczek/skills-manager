@@ -17,12 +17,20 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             &format!(
                 "Welcome to Skills Manager.\n\nLoaded skills: {}\nEnabled agents: {}\n\nTry /list, /scan, /import <skill>, /remove <skill>, /config or /help.",
                 app.inventory.len().max(app.scan_results.len()),
-                app.config.agents.values().filter(|agent| agent.enabled).count()
+                app.config
+                    .agents
+                    .values()
+                    .filter(|agent| agent.enabled)
+                    .count()
             ),
         ),
-        Mode::List => {
-            table::render_inventory_table(frame, area, &app.inventory, app.list_scroll, app.list_selected)
-        }
+        Mode::List => table::render_inventory_table(
+            frame,
+            area,
+            &app.inventory,
+            app.list_scroll,
+            app.list_selected,
+        ),
         Mode::Scan => table::render_scan_table(frame, area, &app.scan_results, app.list_scroll),
         Mode::Config => render_config(frame, area, app),
         Mode::Help => render_help(frame, area),
@@ -64,7 +72,14 @@ fn render_import(frame: &mut Frame, area: Rect, app: &App) {
             let body = matches
                 .iter()
                 .enumerate()
-                .map(|(index, item)| format!("{}. {}  ({})", index + 1, item.skill_id, item.skill_path.display()))
+                .map(|(index, item)| {
+                    format!(
+                        "{}. {}  ({})",
+                        index + 1,
+                        item.skill_id,
+                        item.skill_path.display()
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join("\n");
             render_text_panel(frame, area, " Import ", &body);
@@ -101,7 +116,10 @@ fn render_import(frame: &mut Frame, area: Rect, app: &App) {
             );
         }
         ImportStep::Done { message } => {
-            let body = format!("{message}\n\nCurrent inventory\n\n{}", render_inventory(&app.inventory));
+            let body = format!(
+                "{message}\n\nCurrent inventory\n\n{}",
+                render_inventory(&app.inventory)
+            );
             render_text_panel(frame, area, " Import ", &body);
         }
     }
@@ -144,7 +162,10 @@ fn render_remove(frame: &mut Frame, area: Rect, app: &App) {
             );
         }
         RemoveStep::Done { message } => {
-            let body = format!("{message}\n\nCurrent inventory\n\n{}", render_inventory(&app.inventory));
+            let body = format!(
+                "{message}\n\nCurrent inventory\n\n{}",
+                render_inventory(&app.inventory)
+            );
             render_text_panel(frame, area, " Remove ", &body);
         }
     }

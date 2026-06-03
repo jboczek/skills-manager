@@ -17,7 +17,10 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(
         Paragraph::new(vec![
             Line::styled(app.prompt_label.clone(), Theme::muted()),
-            Line::styled(format!("{prompt_prefix}{}{cursor}", app.input), Theme::default_style()),
+            Line::styled(
+                format!("{prompt_prefix}{}{cursor}", app.input),
+                Theme::default_style(),
+            ),
         ]),
         area,
     );

@@ -42,16 +42,19 @@ pub fn render_inventory_table(
                 .collect::<Vec<_>>()
                 .join(",");
             let agents = |agent_id: &str| {
-                if row.exposures.iter().any(|exposure| exposure.agent_id.0 == agent_id) {
+                if row
+                    .exposures
+                    .iter()
+                    .any(|exposure| exposure.agent_id.0 == agent_id)
+                {
                     "✓"
                 } else {
                     "-"
                 }
             };
-            let source = row.source.repo_name.clone().unwrap_or_else(|| "-".to_string());
             let table_row = Row::new(vec![
                 Cell::from(skill_label(row)),
-                Cell::from(source),
+                Cell::from(source_label(row)),
                 Cell::from(agents("claude")),
                 Cell::from(agents("codex")),
                 Cell::from(agents("copilot")),
@@ -83,8 +86,16 @@ pub fn render_inventory_table(
         ],
     )
     .header(
-        Row::new(["SKILL", "SOURCE", "CLAUDE", "CODEX", "COPILOT", "SCOPE", "CONNECTION"])
-            .style(Theme::header()),
+        Row::new([
+            "SKILL",
+            "SOURCE",
+            "CLAUDE",
+            "CODEX",
+            "COPILOT",
+            "SCOPE",
+            "CONNECTION",
+        ])
+        .style(Theme::header()),
     )
     .block(block)
     .column_spacing(1)
@@ -122,7 +133,12 @@ pub fn render_scan_table(frame: &mut Frame, area: Rect, results: &[ScanResult], 
                     result
                         .remote_url
                         .clone()
-                        .or_else(|| result.repo_path.as_ref().map(|path| path.display().to_string()))
+                        .or_else(|| {
+                            result
+                                .repo_path
+                                .as_ref()
+                                .map(|path| path.display().to_string())
+                        })
                         .unwrap_or_else(|| "-".to_string()),
                 ),
             ])
@@ -164,18 +180,53 @@ fn render_empty(frame: &mut Frame, area: Rect, title: &str, message: &str) {
 }
 
 fn skill_label(row: &InventoryRow) -> String {
-    if row.skill_id.namespace.is_empty() {
+    let base = if row.skill_id.namespace.is_empty() {
         row.skill_id.name.clone()
     } else {
         format!("{}/{}", row.skill_id.namespace, row.skill_id.name)
+    };
+
+    match row.disambiguation_index {
+        Some(index) => format!("({index}) {base}"),
+        None => base,
+    }
+}
+
+fn source_label(row: &InventoryRow) -> String {
+    let source = row
+        .source
+        .repo_name
+        .clone()
+        .unwrap_or_else(|| "unknown".to_string());
+
+    if row.disambiguation_index.is_none() {
+        return source;
+    }
+
+    match source_context(row) {
+        Some(context) => format!("{source} ({context})"),
+        None => source,
     }
 }
 
 fn scope_label(scope: Scope) -> &'static str {
     match scope {
         Scope::Global => "global",
-        Scope::ProjectLocal => "project",
+        Scope::ProjectLocal => "local",
     }
+}
+
+fn source_context(row: &InventoryRow) -> Option<String> {
+    row.source
+        .repo_path
+        .as_ref()
+        .map(|path| path.display().to_string())
+        .or_else(|| row.source.remote_url.clone())
+        .or_else(|| {
+            row.exposures
+                .first()
+                .map(|exposure| exposure.path.display().to_string())
+        })
 }
 
 fn connection_label(connection: ConnectionKind) -> &'static str {
@@ -191,5 +242,44 @@ fn source_kind_label(kind: SourceKind) -> &'static str {
     match kind {
         SourceKind::CentralDir => "central",
         SourceKind::ScanParentDir => "parent",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use crate::domain::{AgentId, SkillExposure, SkillId, SkillSource};
+
+    use super::*;
+
+    fn duplicate_row(index: usize, repo_path: &str) -> InventoryRow {
+        InventoryRow {
+            skill_id: SkillId {
+                namespace: "repo-a".to_string(),
+                name: "docs".to_string(),
+            },
+            source: SkillSource {
+                repo_name: Some("repo-a".to_string()),
+                repo_path: Some(PathBuf::from(repo_path)),
+                remote_url: None,
+            },
+            scope: Scope::ProjectLocal,
+            exposures: vec![SkillExposure {
+                agent_id: AgentId("codex".to_string()),
+                path: PathBuf::from(format!("{repo_path}/docs")),
+                connection: ConnectionKind::Symlink,
+            }],
+            disambiguation_index: Some(index),
+        }
+    }
+
+    #[test]
+    fn duplicate_rows_include_numbered_label_and_source_context() {
+        let row = duplicate_row(1, "/tmp/repo-a-one");
+
+        assert_eq!(skill_label(&row), "(1) repo-a/docs");
+        assert_eq!(source_label(&row), "repo-a (/tmp/repo-a-one)");
+        assert_eq!(scope_label(row.scope), "local");
     }
 }

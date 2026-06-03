@@ -2,6 +2,36 @@
 
 Skills Manager is a terminal-first tool for discovering and managing local agent skills. V1 is focused on explicit local configuration, read-only source scanning, and safe exposure workflows.
 
+## Assistant-style TUI
+
+Run without subcommands to open the full-screen assistant-style terminal UI:
+
+```bash
+skills-manager
+```
+
+The TUI shows a header, status feed, main content area, sticky prompt, and footer hints. It supports home, list, scan, import, remove, config, and help modes. Type plain commands such as `list` and `help`, or slash commands such as `/list` and `/help`.
+
+Core prompt commands:
+
+- `/list`: refresh and show current inventory.
+- `/scan`: scan configured source roots.
+- `/import <skill>`: start a guided import flow.
+- `/remove <skill>`: start a guided removal flow.
+- `/config`: show the config path and current TOML.
+- `/help`: show commands and key hints.
+- `/quit`: exit.
+
+Key behavior:
+
+- `Enter` submits the prompt or confirms the current guided step.
+- `Esc` cancels the current action and returns home.
+- `?` opens help when the prompt is empty.
+- `q` quits when the prompt is empty.
+- `Up` / `Down` move through list rows.
+
+Import and remove flows run entirely inside the TUI. They use the same staged plan behavior as the CLI, show the plan before applying, rescan after apply, and require exact `yes` confirmation before deleting physical copies.
+
 ## Configuration
 
 Create the default config:
