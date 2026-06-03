@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::domain::{
-    AgentId, ConnectionKind, InventoryRow, SkillExposure, SkillId, SkillSource, Scope,
+    AgentId, ConnectionKind, InventoryRow, Scope, SkillExposure, SkillId, SkillSource,
 };
 use crate::git;
 use crate::scanner::ScanResult;
@@ -64,7 +64,8 @@ pub fn build_inventory(cfg: &InventoryConfig) -> Vec<InventoryRow> {
                     continue;
                 };
                 let connection = detect_connection(&exposure_path);
-                let resolution = resolve_exposure(&exposure_path, &skill_name, connection, &scan_index);
+                let resolution =
+                    resolve_exposure(&exposure_path, &skill_name, connection, &scan_index);
                 let row_index = match row_indices.get(&resolution.row_key).copied() {
                     Some(existing) => existing,
                     None => {
@@ -266,7 +267,9 @@ fn source_for_path(path: &Path) -> SkillSource {
     let repo_path = git::find_repo_root(path);
     SkillSource {
         repo_name: repo_path.as_deref().and_then(path_name),
-        remote_url: repo_path.as_deref().and_then(|repo| git::origin_url(repo).ok().flatten()),
+        remote_url: repo_path
+            .as_deref()
+            .and_then(|repo| git::origin_url(repo).ok().flatten()),
         repo_path,
     }
 }
@@ -334,7 +337,8 @@ fn row_sort_key(row: &InventoryRow) -> (String, String, String) {
 }
 
 fn path_name(path: &Path) -> Option<String> {
-    path.file_name().map(|name| name.to_string_lossy().into_owned())
+    path.file_name()
+        .map(|name| name.to_string_lossy().into_owned())
 }
 
 #[cfg(test)]
@@ -392,7 +396,10 @@ mod tests {
 
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].exposures.len(), 1);
-        assert_eq!(rows[0].exposures[0].connection, crate::domain::ConnectionKind::Symlink);
+        assert_eq!(
+            rows[0].exposures[0].connection,
+            crate::domain::ConnectionKind::Symlink
+        );
     }
 
     #[test]
@@ -414,7 +421,10 @@ mod tests {
         });
 
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].exposures[0].connection, crate::domain::ConnectionKind::PhysicalCopy);
+        assert_eq!(
+            rows[0].exposures[0].connection,
+            crate::domain::ConnectionKind::PhysicalCopy
+        );
     }
 
     #[test]

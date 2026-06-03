@@ -191,7 +191,10 @@ fn skills_manager_scan_finds_skills() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
-    assert!(stdout.contains("code-review"), "unexpected stdout: {stdout}");
+    assert!(
+        stdout.contains("code-review"),
+        "unexpected stdout: {stdout}"
+    );
 }
 
 #[test]
@@ -204,14 +207,21 @@ fn skills_manager_list_no_config_prints_hint() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
-    assert!(stdout.contains("config init"), "unexpected stdout: {stdout}");
+    assert!(
+        stdout.contains("config init"),
+        "unexpected stdout: {stdout}"
+    );
 }
 
 #[test]
 fn skills_manager_list_with_empty_targets_prints_no_skills() {
     let home = TempDir::new().unwrap();
     let mut config = skills_manager::config::Config::default_config();
-    config.skills.central_dir = home.path().join("missing-sources").to_string_lossy().into_owned();
+    config.skills.central_dir = home
+        .path()
+        .join("missing-sources")
+        .to_string_lossy()
+        .into_owned();
     config.skills.scan_parent_dirs = vec![];
     config.skills.max_scan_depth = 10;
     for agent in config.agents.values_mut() {
@@ -236,13 +246,53 @@ fn skills_manager_list_with_empty_targets_prints_no_skills() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
-    assert!(stdout.contains("No skills found."), "unexpected stdout: {stdout}");
     assert!(
-        stdout.contains("code-review"),
+        stdout.contains("No skills found."),
         "unexpected stdout: {stdout}"
     );
+}
+
+#[test]
+fn skills_manager_list_maps_shared_agents_target_to_codex_and_copilot() {
+    let home = TempDir::new().unwrap();
+    let project = TempDir::new().unwrap();
+    let shared_skill = project.path().join(".agents").join("shared-skill");
+    fs::create_dir_all(&shared_skill).expect("create shared skill dir");
+    fs::write(shared_skill.join("SKILL.md"), "# Shared skill").expect("write skill file");
+
+    let mut config = skills_manager::config::Config::default_config();
+    config.skills.central_dir = home
+        .path()
+        .join("missing-sources")
+        .to_string_lossy()
+        .into_owned();
+    config.skills.scan_parent_dirs = vec![];
+    for agent in config.agents.values_mut() {
+        agent.global_dir = home
+            .path()
+            .join(format!("missing-{}", agent.display_name.to_lowercase()))
+            .to_string_lossy()
+            .into_owned();
+        agent.project_dir = None;
+    }
+
+    let config_path = config_path_for_home(&home);
+    fs::create_dir_all(config_path.parent().expect("config parent")).expect("create config parent");
+    fs::write(&config_path, config.to_toml().expect("config toml")).expect("write config");
+
+    let output = config_bin_with_home(&home)
+        .current_dir(project.path())
+        .args(["list"])
+        .output()
+        .expect("list runs");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
     assert!(
-        stdout.contains(&skill_dir.to_string_lossy().to_string()),
-        "expected skill path in stdout: {stdout}"
+        stdout.contains("shared-skill"),
+        "unexpected stdout: {stdout}"
     );
+    assert!(stdout.contains("CODEX"), "unexpected stdout: {stdout}");
+    assert!(stdout.contains("COPILOT"), "unexpected stdout: {stdout}");
+    assert!(!stdout.contains("AGENTS"), "unexpected stdout: {stdout}");
 }
