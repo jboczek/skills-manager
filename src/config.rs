@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use directories::{BaseDirs, ProjectDirs};
+use crate::constants::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -55,49 +56,49 @@ impl Config {
     pub fn default_config() -> Self {
         let mut agents = BTreeMap::new();
         agents.insert(
-            "claude".to_string(),
+            AGENT_ID_CLAUDE.to_string(),
             AgentConfig {
-                display_name: "Claude".to_string(),
-                global_dir: "~/.claude/skills".to_string(),
+                display_name: AGENT_NAME_CLAUDE.to_string(),
+                global_dir: AGENT_GLOBAL_DIR_CLAUDE.to_string(),
                 project_dir: None,
                 enabled: true,
                 shared_target_ids: vec![],
             },
         );
         agents.insert(
-            "codex".to_string(),
+            AGENT_ID_CODEX.to_string(),
             AgentConfig {
-                display_name: "Codex".to_string(),
-                global_dir: "~/.codex/skills".to_string(),
-                project_dir: Some(".codex/skills".to_string()),
+                display_name: AGENT_NAME_CODEX.to_string(),
+                global_dir: AGENT_GLOBAL_DIR_CODEX.to_string(),
+                project_dir: Some(AGENT_PROJECT_DIR_CODEX.to_string()),
                 enabled: true,
-                shared_target_ids: vec!["agents".to_string()],
+                shared_target_ids: vec![SHARED_TARGET_AGENTS.to_string()],
             },
         );
         agents.insert(
-            "copilot".to_string(),
+            AGENT_ID_COPILOT.to_string(),
             AgentConfig {
-                display_name: "Copilot".to_string(),
-                global_dir: "~/.copilot/skills".to_string(),
-                project_dir: Some(".copilot/skills".to_string()),
+                display_name: AGENT_NAME_COPILOT.to_string(),
+                global_dir: AGENT_GLOBAL_DIR_COPILOT.to_string(),
+                project_dir: Some(AGENT_PROJECT_DIR_COPILOT.to_string()),
                 enabled: true,
-                shared_target_ids: vec!["agents".to_string()],
+                shared_target_ids: vec![SHARED_TARGET_AGENTS.to_string()],
             },
         );
 
         let mut shared_targets = BTreeMap::new();
         shared_targets.insert(
-            "agents".to_string(),
+            SHARED_TARGET_AGENTS.to_string(),
             SharedTargetConfig {
-                display_name: ".agents".to_string(),
-                project_dir: ".agents".to_string(),
+                display_name: SHARED_TARGET_DISPLAY_NAME.to_string(),
+                project_dir: SHARED_TARGET_PROJECT_DIR.to_string(),
                 enabled: true,
             },
         );
 
         Self {
             skills: SkillsConfig {
-                central_dir: "~/skills".to_string(),
+                central_dir: DEFAULT_SKILLS_CENTRAL_DIR.to_string(),
                 scan_parent_dirs: vec![],
                 max_scan_depth: 10,
             },

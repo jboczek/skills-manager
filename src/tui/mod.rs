@@ -96,6 +96,14 @@ fn event_loop<B: ratatui::backend::Backend>(
             .draw(|frame| draw(frame, app))
             .map_err(|error| anyhow::anyhow!(error.to_string()))?;
 
+        if app.pending_load.is_some() {
+            if let Err(error) = app.execute_pending_load() {
+                app.loading = false;
+                app.error_message = Some(error.to_string());
+            }
+            continue;
+        }
+
         if crossterm::event::poll(std::time::Duration::from_millis(50))?
             && let crossterm::event::Event::Key(key) = crossterm::event::read()?
             && events::handle_key(app, key)?

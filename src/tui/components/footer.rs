@@ -8,8 +8,8 @@ use crate::tui::theme::Theme;
 pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     let hint = match app.mode {
         Mode::Home => "/ commands   ? help   q quit",
-        Mode::List => "up/down scroll   esc back   q quit",
-        Mode::Scan => "esc back   q quit",
+        Mode::List => "up/down scroll   i import   x remove   r refresh   esc back   q quit",
+        Mode::Scan => "up/down scroll   i import   r refresh   esc back   q quit",
         Mode::Import | Mode::Remove => "enter confirm   esc cancel",
         Mode::Help => "esc back",
         Mode::Config => "esc back   q quit",

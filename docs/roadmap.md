@@ -165,15 +165,16 @@ Reduce repeated setup across projects while keeping the same inspectable source-
 - **Validation signal:** A dry migration preview explains exactly what will be moved, linked, or left untouched.
 - **Notes / risks:** Migration is destructive-adjacent and should be conservative by default.
 
-### 011 - Stronger TUI exposure editing
+### 011 - Assistant-style TUI table actions
 
 - **Type:** UX
-- **Outcome:** Users can stage exposure changes directly from the inventory table.
-- **Description:** Add table cell navigation, space-to-toggle exposure, staged change review, and apply shortcuts.
+- **Outcome:** Users can discover TUI commands, navigate list and scan tables, and start import/remove actions from selected rows.
+- **Description:** Add slash command suggestions, natural list scrolling, scan-table navigation, table-driven import/remove shortcuts, active table refresh, and staged change review.
 - **Why now:** V1 can rely on guided flows; V2 should make repeated management faster.
-- **PRD candidate:** Yes. Suggested file: `docs/prds/011-stronger-tui-exposure-editing.md`
+- **PRD candidate:** Yes. PRD: [`docs/prds/v1/prd-007-v2-assistant-style-tui-table-actions.md`](prds/v1/prd-007-v2-assistant-style-tui-table-actions.md)
 - **Dependencies:** 006, 007.
-- **Validation signal:** A user can toggle multiple exposures in one session and apply them after reviewing the staged plan.
+- **Validation signal:** A user can open slash suggestions, navigate list and scan rows, refresh active tables, and start import/remove from selected rows while still reviewing staged plans before applying changes.
+- **Status:** Done.
 - **Notes / risks:** Fast toggles must not reduce safety or make effective availability harder to understand.
 
 ### Version Validation
@@ -259,7 +260,7 @@ V3 works if Skills Manager becomes the trusted local place to curate, audit, and
 | 008 | Arbitrary project targeting | V2 | `docs/prds/008-arbitrary-project-targeting.md` | Medium | Later | 004, 006, 007 |
 | 009 | Git URL import into managed source directory | V2 | `docs/prds/009-git-url-import-into-managed-source-directory.md` | Medium | Later | 003, 006 |
 | 010 | Manual install migration | V2 | `docs/prds/010-manual-install-migration.md` | Medium | Later | 004, 006 |
-| 011 | Stronger TUI exposure editing | V2 | `docs/prds/011-stronger-tui-exposure-editing.md` | Medium | Later | 006, 007 |
+| 011 | Assistant-style TUI table actions | V2 | [`docs/prds/v1/prd-007-v2-assistant-style-tui-table-actions.md`](prds/v1/prd-007-v2-assistant-style-tui-table-actions.md) | Medium | Done | 006, 007 |
 | 012 | Context budget visibility | V3 | `docs/prds/012-context-budget-visibility.md` | Low | Parking lot | 004, 007 |
 | 013 | Shareable setup profiles | V3 | `docs/prds/013-shareable-setup-profiles.md` | Low | Parking lot | 008, 009, 010 |
 | 014 | Repository health and update awareness | V3 | `docs/prds/014-repository-health-and-update-awareness.md` | Low | Parking lot | 009 |

@@ -105,7 +105,13 @@ pub fn render_inventory_table(
 }
 
 /// Render scan results as a table in the given area.
-pub fn render_scan_table(frame: &mut Frame, area: Rect, results: &[ScanResult], scroll: usize) {
+pub fn render_scan_table(
+    frame: &mut Frame,
+    area: Rect,
+    results: &[ScanResult],
+    scroll: usize,
+    selected: Option<usize>,
+) {
     if results.is_empty() {
         render_empty(frame, area, " Scan ", "No scan results available.");
         return;
@@ -124,7 +130,9 @@ pub fn render_scan_table(frame: &mut Frame, area: Rect, results: &[ScanResult], 
 
     let display_rows = results[start..end]
         .iter()
-        .map(|result| {
+        .enumerate()
+        .map(|(offset, result)| {
+            let index = start + offset;
             Row::new(vec![
                 Cell::from(result.skill_id.clone()),
                 Cell::from(source_kind_label(result.source_kind.clone())),
@@ -142,7 +150,7 @@ pub fn render_scan_table(frame: &mut Frame, area: Rect, results: &[ScanResult], 
                         .unwrap_or_else(|| "-".to_string()),
                 ),
             ])
-            .style(Theme::default_style())
+            .style(scan_row_style(selected, index))
         })
         .collect::<Vec<_>>();
 
@@ -245,6 +253,14 @@ fn source_kind_label(kind: SourceKind) -> &'static str {
     }
 }
 
+fn scan_row_style(selected: Option<usize>, index: usize) -> ratatui::style::Style {
+    if selected == Some(index) {
+        Theme::selected()
+    } else {
+        Theme::default_style()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -281,5 +297,12 @@ mod tests {
         assert_eq!(skill_label(&row), "(1) repo-a/docs");
         assert_eq!(source_label(&row), "repo-a (/tmp/repo-a-one)");
         assert_eq!(scope_label(row.scope), "local");
+    }
+
+    #[test]
+    fn scan_row_style_marks_selected_index() {
+        assert_eq!(scan_row_style(Some(1), 1), Theme::selected());
+        assert_eq!(scan_row_style(Some(1), 0), Theme::default_style());
+        assert_eq!(scan_row_style(None, 1), Theme::default_style());
     }
 }

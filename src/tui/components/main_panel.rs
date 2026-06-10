@@ -3,6 +3,7 @@ use ratatui::layout::Rect;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::config::Config;
+use crate::domain::{ConnectionKind, InventoryRow};
 use crate::output::render_inventory;
 use crate::tui::app::{App, ImportStep, Mode, RemoveStep};
 use crate::tui::components::{dialog, table};
@@ -15,7 +16,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             area,
             " Home ",
             &format!(
-                "Welcome to Skills Manager.\n\nLoaded skills: {}\nEnabled agents: {}\n\nTry /list, /scan, /import <skill>, /remove <skill>, /config or /help.",
+                "Welcome to Skills Manager.\n\nLoaded skills: {}\nEnabled agents: {}\n\nTry /list, /scan, /config or /help. Use table shortcuts for import and remove actions.",
                 app.inventory.len().max(app.scan_results.len()),
                 app.config
                     .agents
@@ -24,14 +25,32 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
                     .count()
             ),
         ),
-        Mode::List => table::render_inventory_table(
-            frame,
-            area,
-            &app.inventory,
-            app.list_scroll,
-            app.list_selected,
-        ),
-        Mode::Scan => table::render_scan_table(frame, area, &app.scan_results, app.list_scroll),
+        Mode::List => {
+            if app.loading {
+                render_text_panel(frame, area, " Inventory ", "Loading...");
+            } else {
+                table::render_inventory_table(
+                    frame,
+                    area,
+                    &app.inventory,
+                    app.list_table.viewport_offset,
+                    app.list_table.selected,
+                );
+            }
+        }
+        Mode::Scan => {
+            if app.loading {
+                render_text_panel(frame, area, " Scan ", "Loading...");
+            } else {
+                table::render_scan_table(
+                    frame,
+                    area,
+                    &app.scan_results,
+                    app.scan_table.viewport_offset,
+                    app.scan_table.selected,
+                );
+            }
+        }
         Mode::Config => render_config(frame, area, app),
         Mode::Help => render_help(frame, area),
         Mode::Import => render_import(frame, area, app),
@@ -52,12 +71,11 @@ fn render_config(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn render_help(frame: &mut Frame, area: Rect) {
-    render_text_panel(
-        frame,
-        area,
-        " Help ",
-        "Commands\n  /list              Show current inventory\n  /scan              Scan for available skills\n  /import <skill>    Start import flow\n  /remove <skill>    Start remove flow\n  /config            Show config\n  /help              Show this help\n  /quit              Exit\n\nKeys\n  Enter              Submit prompt\n  Esc                Return home / cancel\n  Up / Down          Scroll list view\n  q                  Quit from home\n  ?                  Help from home",
-    );
+    render_text_panel(frame, area, " Help ", help_text());
+}
+
+fn help_text() -> &'static str {
+    "Commands\n  /list              Show current inventory\n  /scan              Scan for available skills\n  /config            Show config\n  /help              Show this help\n  /quit              Exit\n\nTable actions\n  i                  Import selected scan row, or missing list exposures\n  x                  Remove selected list exposure\n  r                  Refresh current table\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move table or command selection\n  q                  Quit from home\n  ?                  Help from home"
 }
 
 fn render_import(frame: &mut Frame, area: Rect, app: &App) {
@@ -84,22 +102,29 @@ fn render_import(frame: &mut Frame, area: Rect, app: &App) {
                 .join("\n");
             render_text_panel(frame, area, " Import ", &body);
         }
-        ImportStep::SelectAgents { selected } => {
-            let agents = app
-                .config
-                .agents
+        ImportStep::SelectAgents {
+            selected,
+            agents,
+            focused,
+        } => {
+            let agent_lines = agents
                 .iter()
-                .filter(|(_, agent)| agent.enabled)
-                .map(|(agent_id, agent)| format!("- {agent_id} ({})", agent.display_name))
+                .enumerate()
+                .map(|(i, item)| {
+                    let cursor = if i == *focused { "►" } else { " " };
+                    let check = if item.checked { "✓" } else { " " };
+                    format!(
+                        "  {} [{}] {} ({})",
+                        cursor, check, item.target.agent_id, item.target.display_name
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join("\n");
             let body = format!(
-                "Selected skill\n  id: {}\n  path: {}\n  repo: {}\n  origin: {}\n\nSelect target agents:\n{}",
+                "Selected skill\n  id: {}\n  path: {}\n\nSelect agents to import to:\n{}",
                 selected.skill_id,
                 selected.skill_path.display(),
-                selected.repo_name.as_deref().unwrap_or("-"),
-                selected.remote_url.as_deref().unwrap_or("-"),
-                agents,
+                agent_lines,
             );
             render_text_panel(frame, area, " Import ", &body);
         }
@@ -149,6 +174,10 @@ fn render_remove(frame: &mut Frame, area: Rect, app: &App) {
                 .join("\n");
             render_text_panel(frame, area, " Remove ", &body);
         }
+        RemoveStep::SelectExposure { selected } => {
+            let body = removable_exposure_lines(selected);
+            render_text_panel(frame, area, " Remove ", &body);
+        }
         RemoveStep::ConfirmPlan { plan, .. } => {
             render_text_panel(frame, area, " Remove Plan ", &plan.render());
         }
@@ -186,4 +215,51 @@ fn render_text_panel(frame: &mut Frame, area: Rect, title: &str, body: &str) {
             .wrap(Wrap { trim: false }),
         area,
     );
+}
+
+fn removable_exposure_lines(row: &InventoryRow) -> String {
+    row.exposures
+        .iter()
+        .filter(|exposure| {
+            matches!(
+                exposure.connection,
+                ConnectionKind::Symlink | ConnectionKind::PhysicalCopy
+            )
+        })
+        .enumerate()
+        .map(|(index, exposure)| {
+            format!(
+                "{}. {}  {}  {}",
+                index + 1,
+                exposure.agent_id.0,
+                exposure.path.display(),
+                connection_label(exposure.connection)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn connection_label(connection: ConnectionKind) -> &'static str {
+    match connection {
+        ConnectionKind::Symlink => "symlink",
+        ConnectionKind::PhysicalCopy => "copy",
+        ConnectionKind::Missing => "missing",
+        ConnectionKind::Unknown => "unknown",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn help_points_to_table_actions_instead_of_standalone_mutation_commands() {
+        let text = help_text();
+
+        assert!(!text.contains("/import <skill>"));
+        assert!(!text.contains("/remove <skill>"));
+        assert!(text.contains("Import selected scan row"));
+        assert!(text.contains("Remove selected list exposure"));
+    }
 }

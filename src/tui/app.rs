@@ -5,7 +5,7 @@ use std::process::Command;
 
 use crate::commands::helpers;
 use crate::config::{Config, expand_tilde};
-use crate::domain::{AgentId, ConnectionKind, InventoryRow};
+use crate::domain::{AgentId, ConnectionKind, InventoryRow, SkillExposure};
 use crate::git;
 use crate::inventory::AgentTarget;
 use crate::plan::{ChangePlan, StagedChange};
@@ -23,6 +23,35 @@ pub enum TuiCommand {
     Quit,
     Unknown(String),
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CommandSuggestion {
+    pub label: &'static str,
+    pub description: &'static str,
+}
+
+const COMMAND_SUGGESTIONS: [CommandSuggestion; 5] = [
+    CommandSuggestion {
+        label: "/list",
+        description: "Show exposed skills and availability",
+    },
+    CommandSuggestion {
+        label: "/scan",
+        description: "Discover skills from configured sources",
+    },
+    CommandSuggestion {
+        label: "/config",
+        description: "Show current configuration",
+    },
+    CommandSuggestion {
+        label: "/help",
+        description: "Show commands and keybindings",
+    },
+    CommandSuggestion {
+        label: "/quit",
+        description: "Exit Skills Manager",
+    },
+];
 
 /// Parse a command string typed in the prompt.
 /// Accepts "list", "/list", "scan", "/scan", "import <skill>", etc.
@@ -56,6 +85,8 @@ pub enum ImportStep {
     },
     SelectAgents {
         selected: Box<ScanResult>,
+        agents: Vec<AgentSelectionItem>,
+        focused: usize,
     },
     ConfirmPlan {
         plan: ChangePlan,
@@ -76,6 +107,9 @@ pub enum RemoveStep {
     EnterSkill,
     Disambiguate {
         matches: Vec<InventoryRow>,
+    },
+    SelectExposure {
+        selected: Box<InventoryRow>,
     },
     ConfirmPlan {
         plan: ChangePlan,
@@ -102,6 +136,79 @@ pub enum Mode {
     Quit,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PendingLoad {
+    List,
+    Scan,
+}
+
+#[derive(Debug, Clone)]
+pub struct AgentSelectionItem {
+    pub target: AgentTarget,
+    pub checked: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TableNavigation {
+    pub selected: Option<usize>,
+    pub viewport_offset: usize,
+}
+
+impl TableNavigation {
+    pub fn reset(&mut self, row_count: usize) {
+        self.viewport_offset = 0;
+        self.selected = (row_count > 0).then_some(0);
+    }
+
+    pub fn sync(&mut self, row_count: usize, viewport_height: usize) {
+        if row_count == 0 {
+            self.selected = None;
+            self.viewport_offset = 0;
+            return;
+        }
+
+        let viewport_height = viewport_height.max(1);
+        let selected = self.selected.unwrap_or(0).min(row_count - 1);
+        let max_offset = row_count.saturating_sub(viewport_height);
+        let mut offset = self.viewport_offset.min(max_offset);
+
+        if selected < offset {
+            offset = selected;
+        } else if selected >= offset + viewport_height {
+            offset = selected + 1 - viewport_height;
+        }
+
+        self.selected = Some(selected);
+        self.viewport_offset = offset.min(max_offset);
+    }
+
+    pub fn move_up(&mut self, row_count: usize, viewport_height: usize) {
+        if row_count == 0 {
+            self.sync(row_count, viewport_height);
+            return;
+        }
+
+        let selected = self.selected.unwrap_or(0).saturating_sub(1);
+        self.selected = Some(selected);
+        self.sync(row_count, viewport_height);
+    }
+
+    pub fn move_down(&mut self, row_count: usize, viewport_height: usize) {
+        if row_count == 0 {
+            self.sync(row_count, viewport_height);
+            return;
+        }
+
+        let selected = self
+            .selected
+            .unwrap_or(0)
+            .saturating_add(1)
+            .min(row_count - 1);
+        self.selected = Some(selected);
+        self.sync(row_count, viewport_height);
+    }
+}
+
 pub struct App {
     pub mode: Mode,
     pub input: String,
@@ -110,6 +217,8 @@ pub struct App {
     pub status_messages: Vec<String>,
     pub list_scroll: usize,
     pub list_selected: Option<usize>,
+    pub list_table: TableNavigation,
+    pub scan_table: TableNavigation,
     pub config: Config,
     pub current_dir: PathBuf,
     pub git_branch: Option<String>,
@@ -118,6 +227,9 @@ pub struct App {
     pub remove_step: RemoveStep,
     pub error_message: Option<String>,
     pub info_message: Option<String>,
+    pub loading: bool,
+    pub pending_load: Option<PendingLoad>,
+    command_menu_selected: Option<usize>,
 }
 
 impl App {
@@ -131,6 +243,8 @@ impl App {
             status_messages: Vec::new(),
             list_scroll: 0,
             list_selected: None,
+            list_table: TableNavigation::default(),
+            scan_table: TableNavigation::default(),
             config,
             current_dir,
             git_branch: None,
@@ -139,6 +253,9 @@ impl App {
             remove_step: RemoveStep::EnterSkill,
             error_message: None,
             info_message: None,
+            loading: false,
+            pending_load: None,
+            command_menu_selected: None,
         }
     }
 
@@ -159,11 +276,33 @@ impl App {
         Ok(())
     }
 
+    /// Execute a deferred load (set by handle_command for list/scan) after a loading frame renders.
+    pub fn execute_pending_load(&mut self) -> anyhow::Result<()> {
+        let Some(load) = self.pending_load.take() else {
+            return Ok(());
+        };
+        self.loading = false;
+        match load {
+            PendingLoad::List => {
+                self.refresh_inventory()?;
+                self.enter_list_mode();
+                self.info_message = Some(format!("Loaded {} skill row(s).", self.inventory.len()));
+            }
+            PendingLoad::Scan => {
+                self.reload_scan_results()?;
+                self.enter_scan_mode();
+                self.info_message = Some(format!("Found {} skill(s).", self.scan_results.len()));
+            }
+        }
+        Ok(())
+    }
+
     /// Handle a submitted command string from the prompt.
     /// Returns true if the app should quit.
     pub fn handle_command(&mut self, input: &str) -> anyhow::Result<bool> {
         self.error_message = None;
         self.info_message = None;
+        self.close_command_menu();
 
         match self.mode {
             Mode::Import => {
@@ -179,33 +318,34 @@ impl App {
 
         match parse_command(input) {
             TuiCommand::List => {
-                self.refresh_inventory()?;
                 self.mode = Mode::List;
-                self.list_scroll = 0;
-                self.list_selected = None;
+                self.loading = true;
+                self.pending_load = Some(PendingLoad::List);
             }
             TuiCommand::Scan => {
-                self.reload_scan_results()?;
                 self.mode = Mode::Scan;
-                self.list_scroll = 0;
-                self.list_selected = None;
-                self.info_message = Some(format!("Found {} skill(s).", self.scan_results.len()));
+                self.loading = true;
+                self.pending_load = Some(PendingLoad::Scan);
             }
             TuiCommand::Import(skill) => {
-                self.refresh_inventory()?;
-                self.mode = Mode::Import;
-                self.import_step = ImportStep::EnterSkill;
-                if !skill.trim().is_empty() {
-                    self.advance_import(&skill)?;
-                }
+                let suffix = if skill.trim().is_empty() {
+                    ""
+                } else {
+                    " The typed skill name was not used."
+                };
+                self.info_message = Some(format!(
+                    "Use table shortcuts: run /scan, select a row, then press i. From /list, press i to create missing enabled-agent exposures.{suffix}"
+                ));
             }
             TuiCommand::Remove(skill) => {
-                self.refresh_inventory()?;
-                self.mode = Mode::Remove;
-                self.remove_step = RemoveStep::EnterSkill;
-                if !skill.trim().is_empty() {
-                    self.advance_remove(&skill)?;
-                }
+                let suffix = if skill.trim().is_empty() {
+                    ""
+                } else {
+                    " The typed skill name was not used."
+                };
+                self.info_message = Some(format!(
+                    "Use table shortcuts: run /list, select an exposed row, then press x to remove it.{suffix}"
+                ));
             }
             TuiCommand::Config => {
                 self.mode = Mode::Config;
@@ -228,6 +368,191 @@ impl App {
         Ok(false)
     }
 
+    pub fn command_menu_open(&self) -> bool {
+        self.command_menu_selected.is_some()
+    }
+
+    pub fn open_command_menu(&mut self) {
+        self.command_menu_selected = Some(0);
+        self.normalize_command_suggestion_selection();
+    }
+
+    pub fn close_command_menu(&mut self) {
+        self.command_menu_selected = None;
+    }
+
+    pub fn filtered_command_suggestions(&self) -> Vec<CommandSuggestion> {
+        let query = self
+            .input
+            .trim_start()
+            .strip_prefix('/')
+            .unwrap_or("")
+            .to_ascii_lowercase();
+
+        COMMAND_SUGGESTIONS
+            .iter()
+            .copied()
+            .filter(|suggestion| {
+                query.is_empty()
+                    || suggestion
+                        .label
+                        .trim_start_matches('/')
+                        .starts_with(query.as_str())
+            })
+            .collect()
+    }
+
+    pub fn selected_command_suggestion(&self) -> Option<CommandSuggestion> {
+        let selected = self.command_menu_selected?;
+        self.filtered_command_suggestions().get(selected).copied()
+    }
+
+    pub fn move_command_suggestion_up(&mut self) {
+        let Some(selected) = self.command_menu_selected else {
+            return;
+        };
+        self.command_menu_selected = Some(selected.saturating_sub(1));
+    }
+
+    pub fn move_command_suggestion_down(&mut self) {
+        let Some(selected) = self.command_menu_selected else {
+            return;
+        };
+        let max = self.filtered_command_suggestions().len().saturating_sub(1);
+        self.command_menu_selected = Some(selected.saturating_add(1).min(max));
+    }
+
+    pub fn normalize_command_suggestion_selection(&mut self) {
+        let Some(selected) = self.command_menu_selected else {
+            return;
+        };
+        let max = self.filtered_command_suggestions().len().saturating_sub(1);
+        self.command_menu_selected = Some(selected.min(max));
+    }
+
+    pub fn enter_list_mode(&mut self) {
+        self.mode = Mode::List;
+        self.list_table.reset(self.inventory.len());
+        self.sync_legacy_list_navigation();
+    }
+
+    pub fn sync_legacy_list_navigation(&mut self) {
+        self.list_scroll = self.list_table.viewport_offset;
+        self.list_selected = self.list_table.selected;
+    }
+
+    pub fn enter_scan_mode(&mut self) {
+        self.mode = Mode::Scan;
+        self.scan_table.reset(self.scan_results.len());
+    }
+
+    pub fn start_import_from_selected_scan_row(&mut self) -> anyhow::Result<()> {
+        self.error_message = None;
+        self.info_message = None;
+
+        let Some(selected) = self.selected_scan_result() else {
+            self.info_message = Some("No scan row selected.".to_string());
+            return Ok(());
+        };
+
+        let target_agents = self.enabled_agent_targets();
+        self.start_import_for_scan_result(selected, target_agents);
+        Ok(())
+    }
+
+    pub fn start_import_from_selected_list_row(&mut self) -> anyhow::Result<()> {
+        self.error_message = None;
+        self.info_message = None;
+
+        let Some(row) = self.selected_inventory_row() else {
+            self.info_message = Some("No inventory row selected.".to_string());
+            return Ok(());
+        };
+
+        let target_agents = self.missing_enabled_agent_targets(&row);
+        if target_agents.is_empty() {
+            self.info_message =
+                Some("Selected skill already has all enabled-agent exposures.".to_string());
+            return Ok(());
+        }
+
+        let skill_id = display_inventory_row(&row);
+        let matches = helpers::find_scan_results_by_id(&skill_id, &self.scan_results);
+        match matches.len() {
+            0 => {
+                self.info_message =
+                    Some("Selected skill has no scanned source to import from.".to_string());
+            }
+            1 => {
+                self.start_import_for_scan_result(matches[0].clone(), target_agents);
+            }
+            _ => {
+                self.mode = Mode::Import;
+                self.import_step = ImportStep::Disambiguate {
+                    matches: matches.into_iter().cloned().collect(),
+                };
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn start_remove_from_selected_list_row(&mut self) -> anyhow::Result<()> {
+        self.error_message = None;
+        self.info_message = None;
+
+        let Some(selected) = self.selected_inventory_row() else {
+            self.info_message = Some("No inventory row selected.".to_string());
+            return Ok(());
+        };
+
+        let removable_exposures = Self::removable_exposures(&selected);
+        self.mode = Mode::Remove;
+        match removable_exposures.len() {
+            0 => {
+                self.remove_step = RemoveStep::Done {
+                    message: "Selected row has no removable exposures.".to_string(),
+                };
+                self.info_message = Some("Selected row has no removable exposures.".to_string());
+            }
+            1 => {
+                let plan = self.build_remove_plan_for_exposure(&selected, &removable_exposures[0]);
+                self.remove_step = RemoveStep::ConfirmPlan {
+                    plan,
+                    selected: Box::new(selected),
+                };
+            }
+            _ => {
+                self.remove_step = RemoveStep::SelectExposure {
+                    selected: Box::new(selected),
+                };
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn refresh_active_table(&mut self) -> anyhow::Result<()> {
+        self.error_message = None;
+        self.info_message = None;
+
+        match self.mode {
+            Mode::List => {
+                self.refresh_inventory()?;
+                self.enter_list_mode();
+                self.info_message = Some(format!("Loaded {} skill row(s).", self.inventory.len()));
+            }
+            Mode::Scan => {
+                self.reload_scan_results()?;
+                self.enter_scan_mode();
+                self.info_message = Some(format!("Found {} skill(s).", self.scan_results.len()));
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
+
     /// Handle import flow step progression.
     pub fn advance_import(&mut self, input: &str) -> anyhow::Result<()> {
         match self.import_step.clone() {
@@ -241,9 +566,40 @@ impl App {
                         ));
                     }
                     1 => {
-                        self.import_step = ImportStep::SelectAgents {
-                            selected: Box::new(matches[0].clone()),
-                        };
+                        let selected = Box::new(matches[0].clone());
+                        let target_agents = self.enabled_agent_targets();
+                        if target_agents.is_empty() {
+                            self.import_step = ImportStep::Done {
+                                message: "No enabled agents available.".to_string(),
+                            };
+                            self.info_message = Some("No enabled agents available.".to_string());
+                        } else if target_agents.len() == 1 {
+                            let plan = self.build_import_plan(&selected, &target_agents);
+                            self.import_step = if plan.is_empty() {
+                                self.info_message = Some("Nothing to do.".to_string());
+                                ImportStep::Done {
+                                    message: "Nothing to do.".to_string(),
+                                }
+                            } else {
+                                ImportStep::ConfirmPlan {
+                                    plan,
+                                    selected,
+                                    target_agents,
+                                }
+                            };
+                        } else {
+                            self.import_step = ImportStep::SelectAgents {
+                                selected,
+                                agents: target_agents
+                                    .into_iter()
+                                    .map(|t| AgentSelectionItem {
+                                        target: t,
+                                        checked: true,
+                                    })
+                                    .collect(),
+                                focused: 0,
+                            };
+                        }
                     }
                     _ => {
                         self.import_step = ImportStep::Disambiguate {
@@ -254,9 +610,40 @@ impl App {
             }
             ImportStep::Disambiguate { matches } => match parse_selection(input, matches.len()) {
                 Some(index) => {
-                    self.import_step = ImportStep::SelectAgents {
-                        selected: Box::new(matches[index].clone()),
-                    };
+                    let selected = Box::new(matches[index].clone());
+                    let target_agents = self.enabled_agent_targets();
+                    if target_agents.is_empty() {
+                        self.import_step = ImportStep::Done {
+                            message: "No enabled agents available.".to_string(),
+                        };
+                        self.info_message = Some("No enabled agents available.".to_string());
+                    } else if target_agents.len() == 1 {
+                        let plan = self.build_import_plan(&selected, &target_agents);
+                        self.import_step = if plan.is_empty() {
+                            self.info_message = Some("Nothing to do.".to_string());
+                            ImportStep::Done {
+                                message: "Nothing to do.".to_string(),
+                            }
+                        } else {
+                            ImportStep::ConfirmPlan {
+                                plan,
+                                selected,
+                                target_agents,
+                            }
+                        };
+                    } else {
+                        self.import_step = ImportStep::SelectAgents {
+                            selected,
+                            agents: target_agents
+                                .into_iter()
+                                .map(|t| AgentSelectionItem {
+                                    target: t,
+                                    checked: true,
+                                })
+                                .collect(),
+                            focused: 0,
+                        };
+                    }
                 }
                 None => {
                     self.error_message =
@@ -264,11 +651,26 @@ impl App {
                     self.import_step = ImportStep::Disambiguate { matches };
                 }
             },
-            ImportStep::SelectAgents { selected } => {
-                let Some(target_agents) = self.resolve_target_agents(input) else {
-                    self.import_step = ImportStep::SelectAgents { selected };
+            ImportStep::SelectAgents {
+                selected,
+                agents,
+                focused,
+            } => {
+                let target_agents: Vec<AgentTarget> = agents
+                    .iter()
+                    .filter(|item| item.checked)
+                    .map(|item| item.target.clone())
+                    .collect();
+                if target_agents.is_empty() {
+                    self.error_message =
+                        Some("Select at least one agent. Use Space to toggle.".to_string());
+                    self.import_step = ImportStep::SelectAgents {
+                        selected,
+                        agents,
+                        focused,
+                    };
                     return Ok(());
-                };
+                }
                 let plan = self.build_import_plan(&selected, &target_agents);
                 if plan.is_empty() {
                     self.import_step = ImportStep::Done {
@@ -382,6 +784,23 @@ impl App {
                     self.remove_step = RemoveStep::Disambiguate { matches };
                 }
             },
+            RemoveStep::SelectExposure { selected } => {
+                let removable_exposures = Self::removable_exposures(&selected);
+                match parse_selection(input, removable_exposures.len()) {
+                    Some(index) => {
+                        let plan = self
+                            .build_remove_plan_for_exposure(&selected, &removable_exposures[index]);
+                        self.remove_step = RemoveStep::ConfirmPlan { plan, selected };
+                    }
+                    None => {
+                        self.error_message = Some(format!(
+                            "Enter a number between 1 and {}",
+                            removable_exposures.len()
+                        ));
+                        self.remove_step = RemoveStep::SelectExposure { selected };
+                    }
+                }
+            }
             RemoveStep::ConfirmPlan { plan, selected } => {
                 let normalized = input.trim().to_ascii_lowercase();
                 if normalized == "y" {
@@ -425,7 +844,7 @@ impl App {
             ImportStep::EnterSkill => "Enter skill identifier (e.g. repo-a/code-review):",
             ImportStep::Disambiguate { .. } => "Enter number to select:",
             ImportStep::SelectAgents { .. } => {
-                "Enter target agents (comma-separated, or Enter for all):"
+                "Up/Down to move, Space to toggle, Enter to confirm:"
             }
             ImportStep::ConfirmPlan { .. } => "Apply this plan? [y/N]:",
             ImportStep::ConfirmPhysical { .. } => "Type 'yes' to confirm permanent deletion:",
@@ -438,9 +857,36 @@ impl App {
         match self.remove_step {
             RemoveStep::EnterSkill => "Enter skill identifier (e.g. repo-a/code-review):",
             RemoveStep::Disambiguate { .. } => "Enter number to select:",
+            RemoveStep::SelectExposure { .. } => "Enter exposure number to remove:",
             RemoveStep::ConfirmPlan { .. } => "Apply this plan? [y/N]:",
             RemoveStep::ConfirmPhysical { .. } => "Type 'yes' to confirm permanent deletion:",
             RemoveStep::Done { .. } => "Press Enter to return to home.",
+        }
+    }
+
+    pub fn move_agent_selection_up(&mut self) {
+        if let ImportStep::SelectAgents { focused, .. } = &mut self.import_step {
+            *focused = focused.saturating_sub(1);
+        }
+    }
+
+    pub fn move_agent_selection_down(&mut self) {
+        if let ImportStep::SelectAgents {
+            agents, focused, ..
+        } = &mut self.import_step
+        {
+            *focused = (*focused + 1).min(agents.len().saturating_sub(1));
+        }
+    }
+
+    pub fn toggle_agent_selection(&mut self) {
+        if let ImportStep::SelectAgents {
+            agents, focused, ..
+        } = &mut self.import_step
+        {
+            if let Some(item) = agents.get_mut(*focused) {
+                item.checked = !item.checked;
+            }
         }
     }
 
@@ -450,41 +896,6 @@ impl App {
         scanner::assign_disambiguation_indices(&mut self.scan_results);
         self.rebuild_status_messages();
         Ok(())
-    }
-
-    fn resolve_target_agents(&mut self, input: &str) -> Option<Vec<AgentTarget>> {
-        let all_agents = helpers::agent_targets_from(&self.config, &self.current_dir);
-        if input.trim().is_empty() {
-            return Some(
-                all_agents
-                    .into_iter()
-                    .filter(|agent| agent.enabled)
-                    .collect(),
-            );
-        }
-
-        let requested = helpers::parse_agents(input);
-        for agent_id in &requested {
-            if !self.config.agents.contains_key(agent_id) {
-                self.error_message = Some(format!("Unknown agent: {agent_id}"));
-                return None;
-            }
-        }
-
-        let target_agents = all_agents
-            .into_iter()
-            .filter(|agent| {
-                requested
-                    .iter()
-                    .any(|requested_id| requested_id == &agent.agent_id)
-            })
-            .collect::<Vec<_>>();
-        if target_agents.is_empty() {
-            self.error_message = Some("No matching target agents found.".to_string());
-            return None;
-        }
-
-        Some(target_agents)
     }
 
     fn build_import_plan(
@@ -531,34 +942,132 @@ impl App {
         ChangePlan::new(changes)
     }
 
-    fn build_remove_plan(&self, row: &InventoryRow) -> ChangePlan {
-        let skill_name = display_inventory_row(row);
-        let changes = row
+    fn selected_scan_result(&self) -> Option<ScanResult> {
+        self.scan_table
+            .selected
+            .and_then(|index| self.scan_results.get(index))
+            .cloned()
+    }
+
+    fn selected_inventory_row(&self) -> Option<InventoryRow> {
+        self.list_table
+            .selected
+            .and_then(|index| self.inventory.get(index))
+            .cloned()
+    }
+
+    fn enabled_agent_targets(&self) -> Vec<AgentTarget> {
+        helpers::agent_targets_from(&self.config, &self.current_dir)
+            .into_iter()
+            .filter(|agent| agent.enabled)
+            .collect()
+    }
+
+    fn missing_enabled_agent_targets(&self, row: &InventoryRow) -> Vec<AgentTarget> {
+        let exposed_agent_ids = row
             .exposures
             .iter()
-            .filter_map(|exposure| {
-                let display_name = self
-                    .config
-                    .agents
-                    .get(&exposure.agent_id.0)
-                    .map(|agent| agent.display_name.clone())
-                    .unwrap_or_else(|| exposure.agent_id.0.clone());
-                match exposure.connection {
-                    ConnectionKind::Symlink => Some(StagedChange::DetachSkill {
-                        skill_name: skill_name.clone(),
-                        agent_id: AgentId(display_name),
-                        target_path: exposure.path.clone(),
-                    }),
-                    ConnectionKind::PhysicalCopy => Some(StagedChange::DeletePhysicalCopy {
-                        skill_name: skill_name.clone(),
-                        agent_id: AgentId(display_name),
-                        target_path: exposure.path.clone(),
-                    }),
-                    ConnectionKind::Missing | ConnectionKind::Unknown => None,
+            .map(|exposure| exposure.agent_id.0.clone())
+            .collect::<HashSet<_>>();
+
+        self.enabled_agent_targets()
+            .into_iter()
+            .filter(|agent| !exposed_agent_ids.contains(&agent.agent_id))
+            .collect()
+    }
+
+    fn start_import_for_scan_result(
+        &mut self,
+        selected: ScanResult,
+        target_agents: Vec<AgentTarget>,
+    ) {
+        self.mode = Mode::Import;
+
+        if target_agents.is_empty() {
+            self.import_step = ImportStep::Done {
+                message: "No enabled agents available.".to_string(),
+            };
+            self.info_message = Some("No enabled agents available.".to_string());
+            return;
+        }
+
+        if target_agents.len() == 1 {
+            let plan = self.build_import_plan(&selected, &target_agents);
+            self.import_step = if plan.is_empty() {
+                self.info_message = Some("Nothing to do.".to_string());
+                ImportStep::Done {
+                    message: "Nothing to do.".to_string(),
                 }
-            })
+            } else {
+                ImportStep::ConfirmPlan {
+                    plan,
+                    selected: Box::new(selected),
+                    target_agents,
+                }
+            };
+            return;
+        }
+
+        self.import_step = ImportStep::SelectAgents {
+            selected: Box::new(selected),
+            agents: target_agents
+                .into_iter()
+                .map(|target| AgentSelectionItem {
+                    target,
+                    checked: true,
+                })
+                .collect(),
+            focused: 0,
+        };
+    }
+
+    fn build_remove_plan(&self, row: &InventoryRow) -> ChangePlan {
+        let changes = Self::removable_exposures(row)
+            .iter()
+            .flat_map(|exposure| self.build_remove_plan_for_exposure(row, exposure).changes)
             .collect();
         ChangePlan::new(changes)
+    }
+
+    fn build_remove_plan_for_exposure(
+        &self,
+        row: &InventoryRow,
+        exposure: &SkillExposure,
+    ) -> ChangePlan {
+        let skill_name = display_inventory_row(row);
+        let display_name = self
+            .config
+            .agents
+            .get(&exposure.agent_id.0)
+            .map(|agent| agent.display_name.clone())
+            .unwrap_or_else(|| exposure.agent_id.0.clone());
+        let change = match exposure.connection {
+            ConnectionKind::Symlink => Some(StagedChange::DetachSkill {
+                skill_name,
+                agent_id: AgentId(display_name),
+                target_path: exposure.path.clone(),
+            }),
+            ConnectionKind::PhysicalCopy => Some(StagedChange::DeletePhysicalCopy {
+                skill_name,
+                agent_id: AgentId(display_name),
+                target_path: exposure.path.clone(),
+            }),
+            ConnectionKind::Missing | ConnectionKind::Unknown => None,
+        };
+        ChangePlan::new(change.into_iter().collect())
+    }
+
+    fn removable_exposures(row: &InventoryRow) -> Vec<SkillExposure> {
+        row.exposures
+            .iter()
+            .filter(|exposure| {
+                matches!(
+                    exposure.connection,
+                    ConnectionKind::Symlink | ConnectionKind::PhysicalCopy
+                )
+            })
+            .cloned()
+            .collect()
     }
 
     fn apply_plan_and_refresh(&mut self, plan: &ChangePlan) -> anyhow::Result<String> {
@@ -771,6 +1280,30 @@ mod tests {
     }
 
     #[test]
+    fn enter_list_mode_selects_first_row_when_inventory_exists() {
+        let mut app = test_app();
+        app.inventory = vec![inventory_row("repo-a/one"), inventory_row("repo-a/two")];
+
+        app.enter_list_mode();
+
+        assert_eq!(app.mode, Mode::List);
+        assert_eq!(app.list_table.selected, Some(0));
+        assert_eq!(app.list_table.viewport_offset, 0);
+    }
+
+    #[test]
+    fn enter_scan_mode_selects_first_result_when_results_exist() {
+        let mut app = test_app();
+        app.scan_results = vec![scan_result("repo-a/one"), scan_result("repo-a/two")];
+
+        app.enter_scan_mode();
+
+        assert_eq!(app.mode, Mode::Scan);
+        assert_eq!(app.scan_table.selected, Some(0));
+        assert_eq!(app.scan_table.viewport_offset, 0);
+    }
+
+    #[test]
     fn handle_command_quit_returns_true() {
         let mut app = test_app();
 
@@ -798,6 +1331,169 @@ mod tests {
     }
 
     #[test]
+    fn handle_command_import_guides_to_table_shortcut() {
+        let mut app = test_app();
+
+        app.handle_command("/import repo-a/skill")
+            .expect("command succeeds");
+
+        assert_eq!(app.mode, Mode::Home);
+        assert!(matches!(app.import_step, ImportStep::EnterSkill));
+        assert!(
+            app.info_message
+                .as_deref()
+                .is_some_and(|message| message.contains("press i"))
+        );
+    }
+
+    #[test]
+    fn handle_command_remove_guides_to_table_shortcut() {
+        let mut app = test_app();
+
+        app.handle_command("/remove repo-a/skill")
+            .expect("command succeeds");
+
+        assert_eq!(app.mode, Mode::Home);
+        assert!(matches!(app.remove_step, RemoveStep::EnterSkill));
+        assert!(
+            app.info_message
+                .as_deref()
+                .is_some_and(|message| message.contains("press x"))
+        );
+    }
+
+    #[test]
+    fn command_suggestions_include_primary_prompt_commands() {
+        let app = test_app();
+        let labels = app
+            .filtered_command_suggestions()
+            .iter()
+            .map(|suggestion| suggestion.label)
+            .collect::<Vec<_>>();
+
+        assert_eq!(labels, vec!["/list", "/scan", "/config", "/help", "/quit"]);
+        assert!(
+            app.filtered_command_suggestions()
+                .iter()
+                .all(|suggestion| !suggestion.description.is_empty())
+        );
+    }
+
+    #[test]
+    fn command_suggestions_filter_by_command_text() {
+        let mut app = test_app();
+        app.input = "/sc".to_string();
+        app.open_command_menu();
+
+        let labels = app
+            .filtered_command_suggestions()
+            .iter()
+            .map(|suggestion| suggestion.label)
+            .collect::<Vec<_>>();
+
+        assert_eq!(labels, vec!["/scan"]);
+    }
+
+    #[test]
+    fn command_suggestions_can_be_selected() {
+        let mut app = test_app();
+        app.open_command_menu();
+
+        assert_eq!(
+            app.selected_command_suggestion().map(|item| item.label),
+            Some("/list")
+        );
+
+        app.move_command_suggestion_down();
+
+        assert_eq!(
+            app.selected_command_suggestion().map(|item| item.label),
+            Some("/scan")
+        );
+
+        app.move_command_suggestion_up();
+
+        assert_eq!(
+            app.selected_command_suggestion().map(|item| item.label),
+            Some("/list")
+        );
+    }
+
+    #[test]
+    fn table_navigation_selects_first_row_when_rows_exist() {
+        let mut nav = TableNavigation::default();
+
+        nav.reset(3);
+
+        assert_eq!(nav.selected, Some(0));
+        assert_eq!(nav.viewport_offset, 0);
+    }
+
+    #[test]
+    fn table_navigation_keeps_viewport_still_before_bottom() {
+        let mut nav = TableNavigation::default();
+        nav.reset(5);
+
+        nav.move_down(5, 3);
+        nav.move_down(5, 3);
+
+        assert_eq!(nav.selected, Some(2));
+        assert_eq!(nav.viewport_offset, 0);
+    }
+
+    #[test]
+    fn table_navigation_scrolls_after_selection_moves_past_bottom() {
+        let mut nav = TableNavigation::default();
+        nav.reset(5);
+
+        nav.move_down(5, 3);
+        nav.move_down(5, 3);
+        nav.move_down(5, 3);
+
+        assert_eq!(nav.selected, Some(3));
+        assert_eq!(nav.viewport_offset, 1);
+    }
+
+    #[test]
+    fn table_navigation_scrolls_after_selection_moves_past_top() {
+        let mut nav = TableNavigation {
+            selected: Some(2),
+            viewport_offset: 2,
+        };
+
+        nav.move_up(5, 3);
+
+        assert_eq!(nav.selected, Some(1));
+        assert_eq!(nav.viewport_offset, 1);
+    }
+
+    #[test]
+    fn table_navigation_clears_selection_for_empty_rows() {
+        let mut nav = TableNavigation {
+            selected: Some(2),
+            viewport_offset: 1,
+        };
+
+        nav.sync(0, 3);
+
+        assert_eq!(nav.selected, None);
+        assert_eq!(nav.viewport_offset, 0);
+    }
+
+    #[test]
+    fn table_navigation_clamps_viewport_after_resize() {
+        let mut nav = TableNavigation {
+            selected: Some(4),
+            viewport_offset: 3,
+        };
+
+        nav.sync(5, 4);
+
+        assert_eq!(nav.selected, Some(4));
+        assert_eq!(nav.viewport_offset, 1);
+    }
+
+    #[test]
     fn advance_import_enter_skill_not_found() {
         let mut app = test_app();
 
@@ -820,6 +1516,114 @@ mod tests {
     }
 
     #[test]
+    fn move_agent_selection_up_decrements_focus() {
+        let mut app = test_app();
+        app.import_step = ImportStep::SelectAgents {
+            selected: Box::new(scan_result("repo-a/skill")),
+            agents: vec![
+                AgentSelectionItem {
+                    target: crate::inventory::AgentTarget {
+                        agent_id: "claude".to_string(),
+                        display_name: "Claude".to_string(),
+                        global_dir: None,
+                        project_dir: None,
+                        shared_target_dirs: vec![],
+                        enabled: true,
+                    },
+                    checked: true,
+                },
+                AgentSelectionItem {
+                    target: crate::inventory::AgentTarget {
+                        agent_id: "codex".to_string(),
+                        display_name: "Codex".to_string(),
+                        global_dir: None,
+                        project_dir: None,
+                        shared_target_dirs: vec![],
+                        enabled: true,
+                    },
+                    checked: true,
+                },
+            ],
+            focused: 1,
+        };
+
+        app.move_agent_selection_up();
+
+        assert!(matches!(
+            app.import_step,
+            ImportStep::SelectAgents { focused: 0, .. }
+        ));
+    }
+
+    #[test]
+    fn move_agent_selection_down_increments_focus() {
+        let mut app = test_app();
+        app.import_step = ImportStep::SelectAgents {
+            selected: Box::new(scan_result("repo-a/skill")),
+            agents: vec![
+                AgentSelectionItem {
+                    target: crate::inventory::AgentTarget {
+                        agent_id: "claude".to_string(),
+                        display_name: "Claude".to_string(),
+                        global_dir: None,
+                        project_dir: None,
+                        shared_target_dirs: vec![],
+                        enabled: true,
+                    },
+                    checked: true,
+                },
+                AgentSelectionItem {
+                    target: crate::inventory::AgentTarget {
+                        agent_id: "codex".to_string(),
+                        display_name: "Codex".to_string(),
+                        global_dir: None,
+                        project_dir: None,
+                        shared_target_dirs: vec![],
+                        enabled: true,
+                    },
+                    checked: true,
+                },
+            ],
+            focused: 0,
+        };
+
+        app.move_agent_selection_down();
+
+        assert!(matches!(
+            app.import_step,
+            ImportStep::SelectAgents { focused: 1, .. }
+        ));
+    }
+
+    #[test]
+    fn toggle_agent_selection_flips_checked() {
+        let mut app = test_app();
+        app.import_step = ImportStep::SelectAgents {
+            selected: Box::new(scan_result("repo-a/skill")),
+            agents: vec![AgentSelectionItem {
+                target: crate::inventory::AgentTarget {
+                    agent_id: "claude".to_string(),
+                    display_name: "Claude".to_string(),
+                    global_dir: None,
+                    project_dir: None,
+                    shared_target_dirs: vec![],
+                    enabled: true,
+                },
+                checked: true,
+            }],
+            focused: 0,
+        };
+
+        app.toggle_agent_selection();
+
+        if let ImportStep::SelectAgents { agents, .. } = &app.import_step {
+            assert!(!agents[0].checked);
+        } else {
+            panic!("expected SelectAgents");
+        }
+    }
+
+    #[test]
     fn import_step_hint_returns_string() {
         let app = App {
             import_step: ImportStep::EnterSkill,
@@ -838,6 +1642,8 @@ mod tests {
         let app = App {
             import_step: ImportStep::SelectAgents {
                 selected: Box::new(scan_result("repo-a/skill")),
+                agents: vec![],
+                focused: 0,
             },
             ..test_app()
         };

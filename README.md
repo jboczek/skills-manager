@@ -10,14 +10,12 @@ Run without subcommands to open the full-screen assistant-style terminal UI:
 skills-manager
 ```
 
-The TUI shows a header, status feed, main content area, sticky prompt, and footer hints. It supports home, list, scan, import, remove, config, and help modes. Type plain commands such as `list` and `help`, or slash commands such as `/list` and `/help`.
+The TUI shows a header, status feed, main content area, sticky prompt, and footer hints. It supports home, list, scan, config, help, and staged plan modes. Press `/` from an empty prompt to open command suggestions, or type plain commands such as `list` and `help`.
 
 Core prompt commands:
 
 - `/list`: refresh and show current inventory.
 - `/scan`: scan configured source roots.
-- `/import <skill>`: start a guided import flow.
-- `/remove <skill>`: start a guided removal flow.
 - `/config`: show the config path and current TOML.
 - `/help`: show commands and key hints.
 - `/quit`: exit.
@@ -26,11 +24,15 @@ Key behavior:
 
 - `Enter` submits the prompt or confirms the current guided step.
 - `Esc` cancels the current action and returns home.
+- `/` opens command suggestions with descriptions.
 - `?` opens help when the prompt is empty.
 - `q` quits when the prompt is empty.
-- `Up` / `Down` move through list rows.
+- `Up` / `Down` move through command suggestions, list rows, or scan rows.
+- `i` imports the selected scan row, or imports missing enabled-agent exposures from the selected list row.
+- `x` removes the selected list exposure or prompts for which exposure to remove.
+- `r` refreshes the active list or scan table.
 
-Import and remove flows run entirely inside the TUI. They use the same staged plan behavior as the CLI, show the plan before applying, rescan after apply, and require exact `yes` confirmation before deleting physical copies.
+Import and remove actions run from selected table rows inside the TUI. Typed `/import` and `/remove` commands guide users to these shortcuts instead of starting standalone prompt workflows. Table shortcuts use the same staged plan behavior as the CLI, show the plan before applying, rescan after apply, and require exact `yes` confirmation before deleting physical copies.
 
 ## Configuration
 
