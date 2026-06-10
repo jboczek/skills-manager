@@ -25,20 +25,32 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
                     .count()
             ),
         ),
-        Mode::List => table::render_inventory_table(
-            frame,
-            area,
-            &app.inventory,
-            app.list_table.viewport_offset,
-            app.list_table.selected,
-        ),
-        Mode::Scan => table::render_scan_table(
-            frame,
-            area,
-            &app.scan_results,
-            app.scan_table.viewport_offset,
-            app.scan_table.selected,
-        ),
+        Mode::List => {
+            if app.loading {
+                render_text_panel(frame, area, " Inventory ", "Loading...");
+            } else {
+                table::render_inventory_table(
+                    frame,
+                    area,
+                    &app.inventory,
+                    app.list_table.viewport_offset,
+                    app.list_table.selected,
+                );
+            }
+        }
+        Mode::Scan => {
+            if app.loading {
+                render_text_panel(frame, area, " Scan ", "Loading...");
+            } else {
+                table::render_scan_table(
+                    frame,
+                    area,
+                    &app.scan_results,
+                    app.scan_table.viewport_offset,
+                    app.scan_table.selected,
+                );
+            }
+        }
         Mode::Config => render_config(frame, area, app),
         Mode::Help => render_help(frame, area),
         Mode::Import => render_import(frame, area, app),
@@ -90,22 +102,29 @@ fn render_import(frame: &mut Frame, area: Rect, app: &App) {
                 .join("\n");
             render_text_panel(frame, area, " Import ", &body);
         }
-        ImportStep::SelectAgents { selected } => {
-            let agents = app
-                .config
-                .agents
+        ImportStep::SelectAgents {
+            selected,
+            agents,
+            focused,
+        } => {
+            let agent_lines = agents
                 .iter()
-                .filter(|(_, agent)| agent.enabled)
-                .map(|(agent_id, agent)| format!("- {agent_id} ({})", agent.display_name))
+                .enumerate()
+                .map(|(i, item)| {
+                    let cursor = if i == *focused { "►" } else { " " };
+                    let check = if item.checked { "✓" } else { " " };
+                    format!(
+                        "  {} [{}] {} ({})",
+                        cursor, check, item.target.agent_id, item.target.display_name
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join("\n");
             let body = format!(
-                "Selected skill\n  id: {}\n  path: {}\n  repo: {}\n  origin: {}\n\nSelect target agents:\n{}",
+                "Selected skill\n  id: {}\n  path: {}\n\nSelect agents to import to:\n{}",
                 selected.skill_id,
                 selected.skill_path.display(),
-                selected.repo_name.as_deref().unwrap_or("-"),
-                selected.remote_url.as_deref().unwrap_or("-"),
-                agents,
+                agent_lines,
             );
             render_text_panel(frame, area, " Import ", &body);
         }

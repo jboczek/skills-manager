@@ -2,6 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Rect;
 
 use crate::tui::app::{App, ImportStep, Mode, RemoveStep};
+use crate::constants::{AGENT_ID_CLAUDE, AGENT_ID_CODEX, AGENT_NAME_CLAUDE, AGENT_NAME_CODEX};
 
 /// Handle a key event. Returns true if the app should quit.
 pub fn handle_key(app: &mut App, key: KeyEvent) -> anyhow::Result<bool> {
@@ -63,6 +64,24 @@ fn handle_key_with_table_height(
         }
         KeyCode::Down if app.command_menu_open() => {
             app.move_command_suggestion_down();
+        }
+        KeyCode::Up
+            if app.mode == Mode::Import
+                && matches!(app.import_step, ImportStep::SelectAgents { .. }) =>
+        {
+            app.move_agent_selection_up();
+        }
+        KeyCode::Down
+            if app.mode == Mode::Import
+                && matches!(app.import_step, ImportStep::SelectAgents { .. }) =>
+        {
+            app.move_agent_selection_down();
+        }
+        KeyCode::Char(' ')
+            if app.mode == Mode::Import
+                && matches!(app.import_step, ImportStep::SelectAgents { .. }) =>
+        {
+            app.toggle_agent_selection();
         }
         KeyCode::Up if app.mode == Mode::List => {
             app.list_table.move_up(app.inventory.len(), table_height);
@@ -175,7 +194,7 @@ mod tests {
             },
             scope: Scope::Global,
             exposures: vec![SkillExposure {
-                agent_id: AgentId("codex".to_string()),
+                agent_id: AgentId(AGENT_ID_CODEX.to_string()),
                 path: std::path::PathBuf::from(format!("/skills/{name}")),
                 connection: ConnectionKind::Symlink,
             }],
@@ -374,7 +393,7 @@ mod tests {
     #[test]
     fn scan_import_shortcut_stages_plan_when_target_is_unambiguous() {
         let mut app = test_app();
-        enable_only(&mut app, "codex");
+        enable_only(&mut app, AGENT_ID_CODEX);
         app.mode = Mode::Scan;
         app.scan_results = vec![scan_result("repo-a/one")];
         app.scan_table.reset(app.scan_results.len());
@@ -390,7 +409,7 @@ mod tests {
     #[test]
     fn list_import_shortcut_stages_plan_when_missing_target_is_unambiguous() {
         let mut app = test_app();
-        enable_only(&mut app, "claude");
+        enable_only(&mut app, AGENT_ID_CLAUDE);
         app.mode = Mode::List;
         app.inventory = vec![inventory_row("one")];
         app.scan_results = vec![scan_result("repo-a/one")];
@@ -495,6 +514,79 @@ mod tests {
         assert_eq!(app.mode, Mode::Scan);
         assert_eq!(app.input, "");
         assert!(!app.command_menu_open());
+    }
+
+    fn agent_selection_app(focused: usize) -> App {
+        use crate::tui::app::AgentSelectionItem;
+
+        let mut app = test_app();
+        app.mode = Mode::Import;
+        app.import_step = ImportStep::SelectAgents {
+            selected: Box::new(scan_result("repo-a/skill")),
+            agents: vec![
+                AgentSelectionItem {
+                    target: crate::inventory::AgentTarget {
+                        agent_id: AGENT_ID_CLAUDE.to_string(),
+                        display_name: AGENT_NAME_CLAUDE.to_string(),
+                        global_dir: None,
+                        project_dir: None,
+                        shared_target_dirs: vec![],
+                        enabled: true,
+                    },
+                    checked: true,
+                },
+                AgentSelectionItem {
+                    target: crate::inventory::AgentTarget {
+                        agent_id: AGENT_ID_CODEX.to_string(),
+                        display_name: AGENT_NAME_CODEX.to_string(),
+                        global_dir: None,
+                        project_dir: None,
+                        shared_target_dirs: vec![],
+                        enabled: true,
+                    },
+                    checked: true,
+                },
+            ],
+            focused,
+        };
+        app
+    }
+
+    #[test]
+    fn up_moves_agent_selection_focus() {
+        let mut app = agent_selection_app(1);
+
+        handle_key(&mut app, key(KeyCode::Up)).expect("key handled");
+
+        assert!(matches!(
+            app.import_step,
+            ImportStep::SelectAgents { focused: 0, .. }
+        ));
+    }
+
+    #[test]
+    fn down_moves_agent_selection_focus() {
+        let mut app = agent_selection_app(0);
+
+        handle_key(&mut app, key(KeyCode::Down)).expect("key handled");
+
+        assert!(matches!(
+            app.import_step,
+            ImportStep::SelectAgents { focused: 1, .. }
+        ));
+    }
+
+    #[test]
+    fn space_toggles_agent_checked_state() {
+        let mut app = agent_selection_app(0);
+
+        handle_key(&mut app, key(KeyCode::Char(' '))).expect("key handled");
+
+        if let ImportStep::SelectAgents { agents, .. } = &app.import_step {
+            assert!(!agents[0].checked);
+        } else {
+            panic!("expected SelectAgents");
+        }
     }
 
     #[test]

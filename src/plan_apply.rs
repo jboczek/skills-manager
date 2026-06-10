@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use crate::constants::{AGENT_NAME_CLAUDE, AGENT_NAME_CODEX, AGENT_NAME_COPILOT};
 use crate::domain::ConnectionKind;
 use crate::plan::{ChangePlan, StagedChange};
 use crate::symlink;
@@ -91,7 +92,7 @@ mod tests {
 
         let result = apply_plan(&ChangePlan::new(vec![StagedChange::ExposeSkill {
             skill_name: "repo-a/code-review".to_string(),
-            agent_id: AgentId("Claude".to_string()),
+            agent_id: AgentId(AGENT_NAME_CLAUDE.to_string()),
             source_path: source.clone(),
             target_path: target.clone(),
             connection: ConnectionKind::Symlink,
@@ -112,7 +113,7 @@ mod tests {
 
         let result = apply_plan(&ChangePlan::new(vec![StagedChange::DetachSkill {
             skill_name: "repo-a/docs".to_string(),
-            agent_id: AgentId("Codex".to_string()),
+            agent_id: AgentId(AGENT_NAME_CODEX.to_string()),
             target_path: target.clone(),
         }]));
 
@@ -130,7 +131,7 @@ mod tests {
 
         let result = apply_plan(&ChangePlan::new(vec![StagedChange::DeletePhysicalCopy {
             skill_name: "repo-a/analysis".to_string(),
-            agent_id: AgentId("Copilot".to_string()),
+            agent_id: AgentId(AGENT_NAME_COPILOT.to_string()),
             target_path: target.clone(),
         }]));
 
@@ -151,14 +152,14 @@ mod tests {
 
         let first = StagedChange::ExposeSkill {
             skill_name: "repo-a/code-review".to_string(),
-            agent_id: AgentId("Claude".to_string()),
+            agent_id: AgentId(AGENT_NAME_CLAUDE.to_string()),
             source_path: source_one,
             target_path: target_one.clone(),
             connection: ConnectionKind::Symlink,
         };
         let second = StagedChange::ExposeSkill {
             skill_name: "repo-a/docs".to_string(),
-            agent_id: AgentId("Codex".to_string()),
+            agent_id: AgentId(AGENT_NAME_CODEX.to_string()),
             source_path: source_two,
             target_path: target_two.clone(),
             connection: ConnectionKind::Symlink,

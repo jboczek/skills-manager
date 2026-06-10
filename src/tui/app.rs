@@ -85,6 +85,8 @@ pub enum ImportStep {
     },
     SelectAgents {
         selected: Box<ScanResult>,
+        agents: Vec<AgentSelectionItem>,
+        focused: usize,
     },
     ConfirmPlan {
         plan: ChangePlan,
@@ -132,6 +134,18 @@ pub enum Mode {
     Import,
     Remove,
     Quit,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PendingLoad {
+    List,
+    Scan,
+}
+
+#[derive(Debug, Clone)]
+pub struct AgentSelectionItem {
+    pub target: AgentTarget,
+    pub checked: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -213,6 +227,8 @@ pub struct App {
     pub remove_step: RemoveStep,
     pub error_message: Option<String>,
     pub info_message: Option<String>,
+    pub loading: bool,
+    pub pending_load: Option<PendingLoad>,
     command_menu_selected: Option<usize>,
 }
 
@@ -237,6 +253,8 @@ impl App {
             remove_step: RemoveStep::EnterSkill,
             error_message: None,
             info_message: None,
+            loading: false,
+            pending_load: None,
             command_menu_selected: None,
         }
     }
@@ -255,6 +273,27 @@ impl App {
     pub fn refresh_inventory(&mut self) -> anyhow::Result<()> {
         self.inventory = helpers::fresh_inventory(&self.config, &self.current_dir)?;
         self.rebuild_status_messages();
+        Ok(())
+    }
+
+    /// Execute a deferred load (set by handle_command for list/scan) after a loading frame renders.
+    pub fn execute_pending_load(&mut self) -> anyhow::Result<()> {
+        let Some(load) = self.pending_load.take() else {
+            return Ok(());
+        };
+        self.loading = false;
+        match load {
+            PendingLoad::List => {
+                self.refresh_inventory()?;
+                self.enter_list_mode();
+                self.info_message = Some(format!("Loaded {} skill row(s).", self.inventory.len()));
+            }
+            PendingLoad::Scan => {
+                self.reload_scan_results()?;
+                self.enter_scan_mode();
+                self.info_message = Some(format!("Found {} skill(s).", self.scan_results.len()));
+            }
+        }
         Ok(())
     }
 
@@ -279,13 +318,14 @@ impl App {
 
         match parse_command(input) {
             TuiCommand::List => {
-                self.refresh_inventory()?;
-                self.enter_list_mode();
+                self.mode = Mode::List;
+                self.loading = true;
+                self.pending_load = Some(PendingLoad::List);
             }
             TuiCommand::Scan => {
-                self.reload_scan_results()?;
-                self.enter_scan_mode();
-                self.info_message = Some(format!("Found {} skill(s).", self.scan_results.len()));
+                self.mode = Mode::Scan;
+                self.loading = true;
+                self.pending_load = Some(PendingLoad::Scan);
             }
             TuiCommand::Import(skill) => {
                 let suffix = if skill.trim().is_empty() {
@@ -526,9 +566,40 @@ impl App {
                         ));
                     }
                     1 => {
-                        self.import_step = ImportStep::SelectAgents {
-                            selected: Box::new(matches[0].clone()),
-                        };
+                        let selected = Box::new(matches[0].clone());
+                        let target_agents = self.enabled_agent_targets();
+                        if target_agents.is_empty() {
+                            self.import_step = ImportStep::Done {
+                                message: "No enabled agents available.".to_string(),
+                            };
+                            self.info_message = Some("No enabled agents available.".to_string());
+                        } else if target_agents.len() == 1 {
+                            let plan = self.build_import_plan(&selected, &target_agents);
+                            self.import_step = if plan.is_empty() {
+                                self.info_message = Some("Nothing to do.".to_string());
+                                ImportStep::Done {
+                                    message: "Nothing to do.".to_string(),
+                                }
+                            } else {
+                                ImportStep::ConfirmPlan {
+                                    plan,
+                                    selected,
+                                    target_agents,
+                                }
+                            };
+                        } else {
+                            self.import_step = ImportStep::SelectAgents {
+                                selected,
+                                agents: target_agents
+                                    .into_iter()
+                                    .map(|t| AgentSelectionItem {
+                                        target: t,
+                                        checked: true,
+                                    })
+                                    .collect(),
+                                focused: 0,
+                            };
+                        }
                     }
                     _ => {
                         self.import_step = ImportStep::Disambiguate {
@@ -539,9 +610,40 @@ impl App {
             }
             ImportStep::Disambiguate { matches } => match parse_selection(input, matches.len()) {
                 Some(index) => {
-                    self.import_step = ImportStep::SelectAgents {
-                        selected: Box::new(matches[index].clone()),
-                    };
+                    let selected = Box::new(matches[index].clone());
+                    let target_agents = self.enabled_agent_targets();
+                    if target_agents.is_empty() {
+                        self.import_step = ImportStep::Done {
+                            message: "No enabled agents available.".to_string(),
+                        };
+                        self.info_message = Some("No enabled agents available.".to_string());
+                    } else if target_agents.len() == 1 {
+                        let plan = self.build_import_plan(&selected, &target_agents);
+                        self.import_step = if plan.is_empty() {
+                            self.info_message = Some("Nothing to do.".to_string());
+                            ImportStep::Done {
+                                message: "Nothing to do.".to_string(),
+                            }
+                        } else {
+                            ImportStep::ConfirmPlan {
+                                plan,
+                                selected,
+                                target_agents,
+                            }
+                        };
+                    } else {
+                        self.import_step = ImportStep::SelectAgents {
+                            selected,
+                            agents: target_agents
+                                .into_iter()
+                                .map(|t| AgentSelectionItem {
+                                    target: t,
+                                    checked: true,
+                                })
+                                .collect(),
+                            focused: 0,
+                        };
+                    }
                 }
                 None => {
                     self.error_message =
@@ -549,11 +651,26 @@ impl App {
                     self.import_step = ImportStep::Disambiguate { matches };
                 }
             },
-            ImportStep::SelectAgents { selected } => {
-                let Some(target_agents) = self.resolve_target_agents(input) else {
-                    self.import_step = ImportStep::SelectAgents { selected };
+            ImportStep::SelectAgents {
+                selected,
+                agents,
+                focused,
+            } => {
+                let target_agents: Vec<AgentTarget> = agents
+                    .iter()
+                    .filter(|item| item.checked)
+                    .map(|item| item.target.clone())
+                    .collect();
+                if target_agents.is_empty() {
+                    self.error_message =
+                        Some("Select at least one agent. Use Space to toggle.".to_string());
+                    self.import_step = ImportStep::SelectAgents {
+                        selected,
+                        agents,
+                        focused,
+                    };
                     return Ok(());
-                };
+                }
                 let plan = self.build_import_plan(&selected, &target_agents);
                 if plan.is_empty() {
                     self.import_step = ImportStep::Done {
@@ -727,7 +844,7 @@ impl App {
             ImportStep::EnterSkill => "Enter skill identifier (e.g. repo-a/code-review):",
             ImportStep::Disambiguate { .. } => "Enter number to select:",
             ImportStep::SelectAgents { .. } => {
-                "Enter target agents (comma-separated, or Enter for all):"
+                "Up/Down to move, Space to toggle, Enter to confirm:"
             }
             ImportStep::ConfirmPlan { .. } => "Apply this plan? [y/N]:",
             ImportStep::ConfirmPhysical { .. } => "Type 'yes' to confirm permanent deletion:",
@@ -747,47 +864,38 @@ impl App {
         }
     }
 
+    pub fn move_agent_selection_up(&mut self) {
+        if let ImportStep::SelectAgents { focused, .. } = &mut self.import_step {
+            *focused = focused.saturating_sub(1);
+        }
+    }
+
+    pub fn move_agent_selection_down(&mut self) {
+        if let ImportStep::SelectAgents {
+            agents, focused, ..
+        } = &mut self.import_step
+        {
+            *focused = (*focused + 1).min(agents.len().saturating_sub(1));
+        }
+    }
+
+    pub fn toggle_agent_selection(&mut self) {
+        if let ImportStep::SelectAgents {
+            agents, focused, ..
+        } = &mut self.import_step
+        {
+            if let Some(item) = agents.get_mut(*focused) {
+                item.checked = !item.checked;
+            }
+        }
+    }
+
     fn reload_scan_results(&mut self) -> anyhow::Result<()> {
         self.scan_results =
             scanner::scan(&helpers::scan_config_from(&self.config, &self.current_dir))?;
         scanner::assign_disambiguation_indices(&mut self.scan_results);
         self.rebuild_status_messages();
         Ok(())
-    }
-
-    fn resolve_target_agents(&mut self, input: &str) -> Option<Vec<AgentTarget>> {
-        let all_agents = helpers::agent_targets_from(&self.config, &self.current_dir);
-        if input.trim().is_empty() {
-            return Some(
-                all_agents
-                    .into_iter()
-                    .filter(|agent| agent.enabled)
-                    .collect(),
-            );
-        }
-
-        let requested = helpers::parse_agents(input);
-        for agent_id in &requested {
-            if !self.config.agents.contains_key(agent_id) {
-                self.error_message = Some(format!("Unknown agent: {agent_id}"));
-                return None;
-            }
-        }
-
-        let target_agents = all_agents
-            .into_iter()
-            .filter(|agent| {
-                requested
-                    .iter()
-                    .any(|requested_id| requested_id == &agent.agent_id)
-            })
-            .collect::<Vec<_>>();
-        if target_agents.is_empty() {
-            self.error_message = Some("No matching target agents found.".to_string());
-            return None;
-        }
-
-        Some(target_agents)
     }
 
     fn build_import_plan(
@@ -902,6 +1010,14 @@ impl App {
 
         self.import_step = ImportStep::SelectAgents {
             selected: Box::new(selected),
+            agents: target_agents
+                .into_iter()
+                .map(|target| AgentSelectionItem {
+                    target,
+                    checked: true,
+                })
+                .collect(),
+            focused: 0,
         };
     }
 
@@ -1400,6 +1516,114 @@ mod tests {
     }
 
     #[test]
+    fn move_agent_selection_up_decrements_focus() {
+        let mut app = test_app();
+        app.import_step = ImportStep::SelectAgents {
+            selected: Box::new(scan_result("repo-a/skill")),
+            agents: vec![
+                AgentSelectionItem {
+                    target: crate::inventory::AgentTarget {
+                        agent_id: "claude".to_string(),
+                        display_name: "Claude".to_string(),
+                        global_dir: None,
+                        project_dir: None,
+                        shared_target_dirs: vec![],
+                        enabled: true,
+                    },
+                    checked: true,
+                },
+                AgentSelectionItem {
+                    target: crate::inventory::AgentTarget {
+                        agent_id: "codex".to_string(),
+                        display_name: "Codex".to_string(),
+                        global_dir: None,
+                        project_dir: None,
+                        shared_target_dirs: vec![],
+                        enabled: true,
+                    },
+                    checked: true,
+                },
+            ],
+            focused: 1,
+        };
+
+        app.move_agent_selection_up();
+
+        assert!(matches!(
+            app.import_step,
+            ImportStep::SelectAgents { focused: 0, .. }
+        ));
+    }
+
+    #[test]
+    fn move_agent_selection_down_increments_focus() {
+        let mut app = test_app();
+        app.import_step = ImportStep::SelectAgents {
+            selected: Box::new(scan_result("repo-a/skill")),
+            agents: vec![
+                AgentSelectionItem {
+                    target: crate::inventory::AgentTarget {
+                        agent_id: "claude".to_string(),
+                        display_name: "Claude".to_string(),
+                        global_dir: None,
+                        project_dir: None,
+                        shared_target_dirs: vec![],
+                        enabled: true,
+                    },
+                    checked: true,
+                },
+                AgentSelectionItem {
+                    target: crate::inventory::AgentTarget {
+                        agent_id: "codex".to_string(),
+                        display_name: "Codex".to_string(),
+                        global_dir: None,
+                        project_dir: None,
+                        shared_target_dirs: vec![],
+                        enabled: true,
+                    },
+                    checked: true,
+                },
+            ],
+            focused: 0,
+        };
+
+        app.move_agent_selection_down();
+
+        assert!(matches!(
+            app.import_step,
+            ImportStep::SelectAgents { focused: 1, .. }
+        ));
+    }
+
+    #[test]
+    fn toggle_agent_selection_flips_checked() {
+        let mut app = test_app();
+        app.import_step = ImportStep::SelectAgents {
+            selected: Box::new(scan_result("repo-a/skill")),
+            agents: vec![AgentSelectionItem {
+                target: crate::inventory::AgentTarget {
+                    agent_id: "claude".to_string(),
+                    display_name: "Claude".to_string(),
+                    global_dir: None,
+                    project_dir: None,
+                    shared_target_dirs: vec![],
+                    enabled: true,
+                },
+                checked: true,
+            }],
+            focused: 0,
+        };
+
+        app.toggle_agent_selection();
+
+        if let ImportStep::SelectAgents { agents, .. } = &app.import_step {
+            assert!(!agents[0].checked);
+        } else {
+            panic!("expected SelectAgents");
+        }
+    }
+
+    #[test]
     fn import_step_hint_returns_string() {
         let app = App {
             import_step: ImportStep::EnterSkill,
@@ -1418,6 +1642,8 @@ mod tests {
         let app = App {
             import_step: ImportStep::SelectAgents {
                 selected: Box::new(scan_result("repo-a/skill")),
+                agents: vec![],
+                focused: 0,
             },
             ..test_app()
         };

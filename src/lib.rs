@@ -2,6 +2,7 @@ pub mod agent_dirs;
 pub mod cli;
 pub mod commands;
 pub mod config;
+pub mod constants;
 pub mod domain;
 pub mod errors;
 pub mod git;

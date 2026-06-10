@@ -1,10 +1,5 @@
+use crate::constants::AGENT_COLUMNS;
 use crate::domain::{ConnectionKind, InventoryRow, Scope};
-
-const AGENT_COLUMNS: [(&str, &str); 3] = [
-    ("claude", "CLAUDE"),
-    ("codex", "CODEX"),
-    ("copilot", "COPILOT"),
-];
 
 pub fn render_inventory(rows: &[InventoryRow]) -> String {
     if rows.is_empty() {
@@ -149,6 +144,7 @@ fn source_context(row: &InventoryRow) -> Option<String> {
 mod tests {
     use std::path::PathBuf;
 
+    use crate::constants::{AGENT_ID_CODEX, AGENT_ID_COPILOT};
     use crate::domain::{AgentId, SkillExposure, SkillId, SkillSource};
 
     use super::*;
@@ -168,7 +164,7 @@ mod tests {
                 },
                 scope: Scope::ProjectLocal,
                 exposures: vec![SkillExposure {
-                    agent_id: AgentId("codex".to_string()),
+                    agent_id: AgentId(AGENT_ID_CODEX.to_string()),
                     path: PathBuf::from("/tmp/repo-a-one/docs"),
                     connection: ConnectionKind::Symlink,
                 }],
@@ -186,7 +182,7 @@ mod tests {
                 },
                 scope: Scope::ProjectLocal,
                 exposures: vec![SkillExposure {
-                    agent_id: AgentId("copilot".to_string()),
+                    agent_id: AgentId(AGENT_ID_COPILOT.to_string()),
                     path: PathBuf::from("/tmp/repo-a-two/docs"),
                     connection: ConnectionKind::Symlink,
                 }],
