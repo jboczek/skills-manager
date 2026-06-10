@@ -113,6 +113,19 @@ Create the first usable Rust CLI/TUI that can discover skills, show effective av
 - **Status:** Done.
 - **Notes / risks:** Advanced table cell toggling remains deferred to V2 item 011.
 
+
+### 007 v3 - Source-grouped TUI tables
+
+- **Type:** UX
+- **Outcome:** Users can browse large list and scan results as compact, privacy-safe source groups instead of flat skill tables.
+- **Description:** Group list and scan rows by source, collapse every group by default, add Left/Right tree navigation, and show repository-relative or bounded path context without exposing user-specific absolute paths.
+- **Why now:** Table actions made individual rows usable, but large repositories still dominate the initial view and duplicate or unknown source labels remain hard to distinguish.
+- **PRD candidate:** Yes. PRD: [`docs/prds/v1/prd-007-v3-source-grouped-tui-tables.md`](prds/v1/prd-007-v3-source-grouped-tui-tables.md)
+- **Dependencies:** 004, 007, 011.
+- **Validation signal:** List and scan open as collapsed source overviews, expand and collapse consistently with arrow keys, distinguish duplicate sources with safe path context, and retain skill-level actions.
+- **Status:** Planned.
+- **Notes / risks:** Group identity and fallback path shortening must remain stable without leaking home-directory prefixes.
+
 ### Version Validation
 
 V1 works locally if a user can initialize default source and target paths, scan discovered skills, view consolidated availability across Codex, Claude, and Copilot, import selected skills through explicit plans, remove exposures safely, and use the default TUI without needing to understand internal directory topology.
