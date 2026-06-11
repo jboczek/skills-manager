@@ -10,7 +10,7 @@ Run without subcommands to open the full-screen assistant-style terminal UI:
 skills-manager
 ```
 
-The TUI shows a header, status feed, main content area, sticky prompt, and footer hints. It supports home, list, scan, config, help, and staged plan modes. Press `/` from an empty prompt to open command suggestions, or type plain commands such as `list` and `help`.
+The TUI shows a header, status feed, main content area, sticky prompt, and footer hints. List and scan open as collapsed source-group overviews, with privacy-safe repository-relative or shortened child paths and extra width for skill names. Press `/` from an empty prompt to open command suggestions, or type plain commands such as `list` and `help`.
 
 Core prompt commands:
 
@@ -27,12 +27,14 @@ Key behavior:
 - `/` opens command suggestions with descriptions.
 - `?` opens help when the prompt is empty.
 - `q` quits when the prompt is empty.
-- `Up` / `Down` move through command suggestions, list rows, or scan rows.
-- `i` imports the selected scan row, or imports missing enabled-agent exposures from the selected list row.
-- `x` removes the selected list exposure or prompts for which exposure to remove.
+- `Up` / `Down` move through command suggestions or currently visible source/skill rows.
+- `Right` expands a source group, then moves from an expanded group to its first skill.
+- `Left` moves from a skill to its source group, then collapses the group.
+- `i` imports the selected scan skill, or imports missing enabled-agent exposures from the selected list skill.
+- `x` removes the selected list skill exposure or prompts for which exposure to remove.
 - `r` refreshes the active list or scan table.
 
-Import and remove actions run from selected table rows inside the TUI. Typed `/import` and `/remove` commands guide users to these shortcuts instead of starting standalone prompt workflows. Table shortcuts use the same staged plan behavior as the CLI, show the plan before applying, rescan after apply, and require exact `yes` confirmation before deleting physical copies.
+Import and remove actions run only from expanded skill rows; group rows never imply a bulk action. Typed `/import` and `/remove` commands guide users to these shortcuts instead of starting standalone prompt workflows. Table shortcuts use the same staged plan behavior as the CLI, show the plan before applying, rescan after apply, and require exact `yes` confirmation before deleting physical copies.
 
 ## Configuration
 

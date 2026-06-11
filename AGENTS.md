@@ -17,7 +17,8 @@
 8. `/docs/AGENTS.md` is a set of rules for maintaining the documentation in this repository. Follow these rules when updating docs or suggesting doc changes. 
 9. When completing PRD work, update the README, matching `docs/features/` document, PRD status/progress notes, roadmap status, and changelog before considering the branch complete.
 
-Before implementation, make a plan and add it to temp file named after the PRD `/docs/temp/prd-xxx-plan.md`. The plan should be a simple step-by-step outline of how. Add the plan file but do not commit it.
+
+Before implementation, make a plan and add it to temp file named after the PRD `/docs/temp/prd-xxx-plan.md`. The plan should be a step-by-step outline of how the implementation will proceed and what files need to be modified. Add the plan file but do not commit it.
 
 ## Feature branches
 - Create a new branch for each feature or bugfix, named after the PRD or issue it addresses (e.g., `prd-001-{feature-name}` or `issue-123`).

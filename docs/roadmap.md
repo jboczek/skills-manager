@@ -13,7 +13,7 @@ V1 PRDs live under `docs/prds/v1/` and are linked from their roadmap items below
 - `docs/bigpicture.md`
 - `docs/interview.md`
 - `docs/skills_manager_rust_guidelines.md`
-- Current repository state: Rust CLI/TUI crate with configuration, source scanning, inventory/list, safe import/remove plans, human-readable CLI workflow, and assistant-style TUI shell slices implemented.
+- Current repository state: Rust CLI/TUI crate with configuration, source scanning, inventory/list, safe import/remove plans, human-readable CLI workflow, and source-grouped assistant-style TUI tables implemented.
 
 ## Roadmap Principles
 
@@ -118,12 +118,12 @@ Create the first usable Rust CLI/TUI that can discover skills, show effective av
 
 - **Type:** UX
 - **Outcome:** Users can browse large list and scan results as compact, privacy-safe source groups instead of flat skill tables.
-- **Description:** Group list and scan rows by source, collapse every group by default, add Left/Right tree navigation, and show repository-relative or bounded path context without exposing user-specific absolute paths.
+- **Description:** Group list and scan rows by source, collapse every group by default, add Left/Right tree navigation, widen the first column for skill names, and show repository-relative or bounded path context without exposing user-specific absolute paths.
 - **Why now:** Table actions made individual rows usable, but large repositories still dominate the initial view and duplicate or unknown source labels remain hard to distinguish.
 - **PRD candidate:** Yes. PRD: [`docs/prds/v1/prd-007-v3-source-grouped-tui-tables.md`](prds/v1/prd-007-v3-source-grouped-tui-tables.md)
 - **Dependencies:** 004, 007, 011.
 - **Validation signal:** List and scan open as collapsed source overviews, expand and collapse consistently with arrow keys, distinguish duplicate sources with safe path context, and retain skill-level actions.
-- **Status:** Planned.
+- **Status:** Done.
 - **Notes / risks:** Group identity and fallback path shortening must remain stable without leaking home-directory prefixes.
 
 ### Version Validation

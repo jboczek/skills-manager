@@ -4,15 +4,18 @@ use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table};
 
 use crate::domain::{ConnectionKind, InventoryRow, Scope};
 use crate::scanner::{ScanResult, SourceKind};
+use crate::tui::source_table::{SourceTable, SourceTableRow};
 use crate::tui::theme::Theme;
+
+const LIST_SKILL_COLUMN_WIDTH: u16 = 60;
+const SCAN_SKILL_COLUMN_WIDTH: u16 = 35;
 
 /// Render inventory rows as a table in the given area.
 pub fn render_inventory_table(
     frame: &mut Frame,
     area: Rect,
     rows: &[InventoryRow],
-    scroll: usize,
-    selected: Option<usize>,
+    source_table: &SourceTable<usize>,
 ) {
     if rows.is_empty() {
         render_empty(frame, area, " Inventory ", "No skills found.");
@@ -27,14 +30,50 @@ pub fn render_inventory_table(
         .style(Theme::default_style());
     let inner = block.inner(area);
     let visible_rows = usize::from(inner.height.saturating_sub(1)).max(1);
-    let start = scroll.min(rows.len().saturating_sub(visible_rows));
-    let end = (start + visible_rows).min(rows.len());
+    let projected_rows = source_table.visible_rows();
+    let start = source_table
+        .viewport_offset()
+        .min(projected_rows.len().saturating_sub(visible_rows));
+    let end = (start + visible_rows).min(projected_rows.len());
 
-    let display_rows = rows[start..end]
+    let display_rows = projected_rows[start..end]
         .iter()
         .enumerate()
-        .map(|(offset, row)| {
+        .filter_map(|(offset, projected_row)| {
             let index = start + offset;
+            let selected = source_table.selected_index() == Some(index);
+            if let SourceTableRow::Group {
+                name,
+                context,
+                count,
+                expanded,
+                ..
+            } = projected_row
+            {
+                return Some(
+                    Row::new(vec![
+                        Cell::from(group_label(*expanded, name, context)),
+                        Cell::from(skill_count_label(*count)),
+                        Cell::from(""),
+                        Cell::from(""),
+                        Cell::from(""),
+                        Cell::from(""),
+                        Cell::from(""),
+                    ])
+                    .style(row_style(selected)),
+                );
+            }
+
+            let SourceTableRow::Item {
+                item,
+                skill_name,
+                display_path,
+                ..
+            } = projected_row
+            else {
+                return None;
+            };
+            let row = rows.get(*item)?;
             let connections = row
                 .exposures
                 .iter()
@@ -53,8 +92,8 @@ pub fn render_inventory_table(
                 }
             };
             let table_row = Row::new(vec![
-                Cell::from(skill_label(row)),
-                Cell::from(source_label(row)),
+                Cell::from(format!("    {skill_name}")),
+                Cell::from(display_path.clone()),
                 Cell::from(agents("claude")),
                 Cell::from(agents("codex")),
                 Cell::from(agents("copilot")),
@@ -65,19 +104,19 @@ pub fn render_inventory_table(
                     connections
                 }),
             ]);
-            if selected == Some(index) {
+            Some(if selected {
                 table_row.style(Theme::selected())
             } else {
                 table_row.style(Theme::default_style())
-            }
+            })
         })
         .collect::<Vec<_>>();
 
     let table = Table::new(
         display_rows,
         [
+            Constraint::Length(LIST_SKILL_COLUMN_WIDTH),
             Constraint::Length(24),
-            Constraint::Length(16),
             Constraint::Length(8),
             Constraint::Length(8),
             Constraint::Length(10),
@@ -109,8 +148,7 @@ pub fn render_scan_table(
     frame: &mut Frame,
     area: Rect,
     results: &[ScanResult],
-    scroll: usize,
-    selected: Option<usize>,
+    source_table: &SourceTable<usize>,
 ) {
     if results.is_empty() {
         render_empty(frame, area, " Scan ", "No scan results available.");
@@ -125,45 +163,69 @@ pub fn render_scan_table(
         .style(Theme::default_style());
     let inner = block.inner(area);
     let visible_rows = usize::from(inner.height.saturating_sub(1)).max(1);
-    let start = scroll.min(results.len().saturating_sub(visible_rows));
-    let end = (start + visible_rows).min(results.len());
+    let projected_rows = source_table.visible_rows();
+    let start = source_table
+        .viewport_offset()
+        .min(projected_rows.len().saturating_sub(visible_rows));
+    let end = (start + visible_rows).min(projected_rows.len());
 
-    let display_rows = results[start..end]
+    let display_rows = projected_rows[start..end]
         .iter()
         .enumerate()
-        .map(|(offset, result)| {
+        .filter_map(|(offset, projected_row)| {
             let index = start + offset;
-            Row::new(vec![
-                Cell::from(result.skill_id.clone()),
-                Cell::from(source_kind_label(result.source_kind.clone())),
-                Cell::from(result.repo_name.clone().unwrap_or_else(|| "-".to_string())),
-                Cell::from(
-                    result
-                        .remote_url
-                        .clone()
-                        .or_else(|| {
-                            result
-                                .repo_path
-                                .as_ref()
-                                .map(|path| path.display().to_string())
-                        })
-                        .unwrap_or_else(|| "-".to_string()),
-                ),
-            ])
-            .style(scan_row_style(selected, index))
+            let selected = source_table.selected_index() == Some(index);
+            if let SourceTableRow::Group {
+                name,
+                context,
+                count,
+                expanded,
+                ..
+            } = projected_row
+            {
+                return Some(
+                    Row::new(vec![
+                        Cell::from(group_label(*expanded, name, context)),
+                        Cell::from(skill_count_label(*count)),
+                        Cell::from(""),
+                        Cell::from(""),
+                    ])
+                    .style(row_style(selected)),
+                );
+            }
+
+            let SourceTableRow::Item {
+                item,
+                skill_name,
+                display_path,
+                ..
+            } = projected_row
+            else {
+                return None;
+            };
+            let result = results.get(*item)?;
+            Some(
+                Row::new(vec![
+                    Cell::from(format!("    {skill_name}")),
+                    Cell::from(display_path.clone()),
+                    Cell::from(source_kind_label(result.source_kind.clone())),
+                    Cell::from(result.remote_url.clone().unwrap_or_else(|| "-".to_string())),
+                ])
+                .style(row_style(selected)),
+            )
         })
         .collect::<Vec<_>>();
 
     let table = Table::new(
         display_rows,
         [
+            Constraint::Length(SCAN_SKILL_COLUMN_WIDTH),
             Constraint::Length(28),
             Constraint::Length(12),
-            Constraint::Length(16),
             Constraint::Min(20),
         ],
     )
-    .header(Row::new(["SKILL", "SOURCE", "REPO", "ORIGIN"]).style(Theme::header()))
+    .header(Row::new(["SKILL", "PATH", "SOURCE", "ORIGIN"]).style(Theme::header()))
     .block(block)
     .column_spacing(1)
     .style(Theme::default_style());
@@ -187,33 +249,20 @@ fn render_empty(frame: &mut Frame, area: Rect, title: &str, message: &str) {
     );
 }
 
-fn skill_label(row: &InventoryRow) -> String {
-    let base = if row.skill_id.namespace.is_empty() {
-        row.skill_id.name.clone()
+fn group_label(expanded: bool, name: &str, context: &str) -> String {
+    let marker = if expanded { "v" } else { ">" };
+    if context.is_empty() || context == name {
+        format!("{marker} {name}")
     } else {
-        format!("{}/{}", row.skill_id.namespace, row.skill_id.name)
-    };
-
-    match row.disambiguation_index {
-        Some(index) => format!("({index}) {base}"),
-        None => base,
+        format!("{marker} {name} · {context}")
     }
 }
 
-fn source_label(row: &InventoryRow) -> String {
-    let source = row
-        .source
-        .repo_name
-        .clone()
-        .unwrap_or_else(|| "unknown".to_string());
-
-    if row.disambiguation_index.is_none() {
-        return source;
-    }
-
-    match source_context(row) {
-        Some(context) => format!("{source} ({context})"),
-        None => source,
+fn skill_count_label(count: usize) -> String {
+    if count == 1 {
+        "1 skill".to_string()
+    } else {
+        format!("{count} skills")
     }
 }
 
@@ -222,19 +271,6 @@ fn scope_label(scope: Scope) -> &'static str {
         Scope::Global => "global",
         Scope::ProjectLocal => "local",
     }
-}
-
-fn source_context(row: &InventoryRow) -> Option<String> {
-    row.source
-        .repo_path
-        .as_ref()
-        .map(|path| path.display().to_string())
-        .or_else(|| row.source.remote_url.clone())
-        .or_else(|| {
-            row.exposures
-                .first()
-                .map(|exposure| exposure.path.display().to_string())
-        })
 }
 
 fn connection_label(connection: ConnectionKind) -> &'static str {
@@ -253,8 +289,8 @@ fn source_kind_label(kind: SourceKind) -> &'static str {
     }
 }
 
-fn scan_row_style(selected: Option<usize>, index: usize) -> ratatui::style::Style {
-    if selected == Some(index) {
+fn row_style(selected: bool) -> ratatui::style::Style {
+    if selected {
         Theme::selected()
     } else {
         Theme::default_style()
@@ -263,46 +299,31 @@ fn scan_row_style(selected: Option<usize>, index: usize) -> ratatui::style::Styl
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
-    use crate::domain::{AgentId, SkillExposure, SkillId, SkillSource};
-
     use super::*;
 
-    fn duplicate_row(index: usize, repo_path: &str) -> InventoryRow {
-        InventoryRow {
-            skill_id: SkillId {
-                namespace: "repo-a".to_string(),
-                name: "docs".to_string(),
-            },
-            source: SkillSource {
-                repo_name: Some("repo-a".to_string()),
-                repo_path: Some(PathBuf::from(repo_path)),
-                remote_url: None,
-            },
-            scope: Scope::ProjectLocal,
-            exposures: vec![SkillExposure {
-                agent_id: AgentId("codex".to_string()),
-                path: PathBuf::from(format!("{repo_path}/docs")),
-                connection: ConnectionKind::Symlink,
-            }],
-            disambiguation_index: Some(index),
-        }
+    #[test]
+    fn group_rows_include_marker_context_and_count() {
+        assert_eq!(
+            group_label(false, "skills", "pgit/skills"),
+            "> skills · pgit/skills"
+        );
+        assert_eq!(
+            group_label(true, "skills", "pgit/skills"),
+            "v skills · pgit/skills"
+        );
+        assert_eq!(skill_count_label(1), "1 skill");
+        assert_eq!(skill_count_label(2), "2 skills");
     }
 
     #[test]
-    fn duplicate_rows_include_numbered_label_and_source_context() {
-        let row = duplicate_row(1, "/tmp/repo-a-one");
-
-        assert_eq!(skill_label(&row), "(1) repo-a/docs");
-        assert_eq!(source_label(&row), "repo-a (/tmp/repo-a-one)");
-        assert_eq!(scope_label(row.scope), "local");
+    fn row_style_marks_selected_row() {
+        assert_eq!(row_style(true), Theme::selected());
+        assert_eq!(row_style(false), Theme::default_style());
     }
 
     #[test]
-    fn scan_row_style_marks_selected_index() {
-        assert_eq!(scan_row_style(Some(1), 1), Theme::selected());
-        assert_eq!(scan_row_style(Some(1), 0), Theme::default_style());
-        assert_eq!(scan_row_style(None, 1), Theme::default_style());
+    fn skill_columns_are_wider_in_list_and_scan() {
+        assert_eq!(LIST_SKILL_COLUMN_WIDTH, 30);
+        assert_eq!(SCAN_SKILL_COLUMN_WIDTH, 35);
     }
 }

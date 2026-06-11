@@ -1,7 +1,7 @@
 ---
 title: Source-grouped TUI tables
 summary: Group list and scan rows by privacy-safe source identity with collapsed-by-default keyboard navigation.
-status: planned
+status: completed
 roadmap: v2
 ---
 
@@ -95,6 +95,7 @@ Import and remove shortcuts remain skill-level actions. Pressing `i` or `x` on a
 - Displayed source context must never include an absolute home path or user name.
 - Distinct repository roots with the same repository name must remain separate groups.
 - Unresolved rows from distinct source containers must remain separate groups.
+- The first skill-name column must be approximately 25% wider than the initial grouped-table layout in both list and scan views.
 - List `i`, list `x`, and scan `i` must operate only on child skill rows.
 - Refresh must preserve expansion for surviving group identities and reset invalid selection safely.
 - Empty list and scan results must retain their current empty-state behavior.
@@ -133,13 +134,22 @@ Import and remove shortcuts remain skill-level actions. Pressing `i` or `x` on a
 - Add shared navigation tests for initial collapse, Right expansion, Left collapse, child-to-parent movement, visible-row scrolling, refresh, resize, and empty data.
 - Add list and scan state tests proving both modes use the same grouping behavior.
 - Add action-routing tests proving group rows cannot start import or removal while child rows retain existing staged-plan routing.
+- Add a renderer-policy test that fixes the list skill column at 30 cells and the scan skill column at 35 cells.
+
+## Progress notes
+
+- 2026-06-11: Implemented the shared source-group projection, privacy-safe path labels, collapsed list/scan groups, visible-row navigation, Left/Right behavior, refresh preservation, resize synchronization, and skill-only action routing.
+- 2026-06-11: Added focused grouping, path, navigation, rendering, list/scan integration, and action-routing tests.
+- 2026-06-11: Verified modified TUI sources with `rustfmt --check` and the complete suite with `cargo test --locked`.
+- 2026-06-11: Widened the first skill-name column from 24 to 30 cells in list and from 28 to 35 cells in scan, with a focused regression test.
 
 ## Tasks
 
-- [ ] Add tests for shared source grouping and privacy-safe path labels.
-- [ ] Add tests for collapsed visible-row navigation in list and scan.
-- [ ] Introduce the shared source-group table projection.
-- [ ] Render collapsed and expanded group rows in both tables.
-- [ ] Route Left and Right keys through shared group navigation.
-- [ ] Preserve skill-level import/remove behavior and refresh expansion state.
-- [ ] Update TUI help, footer hints, and durable feature documentation.
+- [x] Add tests for shared source grouping and privacy-safe path labels.
+- [x] Add tests for collapsed visible-row navigation in list and scan.
+- [x] Introduce the shared source-group table projection.
+- [x] Render collapsed and expanded group rows in both tables.
+- [x] Route Left and Right keys through shared group navigation.
+- [x] Preserve skill-level import/remove behavior and refresh expansion state.
+- [x] Update TUI help, footer hints, and durable feature documentation.
+- [x] Widen the first skill-name column in list and scan by approximately 25%.

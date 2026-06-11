@@ -29,26 +29,14 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             if app.loading {
                 render_text_panel(frame, area, " Inventory ", "Loading...");
             } else {
-                table::render_inventory_table(
-                    frame,
-                    area,
-                    &app.inventory,
-                    app.list_table.viewport_offset,
-                    app.list_table.selected,
-                );
+                table::render_inventory_table(frame, area, &app.inventory, &app.list_table);
             }
         }
         Mode::Scan => {
             if app.loading {
                 render_text_panel(frame, area, " Scan ", "Loading...");
             } else {
-                table::render_scan_table(
-                    frame,
-                    area,
-                    &app.scan_results,
-                    app.scan_table.viewport_offset,
-                    app.scan_table.selected,
-                );
+                table::render_scan_table(frame, area, &app.scan_results, &app.scan_table);
             }
         }
         Mode::Config => render_config(frame, area, app),
@@ -75,7 +63,7 @@ fn render_help(frame: &mut Frame, area: Rect) {
 }
 
 fn help_text() -> &'static str {
-    "Commands\n  /list              Show current inventory\n  /scan              Scan for available skills\n  /config            Show config\n  /help              Show this help\n  /quit              Exit\n\nTable actions\n  i                  Import selected scan row, or missing list exposures\n  x                  Remove selected list exposure\n  r                  Refresh current table\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move table or command selection\n  q                  Quit from home\n  ?                  Help from home"
+    "Commands\n  /list              Show current inventory\n  /scan              Scan for available skills\n  /config            Show config\n  /help              Show this help\n  /quit              Exit\n\nTable actions\n  i                  Import selected skill child\n  x                  Remove selected list skill exposure\n  r                  Refresh current table\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
 }
 
 fn render_import(frame: &mut Frame, area: Rect, app: &App) {
@@ -259,7 +247,8 @@ mod tests {
 
         assert!(!text.contains("/import <skill>"));
         assert!(!text.contains("/remove <skill>"));
-        assert!(text.contains("Import selected scan row"));
-        assert!(text.contains("Remove selected list exposure"));
+        assert!(text.contains("Import selected skill child"));
+        assert!(text.contains("Remove selected list skill exposure"));
+        assert!(text.contains("Collapse or expand source groups"));
     }
 }

@@ -50,9 +50,11 @@ The slash suggestion menu lists `/list`, `/scan`, `/config`, `/help`, and `/quit
 
 Home mode shows loaded skill and enabled-agent counts with suggested commands.
 
-List mode refreshes inventory from the shared inventory service and renders rows with skill, source, Claude, Codex, Copilot, scope, and connection columns. Duplicate display identities include numbered labels such as `(1)` and `(2)` with path, origin, or exposure context. Selection starts at the first row when rows exist, and the viewport scrolls only after selection moves past the visible top or bottom.
+List mode refreshes inventory from the shared inventory service and opens with one collapsed row per source. Expanding a source reveals skill children with repository-relative paths when Git metadata is available, or a bounded privacy-safe path suffix otherwise. Child rows retain the Claude, Codex, Copilot, scope, and connection details. Duplicate display identities keep numbered labels such as `(1)` and `(2)`. The first column reserves 30 cells for source and skill labels.
 
-Scan mode runs the shared scanner and shows discovered skills with source type, repository, and origin context. Scan rows use the same selection and scrolling model as list rows.
+Scan mode runs the shared scanner and uses the same collapsed source groups, child paths, selection, and scrolling model as list mode. Its first column reserves 35 cells for source and skill labels.
+
+Repository-backed groups use the canonical repository root as identity. Repositories with the same folder name remain separate and receive distinguishing safe path context. Unresolved sources use their privacy-safe source container as identity, so unrelated `unknown` rows are not merged. Display labels omit standard home-directory prefixes and user names.
 
 Config mode shows the resolved config path and current TOML. Rich config editing remains outside V1.
 
@@ -70,14 +72,18 @@ The implemented V1 key behavior is:
 - `Esc`: cancel the current action and return home
 - `?`: open help when the prompt is empty
 - `q`: quit when the prompt is empty
-- `Up` / `Down`: move through command suggestions, list rows, or scan rows
+- `Up` / `Down`: move through command suggestions or visible source/skill rows
+- `Right`: expand a collapsed source group, or select the first child of an expanded group
+- `Left`: select a skill's parent source group, or collapse an expanded group
 - `/`: open slash command suggestions from an empty prompt
-- `i`: import the selected scan row, or import missing enabled-agent exposures from the selected list row
-- `x`: remove the selected list exposure, or choose which exposure to remove when a row has multiple
+- `i`: import the selected scan skill, or import missing enabled-agent exposures from the selected list skill
+- `x`: remove the selected list skill exposure, or choose which exposure to remove when a row has multiple
 - `r`: refresh the active list or scan table
 - `Ctrl-C`: quit
 
-Tab, left/right panel switching, and multi-cell exposure toggling are reserved for future modes with multiple active sections or editable table columns.
+All source groups start collapsed. Refresh preserves expansion for source identities that still exist, and resize events keep the selected visible row within the viewport. Pressing `i` or `x` on a group row asks the user to select a skill inside the group.
+
+Tab, panel switching, and multi-cell exposure toggling are reserved for future modes with multiple active sections or editable table columns.
 
 ## Safety
 

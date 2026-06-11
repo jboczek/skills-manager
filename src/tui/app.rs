@@ -11,6 +11,7 @@ use crate::inventory::AgentTarget;
 use crate::plan::{ChangePlan, StagedChange};
 use crate::plan_apply;
 use crate::scanner::{self, ScanResult};
+use crate::tui::source_table::{SourceGroupItem, SourceTable, SourceTableRow};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TuiCommand {
@@ -148,77 +149,14 @@ pub struct AgentSelectionItem {
     pub checked: bool,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct TableNavigation {
-    pub selected: Option<usize>,
-    pub viewport_offset: usize,
-}
-
-impl TableNavigation {
-    pub fn reset(&mut self, row_count: usize) {
-        self.viewport_offset = 0;
-        self.selected = (row_count > 0).then_some(0);
-    }
-
-    pub fn sync(&mut self, row_count: usize, viewport_height: usize) {
-        if row_count == 0 {
-            self.selected = None;
-            self.viewport_offset = 0;
-            return;
-        }
-
-        let viewport_height = viewport_height.max(1);
-        let selected = self.selected.unwrap_or(0).min(row_count - 1);
-        let max_offset = row_count.saturating_sub(viewport_height);
-        let mut offset = self.viewport_offset.min(max_offset);
-
-        if selected < offset {
-            offset = selected;
-        } else if selected >= offset + viewport_height {
-            offset = selected + 1 - viewport_height;
-        }
-
-        self.selected = Some(selected);
-        self.viewport_offset = offset.min(max_offset);
-    }
-
-    pub fn move_up(&mut self, row_count: usize, viewport_height: usize) {
-        if row_count == 0 {
-            self.sync(row_count, viewport_height);
-            return;
-        }
-
-        let selected = self.selected.unwrap_or(0).saturating_sub(1);
-        self.selected = Some(selected);
-        self.sync(row_count, viewport_height);
-    }
-
-    pub fn move_down(&mut self, row_count: usize, viewport_height: usize) {
-        if row_count == 0 {
-            self.sync(row_count, viewport_height);
-            return;
-        }
-
-        let selected = self
-            .selected
-            .unwrap_or(0)
-            .saturating_add(1)
-            .min(row_count - 1);
-        self.selected = Some(selected);
-        self.sync(row_count, viewport_height);
-    }
-}
-
 pub struct App {
     pub mode: Mode,
     pub input: String,
     pub inventory: Vec<InventoryRow>,
     pub scan_results: Vec<ScanResult>,
     pub status_messages: Vec<String>,
-    pub list_scroll: usize,
-    pub list_selected: Option<usize>,
-    pub list_table: TableNavigation,
-    pub scan_table: TableNavigation,
+    pub list_table: SourceTable<usize>,
+    pub scan_table: SourceTable<usize>,
     pub config: Config,
     pub current_dir: PathBuf,
     pub git_branch: Option<String>,
@@ -241,10 +179,8 @@ impl App {
             inventory: Vec::new(),
             scan_results: Vec::new(),
             status_messages: Vec::new(),
-            list_scroll: 0,
-            list_selected: None,
-            list_table: TableNavigation::default(),
-            scan_table: TableNavigation::default(),
+            list_table: SourceTable::default(),
+            scan_table: SourceTable::default(),
             config,
             current_dir,
             git_branch: None,
@@ -432,18 +368,12 @@ impl App {
 
     pub fn enter_list_mode(&mut self) {
         self.mode = Mode::List;
-        self.list_table.reset(self.inventory.len());
-        self.sync_legacy_list_navigation();
-    }
-
-    pub fn sync_legacy_list_navigation(&mut self) {
-        self.list_scroll = self.list_table.viewport_offset;
-        self.list_selected = self.list_table.selected;
+        self.list_table = SourceTable::new(self.list_table_items());
     }
 
     pub fn enter_scan_mode(&mut self) {
         self.mode = Mode::Scan;
-        self.scan_table.reset(self.scan_results.len());
+        self.scan_table = SourceTable::new(self.scan_table_items());
     }
 
     pub fn start_import_from_selected_scan_row(&mut self) -> anyhow::Result<()> {
@@ -451,7 +381,7 @@ impl App {
         self.info_message = None;
 
         let Some(selected) = self.selected_scan_result() else {
-            self.info_message = Some("No scan row selected.".to_string());
+            self.info_message = Some(self.selection_required_message(&self.scan_table));
             return Ok(());
         };
 
@@ -465,7 +395,7 @@ impl App {
         self.info_message = None;
 
         let Some(row) = self.selected_inventory_row() else {
-            self.info_message = Some("No inventory row selected.".to_string());
+            self.info_message = Some(self.selection_required_message(&self.list_table));
             return Ok(());
         };
 
@@ -477,6 +407,10 @@ impl App {
         }
 
         let skill_id = display_inventory_row(&row);
+        if let Some(selected) = self.scan_result_for_inventory_row(&row).cloned() {
+            self.start_import_for_scan_result(selected, target_agents);
+            return Ok(());
+        }
         let matches = helpers::find_scan_results_by_id(&skill_id, &self.scan_results);
         match matches.len() {
             0 => {
@@ -502,7 +436,7 @@ impl App {
         self.info_message = None;
 
         let Some(selected) = self.selected_inventory_row() else {
-            self.info_message = Some("No inventory row selected.".to_string());
+            self.info_message = Some(self.selection_required_message(&self.list_table));
             return Ok(());
         };
 
@@ -532,25 +466,35 @@ impl App {
         Ok(())
     }
 
-    pub fn refresh_active_table(&mut self) -> anyhow::Result<()> {
+    pub fn refresh_active_table(&mut self, viewport_height: usize) -> anyhow::Result<()> {
         self.error_message = None;
         self.info_message = None;
 
         match self.mode {
             Mode::List => {
                 self.refresh_inventory()?;
-                self.enter_list_mode();
+                let items = self.list_table_items();
+                self.list_table.refresh(items, viewport_height);
                 self.info_message = Some(format!("Loaded {} skill row(s).", self.inventory.len()));
             }
             Mode::Scan => {
                 self.reload_scan_results()?;
-                self.enter_scan_mode();
+                let items = self.scan_table_items();
+                self.scan_table.refresh(items, viewport_height);
                 self.info_message = Some(format!("Found {} skill(s).", self.scan_results.len()));
             }
             _ => {}
         }
 
         Ok(())
+    }
+
+    pub fn sync_active_table(&mut self, viewport_height: usize) {
+        match self.mode {
+            Mode::List => self.list_table.sync(viewport_height),
+            Mode::Scan => self.scan_table.sync(viewport_height),
+            _ => {}
+        }
     }
 
     /// Handle import flow step progression.
@@ -943,17 +887,93 @@ impl App {
     }
 
     fn selected_scan_result(&self) -> Option<ScanResult> {
-        self.scan_table
-            .selected
-            .and_then(|index| self.scan_results.get(index))
-            .cloned()
+        match self.scan_table.selected_row()? {
+            SourceTableRow::Item { item, .. } => self.scan_results.get(item).cloned(),
+            SourceTableRow::Group { .. } => None,
+        }
     }
 
-    fn selected_inventory_row(&self) -> Option<InventoryRow> {
-        self.list_table
-            .selected
-            .and_then(|index| self.inventory.get(index))
-            .cloned()
+    pub(crate) fn selected_inventory_row(&self) -> Option<InventoryRow> {
+        match self.list_table.selected_row()? {
+            SourceTableRow::Item { item, .. } => self.inventory.get(item).cloned(),
+            SourceTableRow::Group { .. } => None,
+        }
+    }
+
+    fn selection_required_message(&self, table: &SourceTable<usize>) -> String {
+        if matches!(table.selected_row(), Some(SourceTableRow::Group { .. })) {
+            "Select a skill inside the group.".to_string()
+        } else {
+            "No skill row selected.".to_string()
+        }
+    }
+
+    fn scan_table_items(&self) -> Vec<SourceGroupItem<usize>> {
+        self.scan_results
+            .iter()
+            .enumerate()
+            .map(|(index, result)| SourceGroupItem {
+                item: index,
+                skill_name: scan_skill_label(result),
+                skill_path: result.skill_path.clone(),
+                repo_name: result.repo_name.clone(),
+                repo_path: result.repo_path.clone(),
+                relative_path: result.skill_relative_path.clone(),
+            })
+            .collect()
+    }
+
+    fn list_table_items(&self) -> Vec<SourceGroupItem<usize>> {
+        self.inventory
+            .iter()
+            .enumerate()
+            .map(|(index, row)| {
+                let scan_result = self.scan_result_for_inventory_row(row);
+                let skill_path = scan_result
+                    .map(|result| result.skill_path.clone())
+                    .or_else(|| row.exposures.first().map(|exposure| exposure.path.clone()))
+                    .or_else(|| {
+                        row.source
+                            .repo_path
+                            .as_ref()
+                            .map(|repo_path| repo_path.join(&row.skill_id.name))
+                    })
+                    .unwrap_or_else(|| PathBuf::from(&row.skill_id.name));
+                SourceGroupItem {
+                    item: index,
+                    skill_name: inventory_skill_label(row),
+                    skill_path,
+                    repo_name: row.source.repo_name.clone(),
+                    repo_path: row.source.repo_path.clone(),
+                    relative_path: scan_result
+                        .and_then(|result| result.skill_relative_path.clone()),
+                }
+            })
+            .collect()
+    }
+
+    fn scan_result_for_inventory_row(&self, row: &InventoryRow) -> Option<&ScanResult> {
+        let display_id = display_inventory_row(row);
+        let local_index = self
+            .inventory
+            .iter()
+            .filter(|candidate| {
+                display_inventory_row(candidate) == display_id
+                    && candidate.source.repo_path == row.source.repo_path
+            })
+            .position(|candidate| candidate == row)
+            .unwrap_or(0);
+        let matches = self
+            .scan_results
+            .iter()
+            .filter(|result| {
+                result.skill_id == display_id && result.repo_path == row.source.repo_path
+            })
+            .collect::<Vec<_>>();
+        matches
+            .get(local_index)
+            .copied()
+            .or_else(|| matches.first().copied())
     }
 
     fn enabled_agent_targets(&self) -> Vec<AgentTarget> {
@@ -1123,6 +1143,32 @@ fn display_inventory_row(row: &InventoryRow) -> String {
     }
 }
 
+fn inventory_skill_label(row: &InventoryRow) -> String {
+    match row.disambiguation_index {
+        Some(index) => format!("({index}) {}", row.skill_id.name),
+        None => row.skill_id.name.clone(),
+    }
+}
+
+fn scan_skill_label(result: &ScanResult) -> String {
+    let name = result
+        .skill_path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| {
+            result
+                .skill_id
+                .rsplit('/')
+                .next()
+                .unwrap_or(&result.skill_id)
+                .to_string()
+        });
+    match result.disambiguation_index {
+        Some(index) => format!("({index}) {name}"),
+        None => name,
+    }
+}
+
 fn parse_selection(input: &str, max: usize) -> Option<usize> {
     let index = input.trim().parse::<usize>().ok()?;
     (1..=max).contains(&index).then_some(index - 1)
@@ -1287,8 +1333,9 @@ mod tests {
         app.enter_list_mode();
 
         assert_eq!(app.mode, Mode::List);
-        assert_eq!(app.list_table.selected, Some(0));
-        assert_eq!(app.list_table.viewport_offset, 0);
+        assert_eq!(app.list_table.selected_index(), Some(0));
+        assert_eq!(app.list_table.viewport_offset(), 0);
+        assert_eq!(app.list_table.visible_rows().len(), 1);
     }
 
     #[test]
@@ -1299,8 +1346,136 @@ mod tests {
         app.enter_scan_mode();
 
         assert_eq!(app.mode, Mode::Scan);
-        assert_eq!(app.scan_table.selected, Some(0));
-        assert_eq!(app.scan_table.viewport_offset, 0);
+        assert_eq!(app.scan_table.selected_index(), Some(0));
+        assert_eq!(app.scan_table.viewport_offset(), 0);
+        assert_eq!(app.scan_table.visible_rows().len(), 1);
+    }
+
+    #[test]
+    fn list_and_scan_use_the_same_repository_group_identity_and_child_path() {
+        let mut app = test_app();
+        let repo_path = PathBuf::from("/Users/alice/pgit/repo-a");
+        let skill_path = repo_path.join(".agents/skills/one");
+        app.scan_results = vec![ScanResult {
+            skill_id: "repo-a/one".to_string(),
+            skill_path,
+            skill_relative_path: Some(PathBuf::from(".agents/skills/one")),
+            repo_name: Some("repo-a".to_string()),
+            repo_path: Some(repo_path.clone()),
+            remote_url: None,
+            source_kind: SourceKind::CentralDir,
+            disambiguation_index: None,
+        }];
+        let mut row = inventory_row("repo-a/one");
+        row.source.repo_name = Some("repo-a".to_string());
+        row.source.repo_path = Some(repo_path);
+        app.inventory = vec![row];
+
+        app.enter_list_mode();
+        let list_key = app.list_table.groups()[0].key.clone();
+        app.list_table.move_right(4);
+        let list_path = match &app.list_table.visible_rows()[1] {
+            SourceTableRow::Item { display_path, .. } => display_path.clone(),
+            _ => panic!("expected list child row"),
+        };
+
+        app.enter_scan_mode();
+        let scan_key = app.scan_table.groups()[0].key.clone();
+        app.scan_table.move_right(4);
+        let scan_path = match &app.scan_table.visible_rows()[1] {
+            SourceTableRow::Item { display_path, .. } => display_path.clone(),
+            _ => panic!("expected scan child row"),
+        };
+
+        assert_eq!(list_key, scan_key);
+        assert_eq!(list_path, ".agents/skills/one");
+        assert_eq!(scan_path, list_path);
+        assert!(!scan_path.contains("alice"));
+    }
+
+    #[test]
+    fn list_projection_maps_duplicates_within_each_same_name_repository() {
+        let mut app = test_app();
+        let repo_one = PathBuf::from("/Users/alice/one/skills");
+        let repo_two = PathBuf::from("/Users/alice/two/skills");
+        app.scan_results = vec![
+            ScanResult {
+                skill_id: "skills/docs".to_string(),
+                skill_path: repo_one.join(".agents/skills/docs"),
+                skill_relative_path: Some(PathBuf::from(".agents/skills/docs")),
+                repo_name: Some("skills".to_string()),
+                repo_path: Some(repo_one.clone()),
+                remote_url: None,
+                source_kind: SourceKind::CentralDir,
+                disambiguation_index: Some(1),
+            },
+            ScanResult {
+                skill_id: "skills/docs".to_string(),
+                skill_path: repo_one.join("skills/docs"),
+                skill_relative_path: Some(PathBuf::from("skills/docs")),
+                repo_name: Some("skills".to_string()),
+                repo_path: Some(repo_one.clone()),
+                remote_url: None,
+                source_kind: SourceKind::CentralDir,
+                disambiguation_index: Some(2),
+            },
+            ScanResult {
+                skill_id: "skills/docs".to_string(),
+                skill_path: repo_two.join(".agents/skills/docs"),
+                skill_relative_path: Some(PathBuf::from(".agents/skills/docs")),
+                repo_name: Some("skills".to_string()),
+                repo_path: Some(repo_two.clone()),
+                remote_url: None,
+                source_kind: SourceKind::CentralDir,
+                disambiguation_index: Some(3),
+            },
+            ScanResult {
+                skill_id: "skills/docs".to_string(),
+                skill_path: repo_two.join("skills/docs"),
+                skill_relative_path: Some(PathBuf::from("skills/docs")),
+                repo_name: Some("skills".to_string()),
+                repo_path: Some(repo_two.clone()),
+                remote_url: None,
+                source_kind: SourceKind::CentralDir,
+                disambiguation_index: Some(4),
+            },
+        ];
+        app.inventory = [repo_one, repo_two]
+            .into_iter()
+            .flat_map(|repo_path| {
+                [1, 2].into_iter().map(move |index| {
+                    let mut row = inventory_row("skills/docs");
+                    row.source.repo_name = Some("skills".to_string());
+                    row.source.repo_path = Some(repo_path.clone());
+                    row.disambiguation_index = Some(index);
+                    row
+                })
+            })
+            .enumerate()
+            .map(|(index, mut row)| {
+                row.disambiguation_index = Some(index + 1);
+                row
+            })
+            .collect();
+
+        let paths = app
+            .inventory
+            .iter()
+            .map(|row| {
+                app.scan_result_for_inventory_row(row)
+                    .and_then(|result| result.skill_relative_path.clone())
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            paths,
+            vec![
+                Some(PathBuf::from(".agents/skills/docs")),
+                Some(PathBuf::from("skills/docs")),
+                Some(PathBuf::from(".agents/skills/docs")),
+                Some(PathBuf::from("skills/docs")),
+            ]
+        );
     }
 
     #[test]
@@ -1417,80 +1592,6 @@ mod tests {
             app.selected_command_suggestion().map(|item| item.label),
             Some("/list")
         );
-    }
-
-    #[test]
-    fn table_navigation_selects_first_row_when_rows_exist() {
-        let mut nav = TableNavigation::default();
-
-        nav.reset(3);
-
-        assert_eq!(nav.selected, Some(0));
-        assert_eq!(nav.viewport_offset, 0);
-    }
-
-    #[test]
-    fn table_navigation_keeps_viewport_still_before_bottom() {
-        let mut nav = TableNavigation::default();
-        nav.reset(5);
-
-        nav.move_down(5, 3);
-        nav.move_down(5, 3);
-
-        assert_eq!(nav.selected, Some(2));
-        assert_eq!(nav.viewport_offset, 0);
-    }
-
-    #[test]
-    fn table_navigation_scrolls_after_selection_moves_past_bottom() {
-        let mut nav = TableNavigation::default();
-        nav.reset(5);
-
-        nav.move_down(5, 3);
-        nav.move_down(5, 3);
-        nav.move_down(5, 3);
-
-        assert_eq!(nav.selected, Some(3));
-        assert_eq!(nav.viewport_offset, 1);
-    }
-
-    #[test]
-    fn table_navigation_scrolls_after_selection_moves_past_top() {
-        let mut nav = TableNavigation {
-            selected: Some(2),
-            viewport_offset: 2,
-        };
-
-        nav.move_up(5, 3);
-
-        assert_eq!(nav.selected, Some(1));
-        assert_eq!(nav.viewport_offset, 1);
-    }
-
-    #[test]
-    fn table_navigation_clears_selection_for_empty_rows() {
-        let mut nav = TableNavigation {
-            selected: Some(2),
-            viewport_offset: 1,
-        };
-
-        nav.sync(0, 3);
-
-        assert_eq!(nav.selected, None);
-        assert_eq!(nav.viewport_offset, 0);
-    }
-
-    #[test]
-    fn table_navigation_clamps_viewport_after_resize() {
-        let mut nav = TableNavigation {
-            selected: Some(4),
-            viewport_offset: 3,
-        };
-
-        nav.sync(5, 4);
-
-        assert_eq!(nav.selected, Some(4));
-        assert_eq!(nav.viewport_offset, 1);
     }
 
     #[test]
