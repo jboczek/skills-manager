@@ -97,7 +97,7 @@ Inventory output includes:
 - scope: `global`, `local`, or `unknown`
 - connection: `symlink`, `physical`, `missing`, or `unknown`
 
-Skills exposed through shared implementation targets such as `.agents` are shown as effective Codex or Copilot availability according to config. `.agents` is not rendered as an agent column or command target.
+Skills exposed through shared implementation targets such as `~/.agents/skills` and `<project>/.agents/skills` are shown as effective Codex or Copilot availability according to config. `.agents` is not rendered as an agent column or command target. Existing configs with `project_dir = ".agents"` are interpreted as the standard `.agents/skills` directory and also gain the standard global `~/.agents/skills` target.
 
 When multiple rows share the same display namespace, the list output numbers them as `(1)`, `(2)`, and includes source path or origin context so the intended skill can be identified.
 

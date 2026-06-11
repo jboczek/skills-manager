@@ -49,6 +49,7 @@ Make source repositories and source folders the primary browsing level in TUI li
 7. As a privacy-conscious user, I want displayed paths to omit home directories and user names, so that screenshots and terminal output do not leak local machine details.
 8. As a user with unresolved sources, I want `unknown` groups to include useful path context, so that they are not merged into one misleading group.
 9. As a user performing import or removal, I want actions to apply only to selected skill rows, so that expanding a group never implies a bulk mutation.
+10. As a user with shared global skills, I want `/list` to include skills from `~/.agents/skills`, so that the inventory matches the skills available to Codex and Copilot.
 
 ## Proposed experience
 
@@ -99,6 +100,8 @@ Import and remove shortcuts remain skill-level actions. Pressing `i` or `x` on a
 - List `i`, list `x`, and scan `i` must operate only on child skill rows.
 - Refresh must preserve expansion for surviving group identities and reset invalid selection safely.
 - Empty list and scan results must retain their current empty-state behavior.
+- List inventory must include global `~/.agents/skills` and project-local `<project>/.agents/skills` shared targets for configured agents.
+- Existing configs with `project_dir = ".agents"` and no shared global directory must continue to work without manual edits.
 
 ## Success criteria
 
@@ -135,6 +138,7 @@ Import and remove shortcuts remain skill-level actions. Pressing `i` or `x` on a
 - Add list and scan state tests proving both modes use the same grouping behavior.
 - Add action-routing tests proving group rows cannot start import or removal while child rows retain existing staged-plan routing.
 - Add a renderer-policy test that fixes the list skill column at 30 cells and the scan skill column at 35 cells.
+- Add CLI regression coverage proving a legacy `.agents` config includes global `~/.agents/skills` entries with global Codex and Copilot availability.
 
 ## Progress notes
 
@@ -142,6 +146,7 @@ Import and remove shortcuts remain skill-level actions. Pressing `i` or `x` on a
 - 2026-06-11: Added focused grouping, path, navigation, rendering, list/scan integration, and action-routing tests.
 - 2026-06-11: Verified modified TUI sources with `rustfmt --check` and the complete suite with `cargo test --locked`.
 - 2026-06-11: Widened the first skill-name column from 24 to 30 cells in list and from 28 to 35 cells in scan, with a focused regression test.
+- 2026-06-11: Added global and project-local `.agents/skills` inventory targets, including in-memory migration of the legacy `.agents` config value.
 
 ## Tasks
 
@@ -153,3 +158,4 @@ Import and remove shortcuts remain skill-level actions. Pressing `i` or `x` on a
 - [x] Preserve skill-level import/remove behavior and refresh expansion state.
 - [x] Update TUI help, footer hints, and durable feature documentation.
 - [x] Widen the first skill-name column in list and scan by approximately 25%.
+- [x] Include global and project-local `.agents/skills` entries in `/list`.

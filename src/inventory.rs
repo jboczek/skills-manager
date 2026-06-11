@@ -15,7 +15,7 @@ pub struct AgentTarget {
     pub display_name: String,
     pub global_dir: Option<PathBuf>,
     pub project_dir: Option<PathBuf>,
-    pub shared_target_dirs: Vec<PathBuf>,
+    pub shared_target_dirs: Vec<(PathBuf, Scope)>,
     pub enabled: bool,
 }
 
@@ -149,13 +149,7 @@ fn target_dirs(agent: &AgentTarget) -> Vec<(PathBuf, Scope)> {
     if let Some(path) = &agent.project_dir {
         dirs.push((path.clone(), Scope::ProjectLocal));
     }
-    dirs.extend(
-        agent
-            .shared_target_dirs
-            .iter()
-            .cloned()
-            .map(|path| (path, Scope::ProjectLocal)),
-    );
+    dirs.extend(agent.shared_target_dirs.iter().cloned());
     dirs
 }
 
