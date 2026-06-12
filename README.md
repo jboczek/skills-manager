@@ -112,6 +112,16 @@ skills/code-review        skills                          -        âœ“        âœ
 
 PRDs live under `docs/prds/`. Durable feature documentation lives under `docs/features/`.
 
+## V2 planning
+
+V2 is specified as three ordered slices:
+
+1. [Global execution context](docs/prds/v2/prd-008-global-execution-context.md): remove current-directory-dependent inventory and mutation behavior.
+2. [Git URL import into the managed source directory](docs/prds/v2/prd-009-git-url-import-into-managed-source-directory.md): acquire and scan a source before selecting skills to expose.
+3. [Manual install migration](docs/prds/v2/prd-010-manual-install-migration.md): conservatively convert physical global installs into managed sources and symlink exposures.
+
+These are planned behaviors. The V1 commands documented below remain the current implementation.
+
 ## Importing And Removing Skills
 
 Mutating CLI commands always print a change plan before applying filesystem changes:

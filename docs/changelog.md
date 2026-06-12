@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-06-12
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-06-12 13:40 | Added the complete V2 PRD set for global execution, managed Git source import, and conservative manual-install migration, with roadmap links and implementation order. | `README.md`, `roadmap.md`, `prds/v2/prd-008-global-execution-context.md`, `prds/v2/prd-009-git-url-import-into-managed-source-directory.md`, `prds/v2/prd-010-manual-install-migration.md` |
+| 2026-06-12 12:24 | Reframed V2 around globally launched, current-directory-independent operation, removed arbitrary project targeting, moved completed TUI follow-ups into V1, and aligned completed V1 statuses. | `AGENTS.md`, `bigpicture.md`, `roadmap.md`, `prds/v1/prd-002-configuration-and-agent-definitions.md`, `prds/v1/prd-006-safe-import-and-removal-plans.md`, `prds/v1/prd-007-v2-assistant-style-tui-table-actions.md`, `prds/v1/prd-007-v3-source-grouped-tui-tables.md` |
+
 ## 2026-06-11
 
 | Time | Change | Docs |

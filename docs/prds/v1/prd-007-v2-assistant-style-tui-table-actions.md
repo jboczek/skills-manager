@@ -2,7 +2,7 @@
 title: Assistant-style TUI table actions
 summary: Add slash command suggestions, natural table scrolling, scan-table navigation, and table-driven import/remove shortcuts to the assistant-style TUI.
 status: done
-roadmap: v2
+roadmap: v1
 ---
 
 # Assistant-style TUI table actions

@@ -1,8 +1,8 @@
 ---
 title: Source-grouped TUI tables
 summary: Group list and scan rows by privacy-safe source identity with collapsed-by-default keyboard navigation.
-status: completed
-roadmap: v2
+status: done
+roadmap: v1
 ---
 
 # Source-grouped TUI tables

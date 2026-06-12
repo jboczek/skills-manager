@@ -1,7 +1,7 @@
 ---
 title: Safe import and removal plans
 summary: Stage and confirm filesystem mutations for exposing skills, detaching symlinks, and deleting physical copies.
-status: planned
+status: done
 roadmap: v1
 ---
 
@@ -111,7 +111,7 @@ The plan renderer should be shared enough that CLI and TUI show consistent infor
 - Required by roadmap item `007`.
 - Used by roadmap item `005` for mutating CLI import/remove behavior.
 
-## Open questions
+## Decisions
 
-- Should physical-copy deletion require typing the exact skill name or the exact target path?
-- Should multi-change plans apply all-or-nothing, or apply sequentially with clear partial-failure reporting in V1?
+- Physical-copy deletion requires the exact confirmation phrase `yes`.
+- Multi-change plans apply sequentially, stop on the first failure, and report changes already applied.

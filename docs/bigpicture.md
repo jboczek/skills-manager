@@ -2,7 +2,7 @@
 
 ## Summary
 
-Skills Manager is a terminal-first devtool for people who use multiple agentic coding tools and want one reliable view of their local skill ecosystem. It should show which skills exist, where they came from, where they are exposed, which agents can use them, and what will change before the user applies an import or removal.
+Skills Manager is a globally launched, terminal-first devtool for people who use multiple agentic coding tools and want one reliable view of their local skill ecosystem. It should show which skills exist, where they came from, where they are exposed, which agents can use them, and what will change before the user applies an import or removal.
 
 The strategic direction is not a classic package manager. The stronger product shape is a **skill exposure manager**: source repositories remain understandable and centralized, while configured Codex, Claude, and Copilot target paths expose selected skills through controlled links or local copies.
 
@@ -57,9 +57,9 @@ The UI should be a full-screen assistant-style TUI, not just a raw table. The ta
 
 ### V2 — Expansion
 
-Once V1 proves the local inventory and exposure model, V2 can expand from current-directory workflows into broader local workspace management. Likely directions include operating against arbitrary project paths, importing directly from Git URLs into a managed source directory, and migrating older manual installs into the central source-plus-symlink model.
+Once V1 proves the local inventory and exposure model, V2 should remove the current working directory as implicit product context. Skills Manager should behave consistently wherever it is launched, using configured global source and target paths rather than selecting a project from the shell location.
 
-The important V2 move is to reduce manual setup across projects without hiding what the tool is doing. Users should still be able to inspect every source, target, and pending filesystem change.
+The remaining V2 expansion should import directly from Git URLs into a managed source directory and migrate older manual installs into the central source-plus-symlink model. The important move is to reduce manual setup without adding arbitrary project targeting or hiding what the tool is doing. Users should still be able to inspect every source, target, and pending filesystem change.
 
 ### V3 — Long-term potential
 
@@ -75,6 +75,7 @@ This is speculative and depends on V1 proving that users trust the inventory and
 - A source-repository-plus-symlink model is easier to reason about than repeated manual copies.
 - Users will trust the tool if it shows staged filesystem changes before applying them.
 - A terminal-first assistant-style interface with complete import/remove flows is the right default for the target audience.
+- A globally launched application with configured global paths is easier to understand than behavior that changes with the current working directory.
 - Codex, Claude, and Copilot conventions are stable enough to support a useful V1 through configurable target paths.
 - A simple single-crate Rust application can carry V1 without premature workspace complexity.
 
@@ -85,6 +86,7 @@ This is speculative and depends on V1 proving that users trust the inventory and
 - Physical-copy removal is risky; the product must make destructive actions explicit and hard to misread.
 - Startup scanning could become slow if recursive repository discovery is too broad or poorly bounded.
 - The boundary between effective availability and technical exposure may confuse users unless the UI explains it through layout and labels.
+- Existing current-directory-dependent behavior must be removed carefully so launching from different directories cannot change the managed inventory or mutation targets.
 - V1 intentionally avoids full package-manager concerns such as versions, updates, branches, and dirty repository state; this may be acceptable for exposure management but could become a common user expectation.
 - Context-window usage estimates may be approximate because each agent can decide differently which skill fields are injected into context.
 

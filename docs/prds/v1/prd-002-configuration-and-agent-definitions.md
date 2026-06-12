@@ -1,7 +1,7 @@
 ---
 title: Configuration and agent definitions
 summary: Add persistent TOML configuration for source roots, scan settings, and configurable agent target paths.
-status: planned
+status: done
 roadmap: v1
 ---
 
@@ -129,7 +129,7 @@ confirm_physical_delete = true
 - Roadmap item `001`.
 - Enables roadmap items `003`, `004`, `005`, `006`, and `007`.
 
-## Open questions
+## Decisions
 
-- Should `config init` create target directories or only write config? V1 should write config only and let `doctor` report missing directories.
-- Should missing agent paths be warnings or hard errors when that agent is disabled?
+- `config init` writes configuration only; `doctor` reports missing target directories.
+- Missing target directories are warnings because import creates them when needed.
