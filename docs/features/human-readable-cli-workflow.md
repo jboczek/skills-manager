@@ -1,6 +1,6 @@
 # Human-readable CLI Workflow
 
-The human-readable CLI workflow gives V1 direct commands for inspecting and changing local skill exposure state while the TUI remains the primary product experience.
+The human-readable CLI workflow gives direct commands for inspecting and changing globally configured skill exposure state while the TUI remains the primary product experience.
 
 Run:
 
@@ -17,11 +17,11 @@ skills-manager doctor
 
 `skills-manager scan` reads configured skill source roots and prints discovered `SKILL.md` directories. It does not mutate disk.
 
-`skills-manager list` rebuilds inventory from scan results and configured target directories. It prints effective availability for Claude, Codex, and Copilot, plus scope and connection type.
+`skills-manager list` rebuilds inventory from configured global targets and fixed project-local targets inside scanned repositories. It prints only real exposures, with effective availability for Claude, Codex, and Copilot, actual source path, scope, and connection type. Source-only scan results do not create list rows.
 
-`skills-manager config show` prints the current TOML config. If the config file is missing, it prints a `config init` hint.
+`skills-manager config show` validates and prints normalized TOML. Ignored legacy `project_dir` values are reported as diagnostics and omitted from the normalized output. If the config file is missing, it prints a `config init` hint.
 
-`skills-manager doctor` checks config existence and parsing, source directories, target directory writability, and local Git CLI availability. Output is compact status lines with affected paths so failures are actionable.
+`skills-manager doctor` validates the global context, reports compatibility diagnostics, checks source directories, checks global target directory writability, and verifies local Git CLI availability. Output is compact status lines with affected paths so failures are actionable.
 
 ## Import Flow
 
@@ -29,7 +29,7 @@ skills-manager doctor
 
 Before applying anything, import renders a plan showing the source path, target path, and connection type. It only applies after `Apply this plan? [y/N]` is confirmed. After applying, it rescans and prints the resulting inventory.
 
-V1 imports use symlink exposures. Existing target paths are skipped instead of overwritten.
+Imports use symlink exposures. Existing target paths are skipped instead of overwritten. Every plan target comes from validated global agent configuration; relative target paths fail before planning.
 
 ## Remove Flow
 
@@ -39,12 +39,14 @@ Before applying anything, remove renders a plan. Symlink plans detach the link w
 
 After applying, remove rescans and prints the resulting inventory.
 
+Project-local target directories contribute read-only inventory rows but never contribute changes to removal plans. Selecting one prints a read-only message and exits successfully without prompting or mutating disk. Legacy `project_dir` values remain ignored; local rows come from fixed conventions inside scanned repositories.
+
 ## Ambiguous Identifiers
 
 Skill identifiers can be exact, such as `repo-a/code-review`, or name-only, such as `code-review`. If a name-only identifier matches multiple skills, interactive mutation commands print numbered options such as `(1)` and `(2)` with path or origin context.
 
 Non-interactive ambiguous mutation commands fail instead of guessing. Users should rerun with a more specific identifier.
 
-## V1 Boundaries
+## Boundaries
 
-The CLI is intentionally human-readable. V1 does not provide stable JSON output, remote Git import, arbitrary project targeting, or mutation without confirmation.
+The CLI is intentionally human-readable. It does not provide stable JSON output, remote Git import, arbitrary project targeting, or mutation without confirmation.

@@ -1,5 +1,9 @@
+use std::fs;
+use std::path::PathBuf;
+
 use crate::constants::AGENT_COLUMNS;
 use crate::domain::{ConnectionKind, InventoryRow, Scope};
+use crate::inventory;
 
 pub fn render_inventory(rows: &[InventoryRow]) -> String {
     if rows.is_empty() {
@@ -67,20 +71,28 @@ fn skill_display(row: &InventoryRow) -> String {
 }
 
 fn source_display(row: &InventoryRow) -> String {
-    let source = row
-        .source
-        .repo_name
-        .clone()
+    let source = source_path(row)
+        .map(|path| path.display().to_string())
+        .or_else(|| {
+            row.source
+                .repo_path
+                .as_ref()
+                .map(|path| path.display().to_string())
+        })
+        .or_else(|| row.source.repo_name.clone())
         .unwrap_or_else(|| "unknown".to_string());
 
-    if row.disambiguation_index.is_none() {
-        return source;
+    if row.scope == Scope::ProjectLocal
+        && let Some(project_root) = row
+            .exposures
+            .first()
+            .and_then(|exposure| inventory::project_root_from_exposure_path(&exposure.path))
+        && !source.starts_with(&project_root.display().to_string())
+    {
+        return format!("{source} (project: {})", project_root.display());
     }
 
-    match source_context(row) {
-        Some(context) => format!("{source} ({context})"),
-        None => source,
-    }
+    source
 }
 
 fn exposure_mark(row: &InventoryRow, agent_id: &str) -> &'static str {
@@ -101,7 +113,7 @@ fn scope_display(row: &InventoryRow) -> &'static str {
     } else {
         match row.scope {
             Scope::Global => "global",
-            Scope::ProjectLocal => "local",
+            Scope::ProjectLocal => "project-local",
         }
     }
 }
@@ -127,17 +139,14 @@ fn primary_connection(row: &InventoryRow) -> Option<ConnectionKind> {
         })
 }
 
-fn source_context(row: &InventoryRow) -> Option<String> {
-    row.source
-        .repo_path
-        .as_ref()
-        .map(|path| path.display().to_string())
-        .or_else(|| row.source.remote_url.clone())
-        .or_else(|| {
-            row.exposures
-                .first()
-                .map(|exposure| exposure.path.display().to_string())
-        })
+fn source_path(row: &InventoryRow) -> Option<PathBuf> {
+    let exposure = row.exposures.first()?;
+    if exposure.connection == ConnectionKind::Symlink {
+        return fs::canonicalize(&exposure.path)
+            .ok()
+            .or_else(|| Some(exposure.path.clone()));
+    }
+    Some(exposure.path.clone())
 }
 
 #[cfg(test)]
@@ -196,5 +205,42 @@ mod tests {
         assert!(output.contains("/tmp/repo-a-one"), "{output}");
         assert!(output.contains("(2) repo-a/docs"), "{output}");
         assert!(output.contains("/tmp/repo-a-two"), "{output}");
+    }
+
+    #[test]
+    fn project_local_physical_source_includes_project_path() {
+        let rows = vec![InventoryRow {
+            skill_id: SkillId {
+                namespace: "analystloop".to_string(),
+                name: "adx-intake".to_string(),
+            },
+            source: SkillSource {
+                repo_name: Some("analystloop".to_string()),
+                repo_path: Some(PathBuf::from("/Users/alice/pgit/analystloop")),
+                remote_url: None,
+            },
+            scope: Scope::ProjectLocal,
+            exposures: vec![
+                SkillExposure {
+                    agent_id: AgentId(AGENT_ID_CODEX.to_string()),
+                    path: PathBuf::from("/Users/alice/pgit/analystloop/.agents/skills/adx-intake"),
+                    connection: ConnectionKind::PhysicalCopy,
+                },
+                SkillExposure {
+                    agent_id: AgentId(AGENT_ID_COPILOT.to_string()),
+                    path: PathBuf::from("/Users/alice/pgit/analystloop/.agents/skills/adx-intake"),
+                    connection: ConnectionKind::PhysicalCopy,
+                },
+            ],
+            disambiguation_index: None,
+        }];
+
+        let output = render_inventory(&rows);
+
+        assert!(
+            output.contains("/Users/alice/pgit/analystloop/.agents/skills/adx-intake"),
+            "{output}"
+        );
+        assert!(output.contains("project-local"), "{output}");
     }
 }

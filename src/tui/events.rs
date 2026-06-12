@@ -180,10 +180,7 @@ mod tests {
     use crate::scanner::{ScanResult, SourceKind};
 
     fn test_app() -> App {
-        App::new(
-            Config::default_config(),
-            std::path::PathBuf::from("/tmp/skills-manager"),
-        )
+        App::new(Config::default_config()).expect("default config resolves")
     }
 
     fn key(code: KeyCode) -> KeyEvent {
@@ -228,18 +225,18 @@ mod tests {
         for (id, agent) in &mut app.config.agents {
             agent.enabled = id == agent_id;
         }
+        app.global_context = app.config.resolve_global_context().unwrap();
     }
 
     fn point_config_to_missing_paths(app: &mut App) {
-        app.config.skills.central_dir = app
-            .current_dir
+        let root = std::path::Path::new("/tmp/skills-manager");
+        app.config.skills.central_dir = root
             .join("missing-refresh-source")
             .to_string_lossy()
             .into_owned();
         app.config.skills.scan_parent_dirs.clear();
         for agent in app.config.agents.values_mut() {
-            agent.global_dir = app
-                .current_dir
+            agent.global_dir = root
                 .join(format!("missing-{}", agent.display_name.to_lowercase()))
                 .to_string_lossy()
                 .into_owned();
@@ -247,6 +244,7 @@ mod tests {
             agent.shared_target_ids.clear();
         }
         app.config.shared_targets.clear();
+        app.global_context = app.config.resolve_global_context().unwrap();
     }
 
     #[test]

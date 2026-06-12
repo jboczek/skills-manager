@@ -3,6 +3,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::constants::*;
+use crate::domain::Scope;
+use crate::inventory::AgentTarget;
 use anyhow::Context;
 use directories::{BaseDirs, ProjectDirs};
 use serde::{Deserialize, Serialize};
@@ -24,7 +26,7 @@ fn default_max_scan_depth() -> u32 {
 pub struct AgentConfig {
     pub display_name: String,
     pub global_dir: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing)]
     pub project_dir: Option<String>,
     pub enabled: bool,
     #[serde(default)]
@@ -36,7 +38,8 @@ pub struct SharedTargetConfig {
     pub display_name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub global_dir: Option<String>,
-    pub project_dir: String,
+    #[serde(default, skip_serializing)]
+    pub project_dir: Option<String>,
     pub enabled: bool,
 }
 
@@ -52,6 +55,15 @@ pub struct Config {
     pub agents: BTreeMap<String, AgentConfig>,
     pub shared_targets: BTreeMap<String, SharedTargetConfig>,
     pub preferences: PreferencesConfig,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GlobalContext {
+    pub central_dir: PathBuf,
+    pub scan_parent_dirs: Vec<PathBuf>,
+    pub max_scan_depth: usize,
+    pub agents: Vec<AgentTarget>,
+    pub diagnostics: Vec<String>,
 }
 
 impl Config {
@@ -72,7 +84,7 @@ impl Config {
             AgentConfig {
                 display_name: AGENT_NAME_CODEX.to_string(),
                 global_dir: AGENT_GLOBAL_DIR_CODEX.to_string(),
-                project_dir: Some(AGENT_PROJECT_DIR_CODEX.to_string()),
+                project_dir: None,
                 enabled: true,
                 shared_target_ids: vec![SHARED_TARGET_AGENTS.to_string()],
             },
@@ -82,7 +94,7 @@ impl Config {
             AgentConfig {
                 display_name: AGENT_NAME_COPILOT.to_string(),
                 global_dir: AGENT_GLOBAL_DIR_COPILOT.to_string(),
-                project_dir: Some(AGENT_PROJECT_DIR_COPILOT.to_string()),
+                project_dir: None,
                 enabled: true,
                 shared_target_ids: vec![SHARED_TARGET_AGENTS.to_string()],
             },
@@ -94,7 +106,7 @@ impl Config {
             SharedTargetConfig {
                 display_name: SHARED_TARGET_DISPLAY_NAME.to_string(),
                 global_dir: Some(SHARED_TARGET_GLOBAL_DIR.to_string()),
-                project_dir: SHARED_TARGET_PROJECT_DIR.to_string(),
+                project_dir: None,
                 enabled: true,
             },
         );
@@ -138,6 +150,115 @@ impl Config {
         Ok(toml::to_string_pretty(self)?)
     }
 
+    pub fn resolve_global_context(&self) -> anyhow::Result<GlobalContext> {
+        let diagnostics = self.compatibility_diagnostics();
+        let mut path_errors = Vec::new();
+
+        let central_dir = resolve_active_path(
+            "skills.central_dir",
+            &self.skills.central_dir,
+            &mut path_errors,
+        );
+        let scan_parent_dirs = self
+            .skills
+            .scan_parent_dirs
+            .iter()
+            .enumerate()
+            .map(|(index, path)| {
+                resolve_active_path(
+                    &format!("skills.scan_parent_dirs[{index}]"),
+                    path,
+                    &mut path_errors,
+                )
+            })
+            .collect::<Vec<_>>();
+        let shared_target_paths = self
+            .shared_targets
+            .iter()
+            .filter(|(_, target)| target.enabled)
+            .filter_map(|(target_id, target)| {
+                target.global_dir.as_deref().map(|path| {
+                    (
+                        target_id.clone(),
+                        resolve_active_path(
+                            &format!("shared_targets.{target_id}.global_dir"),
+                            path,
+                            &mut path_errors,
+                        ),
+                    )
+                })
+            })
+            .collect::<BTreeMap<_, _>>();
+
+        let agents = self
+            .agents
+            .iter()
+            .map(|(agent_id, agent)| {
+                let global_dir = resolve_active_path(
+                    &format!("agents.{agent_id}.global_dir"),
+                    &agent.global_dir,
+                    &mut path_errors,
+                );
+                let shared_target_dirs = agent
+                    .shared_target_ids
+                    .iter()
+                    .filter_map(|target_id| shared_target_paths.get(target_id))
+                    .cloned()
+                    .map(|path| (path, Scope::Global))
+                    .collect();
+
+                AgentTarget {
+                    agent_id: agent_id.clone(),
+                    display_name: agent.display_name.clone(),
+                    global_dir: Some(global_dir),
+                    project_dir: None,
+                    shared_target_dirs,
+                    enabled: agent.enabled,
+                }
+            })
+            .collect();
+
+        if !path_errors.is_empty() {
+            let details = diagnostics
+                .iter()
+                .chain(path_errors.iter())
+                .map(|message| format!("- {message}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            anyhow::bail!("configuration validation failed:\n{details}");
+        }
+
+        Ok(GlobalContext {
+            central_dir,
+            scan_parent_dirs,
+            max_scan_depth: self.skills.max_scan_depth as usize,
+            agents,
+            diagnostics,
+        })
+    }
+
+    pub fn compatibility_diagnostics(&self) -> Vec<String> {
+        let agent_diagnostics = self.agents.iter().filter_map(|(agent_id, agent)| {
+            agent.project_dir.as_ref().map(|value| {
+                format!(
+                    "agents.{agent_id}.project_dir is ignored in global execution context: {value}"
+                )
+            })
+        });
+        let shared_target_diagnostics =
+            self.shared_targets
+                .iter()
+                .filter_map(|(target_id, target)| {
+                    target.project_dir.as_ref().map(|value| {
+                        format!(
+                            "shared_targets.{target_id}.project_dir is ignored in global execution context: {value}"
+                        )
+                    })
+                });
+
+        agent_diagnostics.chain(shared_target_diagnostics).collect()
+    }
+
     /// Write this config to `path`, creating parent directories as needed.
     /// Fails if the file already exists (use `create_new` semantics).
     pub fn write_new(&self, path: &Path) -> anyhow::Result<WriteOutcome> {
@@ -171,13 +292,20 @@ impl Config {
             return;
         };
 
-        if agents_target.global_dir.is_none() {
+        if agents_target.global_dir.is_none() && agents_target.project_dir.is_some() {
             agents_target.global_dir = Some(SHARED_TARGET_GLOBAL_DIR.to_string());
         }
-        if agents_target.project_dir == ".agents" {
-            agents_target.project_dir = SHARED_TARGET_PROJECT_DIR.to_string();
-        }
     }
+}
+
+fn resolve_active_path(field: &str, raw_path: &str, errors: &mut Vec<String>) -> PathBuf {
+    let path = expand_tilde(raw_path);
+    if !path.is_absolute() {
+        errors.push(format!(
+            "{field} must be absolute after leading-tilde expansion; rejected value: {raw_path}"
+        ));
+    }
+    path
 }
 
 pub enum WriteOutcome {
@@ -271,7 +399,7 @@ confirm_physical_delete = true
             cfg.shared_targets["agents"].global_dir.as_deref(),
             Some("~/.agents/skills")
         );
-        assert_eq!(cfg.shared_targets["agents"].project_dir, ".agents/skills");
+        assert!(cfg.shared_targets["agents"].project_dir.is_none());
     }
 
     #[test]
@@ -295,7 +423,10 @@ confirm_physical_delete = true
             cfg.shared_targets["agents"].global_dir.as_deref(),
             Some("~/.agents/skills")
         );
-        assert_eq!(cfg.shared_targets["agents"].project_dir, ".agents/skills");
+        assert_eq!(
+            cfg.shared_targets["agents"].project_dir.as_deref(),
+            Some(".agents")
+        );
     }
 
     #[test]
@@ -393,5 +524,110 @@ confirm_physical_delete = true
             msg.contains("/nonexistent/path/config.toml"),
             "error should mention the path: {msg}"
         );
+    }
+
+    #[test]
+    fn resolve_global_context_expands_tilde_paths() {
+        let config = Config::default_config();
+
+        let context = config
+            .resolve_global_context()
+            .expect("default config should resolve");
+
+        assert_eq!(context.central_dir, home_dir().join("skills"));
+        assert!(
+            context
+                .agents
+                .iter()
+                .filter_map(|agent| agent.global_dir.as_ref())
+                .all(|path| path.is_absolute())
+        );
+        assert!(
+            context
+                .agents
+                .iter()
+                .flat_map(|agent| agent.shared_target_dirs.iter())
+                .all(|(path, _)| path.is_absolute())
+        );
+    }
+
+    #[test]
+    fn resolve_global_context_rejects_relative_active_path() {
+        let mut config = Config::default_config();
+        config.skills.central_dir = "relative/skills".to_string();
+
+        let error = config
+            .resolve_global_context()
+            .expect_err("relative path should fail");
+        let message = error.to_string();
+
+        assert!(message.contains("skills.central_dir"));
+        assert!(message.contains("relative/skills"));
+    }
+
+    #[test]
+    fn resolve_global_context_rejects_relative_enabled_shared_target() {
+        let mut config = Config::default_config();
+        config.shared_targets.insert(
+            "unused".to_string(),
+            SharedTargetConfig {
+                display_name: "Unused".to_string(),
+                global_dir: Some("relative/shared".to_string()),
+                project_dir: None,
+                enabled: true,
+            },
+        );
+
+        let error = config
+            .resolve_global_context()
+            .expect_err("relative enabled shared target should fail");
+        let message = error.to_string();
+
+        assert!(message.contains("shared_targets.unused.global_dir"));
+        assert!(message.contains("relative/shared"));
+    }
+
+    #[test]
+    fn resolve_global_context_ignores_legacy_project_dirs_with_diagnostics() {
+        let config = Config::parse(EXAMPLE_TOML).expect("legacy config should parse");
+
+        let context = config
+            .resolve_global_context()
+            .expect("legacy project paths should not block global config");
+
+        assert!(
+            context
+                .diagnostics
+                .iter()
+                .any(|message| message.contains("agents.codex.project_dir"))
+        );
+        assert!(
+            context
+                .diagnostics
+                .iter()
+                .any(|message| message.contains("shared_targets.agents.project_dir"))
+        );
+        assert!(
+            context
+                .agents
+                .iter()
+                .all(|agent| agent.project_dir.is_none())
+        );
+        assert!(
+            context
+                .agents
+                .iter()
+                .flat_map(|agent| agent.shared_target_dirs.iter())
+                .all(|(_, scope)| *scope == crate::domain::Scope::Global)
+        );
+    }
+
+    #[test]
+    fn serialization_omits_legacy_project_dirs() {
+        let config = Config::parse(EXAMPLE_TOML).expect("legacy config should parse");
+
+        let serialized = config.to_toml().expect("config should serialize");
+
+        assert!(!serialized.contains("project_dir"));
     }
 }

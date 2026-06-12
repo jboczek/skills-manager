@@ -169,13 +169,13 @@ Make Skills Manager independent of the launch directory and reduce manual source
 
 - **Type:** Capability
 - **Outcome:** Skills Manager behaves the same regardless of the directory from which it is launched.
-- **Description:** Remove the current working directory as implicit product context and resolve managed sources and mutation targets from explicit global configuration.
+- **Description:** Remove the current working directory as implicit product context, resolve global mutation targets from explicit configuration, and report read-only project-local exposures inside configured source repositories.
 - **Why now:** The application is intended to be installed and launched globally, so shell location must not silently change inventory or mutation behavior.
 - **PRD candidate:** Yes. PRD: [`docs/prds/v2/prd-008-global-execution-context.md`](prds/v2/prd-008-global-execution-context.md)
 - **Dependencies:** 004, 006, 007.
-- **Validation signal:** Launching the same configuration from unrelated directories produces the same inventory, plans, and global targets.
-- **Status:** Planned.
-- **Notes / risks:** V2 will not add a `--project` selector. Relative managed paths and legacy project targets must not reintroduce launch-directory-dependent behavior.
+- **Validation signal:** Launching the same configuration from unrelated directories produces the same scan catalog, global plans, and global plus project-local exposure inventory.
+- **Status:** Done.
+- **Notes / risks:** Active managed paths are absolute after leading-tilde expansion. Legacy project target config parses for compatibility but is ignored with diagnostics. List groups are repository-based: global rows use source repositories and project-local rows use containing projects. Project-local rows stay read-only, and no `--project` selector is added.
 
 ### 009 - Git URL import into managed source directory
 

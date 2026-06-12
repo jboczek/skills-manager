@@ -15,8 +15,8 @@ pub fn run() -> Result<()> {
     }
 
     let config = Config::load_from(&path)?;
-    let current_dir = helpers::current_dir()?;
-    let rows = helpers::fresh_inventory(&config, &current_dir)?;
+    let context = config.resolve_global_context()?;
+    let rows = helpers::fresh_global_inventory(&context)?;
     println!("{}", output::render_inventory(&rows));
     Ok(())
 }

@@ -2,15 +2,15 @@ use anyhow::{Result, bail};
 
 use crate::cli::RemoveArgs;
 use crate::commands::helpers;
-use crate::domain::{AgentId, ConnectionKind};
+use crate::domain::{AgentId, ConnectionKind, Scope};
 use crate::output;
 use crate::plan::{ChangePlan, StagedChange};
 use crate::plan_apply;
 
 pub fn run(args: RemoveArgs) -> Result<()> {
     let config = helpers::load_config()?;
-    let current_dir = helpers::current_dir()?;
-    let rows = helpers::fresh_inventory(&config, &current_dir)?;
+    let context = config.resolve_global_context()?;
+    let rows = helpers::fresh_global_inventory(&context)?;
 
     let matches = helpers::find_inventory_rows_by_id(&args.skill, &rows);
     let selected = match matches.len() {
@@ -41,6 +41,10 @@ pub fn run(args: RemoveArgs) -> Result<()> {
             selected
         }
     };
+    if selected.scope == Scope::ProjectLocal {
+        println!("Project-local exposures are read-only and cannot be removed.");
+        return Ok(());
+    }
 
     let agent_filter = match args.from.as_deref() {
         Some(raw_agents) => {
@@ -137,7 +141,7 @@ pub fn run(args: RemoveArgs) -> Result<()> {
         None => println!("Applied {} change(s).", result.applied.len()),
     }
 
-    let refreshed = helpers::fresh_inventory(&config, &current_dir)?;
+    let refreshed = helpers::fresh_global_inventory(&context)?;
     println!("{}", output::render_inventory(&refreshed));
     Ok(())
 }

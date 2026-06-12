@@ -1,24 +1,34 @@
-use std::env;
+use std::collections::HashSet;
 use std::fs;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 
-use crate::commands::helpers;
-use crate::config::Config;
+use crate::config::{Config, GlobalContext};
 
 pub fn run() -> Result<()> {
     let mut has_fail = false;
-    let current_dir = env::current_dir()?;
-    let mut loaded_config = None;
+    let mut global_context = None;
 
     match Config::default_path() {
         Some(path) if path.exists() => match Config::load_from(&path) {
-            Ok(config) => {
-                println!("PASS: Config found and valid at {}", path.display());
-                loaded_config = Some(config);
-            }
+            Ok(config) => match config.resolve_global_context() {
+                Ok(context) => {
+                    println!("PASS: Config found and valid at {}", path.display());
+                    for diagnostic in &context.diagnostics {
+                        println!("WARN: {diagnostic}");
+                    }
+                    global_context = Some(context);
+                }
+                Err(error) => {
+                    println!(
+                        "FAIL: Config file at {} is invalid: {error}",
+                        path.display()
+                    );
+                    has_fail = true;
+                }
+            },
             Err(error) => {
                 println!(
                     "FAIL: Config file at {} could not be parsed: {error}",
@@ -37,11 +47,8 @@ pub fn run() -> Result<()> {
         }
     }
 
-    if let Some(config) = loaded_config.as_ref() {
-        for source_dir in
-            std::iter::once(&config.skills.central_dir).chain(config.skills.scan_parent_dirs.iter())
-        {
-            let path = helpers::resolve_path(&current_dir, source_dir);
+    if let Some(context) = global_context.as_ref() {
+        for path in std::iter::once(&context.central_dir).chain(context.scan_parent_dirs.iter()) {
             if path.exists() {
                 println!("PASS: Source directory exists: {}", path.display());
             } else {
@@ -49,32 +56,7 @@ pub fn run() -> Result<()> {
             }
         }
 
-        for agent in config.agents.values() {
-            let path = helpers::resolve_path(&current_dir, &agent.global_dir);
-            if !path.exists() {
-                println!(
-                    "WARN: Agent {} target directory does not exist (will be created on import): {}",
-                    agent.display_name,
-                    path.display()
-                );
-                continue;
-            }
-
-            if dir_is_writable(&path) {
-                println!(
-                    "PASS: Agent {} target directory exists and is writable: {}",
-                    agent.display_name,
-                    path.display()
-                );
-            } else {
-                println!(
-                    "FAIL: Agent {} target directory exists but is not writable: {}",
-                    agent.display_name,
-                    path.display()
-                );
-                has_fail = true;
-            }
-        }
+        check_target_dirs(context, &mut has_fail);
     }
 
     match Command::new("git").arg("--version").output() {
@@ -97,6 +79,41 @@ pub fn run() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn check_target_dirs(context: &GlobalContext, has_fail: &mut bool) {
+    let mut checked = HashSet::new();
+    for agent in &context.agents {
+        let target_dirs = agent
+            .global_dir
+            .iter()
+            .chain(agent.shared_target_dirs.iter().map(|(path, _)| path));
+        for path in target_dirs {
+            if !checked.insert(path.clone()) {
+                continue;
+            }
+            if !path.exists() {
+                println!(
+                    "WARN: Global target directory does not exist (will be created on import): {}",
+                    path.display()
+                );
+                continue;
+            }
+
+            if dir_is_writable(path) {
+                println!(
+                    "PASS: Global target directory exists and is writable: {}",
+                    path.display()
+                );
+            } else {
+                println!(
+                    "FAIL: Global target directory exists but is not writable: {}",
+                    path.display()
+                );
+                *has_fail = true;
+            }
+        }
+    }
 }
 
 fn dir_is_writable(path: &std::path::Path) -> bool {

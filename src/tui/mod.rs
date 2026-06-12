@@ -19,6 +19,12 @@ pub fn run() -> anyhow::Result<()> {
         return Ok(());
     }
 
+    let config = match crate::config::Config::default_path() {
+        Some(path) if path.exists() => crate::config::Config::load_from(&path)?,
+        _ => crate::config::Config::default_config(),
+    };
+    let mut app = app::App::new(config)?;
+
     #[derive(Default)]
     struct TerminalCleanup {
         raw_mode_enabled: bool,
@@ -69,15 +75,6 @@ pub fn run() -> anyhow::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let config = crate::config::Config::default_path()
-        .and_then(|path| {
-            path.exists()
-                .then(|| crate::config::Config::load_from(&path).ok())
-                .flatten()
-        })
-        .unwrap_or_else(crate::config::Config::default_config);
-    let current_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let mut app = app::App::new(config, current_dir);
     if let Err(error) = app.initialize() {
         app.error_message = Some(error.to_string());
     }

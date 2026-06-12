@@ -269,7 +269,7 @@ fn skill_count_label(count: usize) -> String {
 fn scope_label(scope: Scope) -> &'static str {
     match scope {
         Scope::Global => "global",
-        Scope::ProjectLocal => "local",
+        Scope::ProjectLocal => "project-local",
     }
 }
 

@@ -16,6 +16,7 @@ pub const AGENT_GLOBAL_DIR_CLAUDE: &str = "~/.claude/skills";
 pub const AGENT_GLOBAL_DIR_CODEX: &str = "~/.codex/skills";
 pub const AGENT_GLOBAL_DIR_COPILOT: &str = "~/.copilot/skills";
 
+pub const AGENT_PROJECT_DIR_CLAUDE: &str = ".claude/skills";
 pub const AGENT_PROJECT_DIR_CODEX: &str = ".codex/skills";
 pub const AGENT_PROJECT_DIR_COPILOT: &str = ".copilot/skills";
 

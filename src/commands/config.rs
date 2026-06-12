@@ -23,11 +23,12 @@ pub fn run(args: ConfigArgs) -> Result<()> {
                 );
                 return Ok(());
             }
-            let content = std::fs::read_to_string(&path)
-                .with_context(|| format!("failed to read config: {}", path.display()))?;
-            // Validate before printing so parse errors surface the file path.
-            Config::load_from(&path)?;
-            print!("{content}");
+            let config = Config::load_from(&path)?;
+            let context = config.resolve_global_context()?;
+            for diagnostic in context.diagnostics {
+                eprintln!("WARN: {diagnostic}");
+            }
+            print!("{}", config.to_toml()?);
         }
     }
     Ok(())

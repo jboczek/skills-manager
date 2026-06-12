@@ -1,10 +1,7 @@
-use std::env;
-use std::path::{Path, PathBuf};
+use anyhow::Result;
 
-use anyhow::{Context, Result};
-
-use crate::config::{self, Config};
-use crate::domain::{InventoryRow, Scope};
+use crate::config::{Config, GlobalContext};
+use crate::domain::InventoryRow;
 use crate::inventory::{self, AgentTarget, InventoryConfig};
 use crate::scanner::{self, ScanConfig, ScanResult};
 
@@ -16,77 +13,24 @@ pub fn load_config() -> Result<Config> {
     }
 }
 
-/// Resolve a raw path string relative to current_dir, expanding tilde first.
-pub fn resolve_path(current_dir: &Path, raw_path: &str) -> PathBuf {
-    let path = config::expand_tilde(raw_path);
-    if path.is_absolute() {
-        path
-    } else {
-        current_dir.join(path)
-    }
-}
-
-/// Build ScanConfig from Config.
-pub fn scan_config_from(config: &Config, current_dir: &Path) -> ScanConfig {
+pub fn scan_config_from_global(context: &GlobalContext) -> ScanConfig {
     ScanConfig {
-        central_dir: resolve_path(current_dir, &config.skills.central_dir),
-        scan_parent_dirs: config
-            .skills
-            .scan_parent_dirs
-            .iter()
-            .map(|path| resolve_path(current_dir, path))
-            .collect(),
-        max_scan_depth: config.skills.max_scan_depth as usize,
+        central_dir: context.central_dir.clone(),
+        scan_parent_dirs: context.scan_parent_dirs.clone(),
+        max_scan_depth: context.max_scan_depth,
     }
 }
 
-/// Build AgentTargets from Config.
-pub fn agent_targets_from(config: &Config, current_dir: &Path) -> Vec<AgentTarget> {
-    config
-        .agents
-        .iter()
-        .map(|(agent_id, agent)| AgentTarget {
-            agent_id: agent_id.clone(),
-            display_name: agent.display_name.clone(),
-            global_dir: Some(resolve_path(current_dir, &agent.global_dir)),
-            project_dir: agent
-                .project_dir
-                .as_deref()
-                .map(|path| resolve_path(current_dir, path)),
-            shared_target_dirs: agent
-                .shared_target_ids
-                .iter()
-                .filter_map(|target_id| config.shared_targets.get(target_id))
-                .filter(|target| target.enabled)
-                .flat_map(|target| {
-                    target
-                        .global_dir
-                        .iter()
-                        .map(|path| (resolve_path(current_dir, path), Scope::Global))
-                        .chain(std::iter::once((
-                            resolve_path(current_dir, &target.project_dir),
-                            Scope::ProjectLocal,
-                        )))
-                })
-                .collect(),
-            enabled: agent.enabled,
-        })
-        .collect()
+pub fn agent_targets_from_global(context: &GlobalContext) -> Vec<AgentTarget> {
+    context.agents.clone()
 }
 
-/// Build InventoryConfig: scan + build agent targets.
-pub fn build_inventory_config(config: &Config, current_dir: &Path) -> Result<InventoryConfig> {
-    let scan_results = scanner::scan(&scan_config_from(config, current_dir))?;
-    Ok(InventoryConfig {
-        agents: agent_targets_from(config, current_dir),
+pub fn fresh_global_inventory(context: &GlobalContext) -> Result<Vec<InventoryRow>> {
+    let scan_results = scanner::scan(&scan_config_from_global(context))?;
+    let mut rows = inventory::build_inventory(&InventoryConfig {
+        agents: agent_targets_from_global(context),
         scan_results,
-    })
-}
-
-/// Run a full scan + build inventory + assign disambiguation, returning rows.
-pub fn fresh_inventory(config: &Config, current_dir: &Path) -> Result<Vec<InventoryRow>> {
-    let inventory_config = build_inventory_config(config, current_dir)?;
-    let mut rows = inventory::build_inventory(&inventory_config);
+    });
     inventory::assign_disambiguation_indices(&mut rows);
     Ok(rows)
 }
@@ -203,10 +147,6 @@ fn row_context(row: &InventoryRow) -> String {
         return exposure.path.display().to_string();
     }
     "unknown".to_string()
-}
-
-pub fn current_dir() -> Result<PathBuf> {
-    env::current_dir().context("failed to determine current directory")
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 ---
 title: Global execution context
 summary: Make scanning, inventory, plans, and targets independent of the directory and Git branch from which Skills Manager is launched.
-status: planned
+status: done
 roadmap: v2
 ---
 
@@ -17,12 +17,13 @@ Launching from a different folder can silently change visible exposures and muta
 
 ## Goal
 
-Make explicit global configuration the only managed execution context. Scanning, inventory, diagnostics, plans, and TUI state must be independent of CWD and Git branch.
+Make explicit configuration the only discovery boundary. Scanning, inventory, diagnostics, plans, and TUI state must be independent of CWD and Git branch while still reporting read-only project-local exposures found inside configured source repositories.
 
 ## Non-goals
 
 - Do not add a `--project` option or any other arbitrary project selector.
-- Do not discover or manage repository-local skill directories implicitly.
+- Do not discover repositories outside configured source roots.
+- Do not mutate repository-local skill directories.
 - Do not remove the V1 scanner, live inventory, effective availability, or staged-plan safety model.
 - Do not migrate physical copies or clone remote repositories in this feature.
 - Do not treat Git branch, repository state, or launch directory as source identity.
@@ -46,7 +47,9 @@ Make explicit global configuration the only managed execution context. Scanning,
 
 The user configures managed sources and targets with absolute paths or paths beginning with `~`. Skills Manager expands a leading tilde, validates every active path as absolute, and uses the resulting global context for all operations.
 
-Launching list, scan, mutation flows, or the TUI from unrelated directories produces equivalent results. `.codex/skills`, `.copilot/skills`, and `.agents/skills` beneath CWD are ignored unless explicitly configured by absolute or tilde-expanded path.
+Launching list, scan, mutation flows, or the TUI from unrelated directories produces equivalent results. The scanner catalogs every skill source under configured roots. Inventory then inspects each scanned Git repository for fixed project-local exposure conventions: `.claude/skills`, `.codex/skills`, `.copilot/skills`, and `.agents/skills`.
+
+`/scan` shows the complete source catalog. `/list` shows only skills exposed to at least one agent. Global and project-local exposures are separate rows. Project-local rows include their repository context, are read-only, and never become mutation targets. `.agents/skills` grants effective availability to Codex and Copilot.
 
 The TUI prompt remains the command entry point but no longer shows a directory or Git branch. Status describes global configuration, sources, agents, and diagnostics.
 
@@ -58,7 +61,14 @@ Legacy `project_dir` values still parse but produce compatibility diagnostics an
 - A relative `central_dir`, `scan_parent_dirs` entry, agent global target, or shared global target must fail validation; it must never resolve against CWD.
 - Validation must complete before scanning, inventory construction, or plan creation.
 - Scanner inputs must come from global context while preserving V1 depth, symlink, deduplication, origin, and warning behavior.
-- Inventory must use configured sources and global targets only; project-local targets must not contribute rows or availability.
+- Inventory must include only actual exposures found in configured global targets or fixed project-local targets inside scanned Git repositories.
+- Source scan results without an exposure must not produce inventory rows.
+- A repository contributes project-local targets only when scanning found at least one `SKILL.md` within that repository.
+- Project-local target conventions are fixed: `.claude/skills` for Claude, `.codex/skills` for Codex, `.copilot/skills` for Copilot, and `.agents/skills` for Codex and Copilot.
+- Global and project-local exposures of the same source must produce separate rows. Exposures in different projects must also produce separate rows.
+- Nested repositories use the nearest Git root reported by source scanning.
+- Project-local rows must retain actual source metadata while also carrying their containing project context.
+- Project-local rows are read-only and cannot be imported into, detached, removed, or physically deleted.
 - Import and removal must preserve V1 plan preview, confirmation, connection classification, rescan, and deletion safeguards.
 - Every mutation target must belong to the validated configured global targets.
 - Legacy agent and shared-target `project_dir` values must parse, be ignored, emit diagnostics, and be omitted from new or normalized config.
@@ -70,9 +80,12 @@ Legacy `project_dir` values still parse but produce compatibility diagnostics an
 ## Success criteria
 
 - The same config produces the same scans, inventory, availability, and plans from unrelated directories.
-- CWD-local skill folders do not appear unless explicitly configured as global paths.
+- CWD-local skill folders do not appear merely because of launch location.
+- Project-local skills appear only when their repository is represented in configured scan results.
+- Every list row has at least one effective agent exposure.
+- Global and project-local copies of the same skill remain distinguishable.
 - Every active relative managed path fails before filesystem discovery or mutation.
-- Legacy `project_dir` configs load with diagnostics but create no project-local inventory or targets.
+- Legacy `project_dir` configs load with diagnostics and do not define project-local inventory targets.
 - New configuration contains no `project_dir` fields.
 - The TUI contains no CWD or Git branch context.
 - V1 scan, inventory, disambiguation, and mutation safety remains intact for global paths.
@@ -97,14 +110,40 @@ Legacy `project_dir` values still parse but produce compatibility diagnostics an
 - Use one resolved global context for CLI and TUI containing validated sources, enabled global targets, shared targets, and diagnostics.
 - Keep raw configuration parsing separate from active configuration resolution so legacy fields can be accepted without influencing behavior.
 - Treat path validation as a configuration boundary, not a scanner or planner fallback.
-- Preserve V1 scan, inventory, availability, connection, and plan concepts. Active V2 config no longer produces project-local scope.
+- Preserve V1 scan, availability, connection, and plan concepts while separating source catalog entries from exposure inventory rows.
+- Derive read-only project-local targets from scanned repository roots and fixed conventions, not from CWD or legacy `project_dir` configuration.
 - Render compatibility diagnostics consistently in configuration inspection, doctor output, and TUI status without blocking otherwise valid global behavior.
 
 ## Testing decisions
 
 - Add configuration tests for absolute paths, leading-tilde expansion, rejected relative paths, ignored legacy `project_dir` values, diagnostics, and serialization without legacy fields.
 - Add launch-directory invariance tests for list, scan, import planning, and removal planning.
-- Add inventory tests proving CWD-local agent folders are ignored and configured global/shared targets still produce effective availability.
+- Add inventory tests proving source-only rows are excluded, configured global/shared targets still produce effective availability, project-local conventions are discovered, `.agents` maps to Codex and Copilot, and contexts do not collapse.
 - Add plan tests proving every generated target belongs to validated global targets and relative configuration cannot reach plan creation.
 - Add TUI state and rendering tests proving prompt and status content contain no CWD or Git branch and still show useful global configuration diagnostics.
 - Retain V1 regression coverage for scan boundaries, disambiguation, detach safety, physical deletion, partial apply, and rescanning.
+
+## Progress notes
+
+- 2026-06-12: Added a resolved global context that expands leading tildes, validates every active source and global target as absolute, and aggregates compatibility diagnostics.
+- 2026-06-12: Removed CWD resolution and project-local targets from scan, inventory, doctor, import, remove, and TUI flows.
+- 2026-06-12: Kept legacy `project_dir` parsing while ignoring those values, reporting diagnostics, and omitting them from generated or normalized config.
+- 2026-06-12: Removed TUI launch-directory and Git-branch state and replaced it with a global prompt and global-context status.
+- 2026-06-12: Added CLI and TUI regression coverage for invalid relative paths, ignored local targets, global shared targets, diagnostics, and launch-directory-invariant inventory and plans.
+- 2026-06-12: Reopened the PRD after correcting the model: source scanning remains global and complete, while list inventory contains only real global or read-only project-local exposures discovered inside configured source repositories.
+- 2026-06-12: Separated source catalog entries from inventory rows, added fixed project-local target discovery, grouped TUI rows by exposure context, rendered actual source paths, and blocked local mutation in CLI and TUI.
+- 2026-06-12: Corrected TUI grouping so global rows are separated by source repository instead of sharing one scope bucket; project-local rows remain grouped by containing project.
+
+## Tasks
+
+- [x] Add failing configuration tests for path validation, tilde expansion, legacy fields, diagnostics, and serialization.
+- [x] Implement one resolved global context shared by CLI and TUI.
+- [x] Migrate scan, list, doctor, import, and remove to validated global sources and targets.
+- [x] Remove CWD and Git branch from TUI state and rendering.
+- [x] Add launch-directory invariance tests for inventory and mutation plans.
+- [x] Separate source catalog rows from exposure inventory rows.
+- [x] Discover fixed project-local exposure targets inside scanned repositories.
+- [x] Render project context without replacing actual source information.
+- [x] Block project-local mutation in CLI and TUI flows.
+- [x] Add corrected CLI and TUI regression coverage.
+- [x] Update durable feature documentation, README, roadmap, and changelog.

@@ -1,13 +1,11 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use crate::commands::helpers;
-use crate::config::{Config, expand_tilde};
-use crate::domain::{AgentId, ConnectionKind, InventoryRow, SkillExposure};
-use crate::git;
-use crate::inventory::AgentTarget;
+use crate::config::{Config, GlobalContext};
+use crate::domain::{AgentId, ConnectionKind, InventoryRow, Scope, SkillExposure};
+use crate::inventory::{self, AgentTarget};
 use crate::plan::{ChangePlan, StagedChange};
 use crate::plan_apply;
 use crate::scanner::{self, ScanResult};
@@ -158,8 +156,7 @@ pub struct App {
     pub list_table: SourceTable<usize>,
     pub scan_table: SourceTable<usize>,
     pub config: Config,
-    pub current_dir: PathBuf,
-    pub git_branch: Option<String>,
+    pub global_context: GlobalContext,
     pub prompt_label: String,
     pub import_step: ImportStep,
     pub remove_step: RemoveStep,
@@ -171,9 +168,9 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(config: Config, current_dir: PathBuf) -> Self {
-        let prompt_label = format_prompt_label(&current_dir, None);
-        Self {
+    pub fn new(config: Config) -> anyhow::Result<Self> {
+        let global_context = config.resolve_global_context()?;
+        Ok(Self {
             mode: Mode::Home,
             input: String::new(),
             inventory: Vec::new(),
@@ -182,9 +179,8 @@ impl App {
             list_table: SourceTable::default(),
             scan_table: SourceTable::default(),
             config,
-            current_dir,
-            git_branch: None,
-            prompt_label,
+            global_context,
+            prompt_label: "Skills".to_string(),
             import_step: ImportStep::EnterSkill,
             remove_step: RemoveStep::EnterSkill,
             error_message: None,
@@ -192,13 +188,11 @@ impl App {
             loading: false,
             pending_load: None,
             command_menu_selected: None,
-        }
+        })
     }
 
-    /// Load initial state: build prompt_label, detect git branch, run initial scan/inventory.
+    /// Load initial global scan and inventory state.
     pub fn initialize(&mut self) -> anyhow::Result<()> {
-        self.git_branch = detect_git_branch(&self.current_dir);
-        self.prompt_label = format_prompt_label(&self.current_dir, self.git_branch.as_deref());
         self.reload_scan_results()?;
         self.refresh_inventory()?;
         self.rebuild_status_messages();
@@ -207,7 +201,7 @@ impl App {
 
     /// Refresh inventory from filesystem.
     pub fn refresh_inventory(&mut self) -> anyhow::Result<()> {
-        self.inventory = helpers::fresh_inventory(&self.config, &self.current_dir)?;
+        self.inventory = helpers::fresh_global_inventory(&self.global_context)?;
         self.rebuild_status_messages();
         Ok(())
     }
@@ -398,6 +392,11 @@ impl App {
             self.info_message = Some(self.selection_required_message(&self.list_table));
             return Ok(());
         };
+        if row.scope == Scope::ProjectLocal {
+            self.info_message =
+                Some("Project-local exposures are read-only and cannot be imported.".to_string());
+            return Ok(());
+        }
 
         let target_agents = self.missing_enabled_agent_targets(&row);
         if target_agents.is_empty() {
@@ -439,6 +438,11 @@ impl App {
             self.info_message = Some(self.selection_required_message(&self.list_table));
             return Ok(());
         };
+        if selected.scope == Scope::ProjectLocal {
+            self.info_message =
+                Some("Project-local exposures are read-only and cannot be removed.".to_string());
+            return Ok(());
+        }
 
         let removable_exposures = Self::removable_exposures(&selected);
         self.mode = Mode::Remove;
@@ -827,16 +831,14 @@ impl App {
         if let ImportStep::SelectAgents {
             agents, focused, ..
         } = &mut self.import_step
+            && let Some(item) = agents.get_mut(*focused)
         {
-            if let Some(item) = agents.get_mut(*focused) {
-                item.checked = !item.checked;
-            }
+            item.checked = !item.checked;
         }
     }
 
     fn reload_scan_results(&mut self) -> anyhow::Result<()> {
-        self.scan_results =
-            scanner::scan(&helpers::scan_config_from(&self.config, &self.current_dir))?;
+        self.scan_results = scanner::scan(&helpers::scan_config_from_global(&self.global_context))?;
         scanner::assign_disambiguation_indices(&mut self.scan_results);
         self.rebuild_status_messages();
         Ok(())
@@ -928,25 +930,44 @@ impl App {
             .iter()
             .enumerate()
             .map(|(index, row)| {
-                let scan_result = self.scan_result_for_inventory_row(row);
-                let skill_path = scan_result
-                    .map(|result| result.skill_path.clone())
-                    .or_else(|| row.exposures.first().map(|exposure| exposure.path.clone()))
-                    .or_else(|| {
-                        row.source
+                let skill_path = source_path_for_inventory_row(row);
+                let (repo_name, repo_path, relative_path) = match row.scope {
+                    Scope::Global => {
+                        let relative_path = row
+                            .source
                             .repo_path
                             .as_ref()
-                            .map(|repo_path| repo_path.join(&row.skill_id.name))
-                    })
-                    .unwrap_or_else(|| PathBuf::from(&row.skill_id.name));
+                            .and_then(|root| skill_path.strip_prefix(root).ok())
+                            .map(Path::to_path_buf);
+                        (
+                            row.source.repo_name.clone(),
+                            row.source.repo_path.clone(),
+                            relative_path,
+                        )
+                    }
+                    Scope::ProjectLocal => {
+                        let project_root = row.exposures.first().and_then(|exposure| {
+                            inventory::project_root_from_exposure_path(&exposure.path)
+                        });
+                        let repo_name = project_root
+                            .as_ref()
+                            .and_then(|path| path.file_name())
+                            .map(|name| name.to_string_lossy().into_owned())
+                            .or_else(|| Some("project-local".to_string()));
+                        let relative_path = project_root
+                            .as_ref()
+                            .and_then(|root| skill_path.strip_prefix(root).ok())
+                            .map(Path::to_path_buf);
+                        (repo_name, project_root, relative_path)
+                    }
+                };
                 SourceGroupItem {
                     item: index,
                     skill_name: inventory_skill_label(row),
                     skill_path,
-                    repo_name: row.source.repo_name.clone(),
-                    repo_path: row.source.repo_path.clone(),
-                    relative_path: scan_result
-                        .and_then(|result| result.skill_relative_path.clone()),
+                    repo_name,
+                    repo_path,
+                    relative_path,
                 }
             })
             .collect()
@@ -977,7 +998,7 @@ impl App {
     }
 
     fn enabled_agent_targets(&self) -> Vec<AgentTarget> {
-        helpers::agent_targets_from(&self.config, &self.current_dir)
+        helpers::agent_targets_from_global(&self.global_context)
             .into_iter()
             .filter(|agent| agent.enabled)
             .collect()
@@ -1054,6 +1075,9 @@ impl App {
         row: &InventoryRow,
         exposure: &SkillExposure,
     ) -> ChangePlan {
+        if row.scope == Scope::ProjectLocal {
+            return ChangePlan::new(Vec::new());
+        }
         let skill_name = display_inventory_row(row);
         let display_name = self
             .config
@@ -1078,6 +1102,9 @@ impl App {
     }
 
     fn removable_exposures(row: &InventoryRow) -> Vec<SkillExposure> {
+        if row.scope == Scope::ProjectLocal {
+            return Vec::new();
+        }
         row.exposures
             .iter()
             .filter(|exposure| {
@@ -1122,17 +1149,38 @@ impl App {
     fn rebuild_status_messages(&mut self) {
         self.status_messages = vec![
             format!(
-                "• Environment loaded: {} skills, {} agents",
+                "• Global context: {} skills, {} agents",
                 self.inventory.len().max(self.scan_results.len()),
-                self.config
+                self.global_context
                     .agents
-                    .values()
+                    .iter()
                     .filter(|agent| agent.enabled)
                     .count()
             ),
             "• Scan: OK".to_string(),
         ];
+        self.status_messages.extend(
+            self.global_context
+                .diagnostics
+                .iter()
+                .map(|diagnostic| format!("• Warning: {diagnostic}")),
+        );
     }
+}
+
+fn source_path_for_inventory_row(row: &InventoryRow) -> PathBuf {
+    let Some(exposure) = row.exposures.first() else {
+        return row
+            .source
+            .repo_path
+            .as_ref()
+            .map(|path| path.join(&row.skill_id.name))
+            .unwrap_or_else(|| PathBuf::from(&row.skill_id.name));
+    };
+    if exposure.connection == ConnectionKind::Symlink {
+        return fs::canonicalize(&exposure.path).unwrap_or_else(|_| exposure.path.clone());
+    }
+    exposure.path.clone()
 }
 
 fn display_inventory_row(row: &InventoryRow) -> String {
@@ -1174,42 +1222,6 @@ fn parse_selection(input: &str, max: usize) -> Option<usize> {
     (1..=max).contains(&index).then_some(index - 1)
 }
 
-fn detect_git_branch(path: &Path) -> Option<String> {
-    let repo_root = git::find_repo_root(path)?;
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(repo_root)
-        .args(["branch", "--show-current"])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let branch = String::from_utf8(output.stdout).ok()?.trim().to_string();
-    (!branch.is_empty()).then_some(branch)
-}
-
-fn format_prompt_label(current_dir: &Path, branch: Option<&str>) -> String {
-    let display = display_path_with_tilde(current_dir);
-    match branch {
-        Some(branch) => format!("{display} [{branch}]"),
-        None => display,
-    }
-}
-
-fn display_path_with_tilde(path: &Path) -> String {
-    let home = expand_tilde("~");
-    if let Ok(relative) = path.strip_prefix(&home) {
-        if relative.as_os_str().is_empty() {
-            "~".to_string()
-        } else {
-            format!("~/{}", relative.display())
-        }
-    } else {
-        path.display().to_string()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -1242,7 +1254,30 @@ mod tests {
         let temp = tempdir().expect("tempdir");
         let path = temp.path().to_path_buf();
         std::mem::forget(temp);
-        App::new(test_config(&path), path)
+        App::new(test_config(&path)).expect("test config resolves")
+    }
+
+    #[test]
+    fn initialization_uses_global_prompt_and_reports_legacy_diagnostics() {
+        let temp = tempdir().expect("tempdir");
+        let mut config = test_config(temp.path());
+        config.agents.get_mut("claude").unwrap().project_dir = Some(".claude/skills".to_string());
+        let launch_dir = temp.path().join("repo-on-feature-branch");
+        let mut app = App::new(config).expect("legacy config resolves");
+
+        app.initialize().expect("initialization succeeds");
+
+        assert_eq!(app.prompt_label, "Skills");
+        assert!(
+            app.status_messages
+                .iter()
+                .any(|message| message.contains("agents.claude.project_dir"))
+        );
+        assert!(
+            app.status_messages
+                .iter()
+                .all(|message| !message.contains(&launch_dir.display().to_string()))
+        );
     }
 
     fn scan_result(skill_id: &str) -> ScanResult {
@@ -1278,6 +1313,36 @@ mod tests {
             }],
             disambiguation_index: None,
         }
+    }
+
+    fn project_local_inventory_row(skill_id: &str, project: &str) -> InventoryRow {
+        let mut row = inventory_row(skill_id);
+        row.scope = Scope::ProjectLocal;
+        row.source.repo_name = Some(
+            skill_id
+                .split_once('/')
+                .map(|(namespace, _)| namespace)
+                .unwrap_or(skill_id)
+                .to_string(),
+        );
+        row.source.repo_path = Some(PathBuf::from(project));
+        row.exposures = vec![
+            SkillExposure {
+                agent_id: AgentId("codex".to_string()),
+                path: PathBuf::from(project)
+                    .join(".agents/skills")
+                    .join(&row.skill_id.name),
+                connection: ConnectionKind::PhysicalCopy,
+            },
+            SkillExposure {
+                agent_id: AgentId("copilot".to_string()),
+                path: PathBuf::from(project)
+                    .join(".agents/skills")
+                    .join(&row.skill_id.name),
+                connection: ConnectionKind::PhysicalCopy,
+            },
+        ];
+        row
     }
 
     #[test]
@@ -1352,7 +1417,97 @@ mod tests {
     }
 
     #[test]
-    fn list_and_scan_use_the_same_repository_group_identity_and_child_path() {
+    fn list_groups_rows_by_global_and_project_exposure_context() {
+        let mut app = test_app();
+        let mut global = inventory_row("skills/review");
+        global.source.repo_name = Some("skills".to_string());
+        global.source.repo_path = Some(PathBuf::from("/Users/alice/pgit/skills"));
+        global.exposures[0].path = PathBuf::from("/Users/alice/pgit/skills/review");
+        global.exposures[0].connection = ConnectionKind::PhysicalCopy;
+        let local =
+            project_local_inventory_row("analystloop/adx-intake", "/Users/alice/pgit/analystloop");
+        app.inventory = vec![global, local];
+
+        app.enter_list_mode();
+
+        assert_eq!(app.list_table.groups().len(), 2);
+        assert!(
+            app.list_table
+                .groups()
+                .iter()
+                .any(|group| group.name == "skills")
+        );
+        let project_group = app
+            .list_table
+            .groups()
+            .iter()
+            .find(|group| group.name == "analystloop")
+            .expect("project group");
+        assert_eq!(project_group.context, "pgit/analystloop");
+        assert_eq!(
+            project_group.items[0].display_path,
+            ".agents/skills/adx-intake"
+        );
+    }
+
+    #[test]
+    fn list_groups_global_rows_by_source_repository() {
+        let mut app = test_app();
+        let mut repo_a = inventory_row("repo-a/one");
+        repo_a.source.repo_name = Some("repo-a".to_string());
+        repo_a.source.repo_path = Some(PathBuf::from("/Users/alice/pgit/repo-a"));
+        repo_a.exposures[0].path = PathBuf::from("/Users/alice/.codex/skills/one");
+        let mut repo_b = inventory_row("repo-b/two");
+        repo_b.source.repo_name = Some("repo-b".to_string());
+        repo_b.source.repo_path = Some(PathBuf::from("/Users/alice/pgit/repo-b"));
+        repo_b.exposures[0].path = PathBuf::from("/Users/alice/.codex/skills/two");
+        app.inventory = vec![repo_a, repo_b];
+
+        app.enter_list_mode();
+
+        assert_eq!(app.list_table.groups().len(), 2);
+        assert_eq!(
+            app.list_table
+                .groups()
+                .iter()
+                .map(|group| group.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["repo-a", "repo-b"]
+        );
+    }
+
+    #[test]
+    fn project_local_rows_are_read_only_for_import_and_remove() {
+        let mut app = test_app();
+        app.inventory = vec![project_local_inventory_row(
+            "analystloop/adx-intake",
+            "/Users/alice/pgit/analystloop",
+        )];
+        app.enter_list_mode();
+        app.list_table.move_right(5);
+        app.list_table.move_right(5);
+
+        app.start_import_from_selected_list_row()
+            .expect("import action");
+        assert_eq!(app.mode, Mode::List);
+        assert!(
+            app.info_message
+                .as_deref()
+                .is_some_and(|message| message.contains("read-only"))
+        );
+
+        app.start_remove_from_selected_list_row()
+            .expect("remove action");
+        assert_eq!(app.mode, Mode::List);
+        assert!(
+            app.info_message
+                .as_deref()
+                .is_some_and(|message| message.contains("read-only"))
+        );
+    }
+
+    #[test]
+    fn list_and_scan_group_global_rows_by_source_repository() {
         let mut app = test_app();
         let repo_path = PathBuf::from("/Users/alice/pgit/repo-a");
         let skill_path = repo_path.join(".agents/skills/one");
@@ -1369,6 +1524,8 @@ mod tests {
         let mut row = inventory_row("repo-a/one");
         row.source.repo_name = Some("repo-a".to_string());
         row.source.repo_path = Some(repo_path);
+        row.exposures[0].path = app.scan_results[0].skill_path.clone();
+        row.exposures[0].connection = ConnectionKind::PhysicalCopy;
         app.inventory = vec![row];
 
         app.enter_list_mode();

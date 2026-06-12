@@ -355,6 +355,73 @@ fn doctor_with_valid_config_shows_checks() {
 }
 
 #[test]
+fn config_show_normalizes_legacy_project_dirs_and_reports_diagnostics() {
+    let home = TempDir::new().unwrap();
+    let config_path = config_path_for_home(&home);
+    fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+    fs::write(
+        &config_path,
+        r#"
+[skills]
+central_dir = "~/skills"
+scan_parent_dirs = []
+max_scan_depth = 10
+
+[agents.claude]
+display_name = "Claude"
+global_dir = "~/.claude/skills"
+project_dir = ".claude/skills"
+enabled = true
+shared_target_ids = []
+
+[shared_targets]
+
+[preferences]
+default_connection = "symlink"
+confirm_physical_delete = true
+"#,
+    )
+    .unwrap();
+
+    let output = config_bin_with_home(&home)
+        .args(["config", "show"])
+        .output()
+        .expect("config show runs");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(!stdout.contains("project_dir"), "{stdout}");
+    assert!(stderr.contains("agents.claude.project_dir"), "{stderr}");
+    assert!(stderr.contains("ignored"), "{stderr}");
+}
+
+#[test]
+fn doctor_reports_ignored_legacy_project_dirs() {
+    let home = TempDir::new().unwrap();
+    let mut config = skills_manager::config::Config::default_config();
+    config.skills.central_dir = home.path().join("skills").to_string_lossy().into_owned();
+    let toml = config.to_toml().unwrap().replace(
+        "global_dir = \"~/.claude/skills\"",
+        "global_dir = \"~/.claude/skills\"\nproject_dir = \".claude/skills\"",
+    );
+    let config_path = config_path_for_home(&home);
+    fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+    fs::write(config_path, toml).unwrap();
+
+    let output = config_bin_with_home(&home)
+        .args(["doctor"])
+        .output()
+        .expect("doctor runs");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("WARN"), "{stdout}");
+    assert!(stdout.contains("agents.claude.project_dir"), "{stdout}");
+    assert!(stdout.contains("ignored"), "{stdout}");
+}
+
+#[test]
 fn import_non_interactive_with_ambiguous_skill() {
     let home = TempDir::new().unwrap();
     let skills_root = home.path().join("skill-sources");
@@ -386,7 +453,7 @@ fn import_non_interactive_with_ambiguous_skill() {
 }
 
 #[test]
-fn skills_manager_list_maps_shared_agents_target_to_codex_and_copilot() {
+fn skills_manager_list_ignores_project_local_shared_target() {
     let home = TempDir::new().unwrap();
     let project = TempDir::new().unwrap();
     let shared_skill = project
@@ -426,12 +493,13 @@ fn skills_manager_list_maps_shared_agents_target_to_codex_and_copilot() {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("stdout utf8");
     assert!(
-        stdout.contains("shared-skill"),
+        !stdout.contains("shared-skill"),
         "unexpected stdout: {stdout}"
     );
-    assert!(stdout.contains("CODEX"), "unexpected stdout: {stdout}");
-    assert!(stdout.contains("COPILOT"), "unexpected stdout: {stdout}");
-    assert!(!stdout.contains("AGENTS"), "unexpected stdout: {stdout}");
+    assert!(
+        stdout.contains("No skills found."),
+        "unexpected stdout: {stdout}"
+    );
 }
 
 #[test]
@@ -464,8 +532,8 @@ fn skills_manager_list_includes_global_agents_skills_with_existing_config() {
 
     let current_toml = config.to_toml().expect("config toml");
     let legacy_toml = current_toml.replace(
-        "global_dir = \"~/.agents/skills\"\nproject_dir = \".agents/skills\"",
-        "project_dir = \".agents\"",
+        "global_dir = \"~/.agents/skills\"\nenabled = true",
+        "project_dir = \".agents\"\nenabled = true",
     );
     assert_ne!(legacy_toml, current_toml);
     let config_path = config_path_for_home(&home);
@@ -488,17 +556,312 @@ fn skills_manager_list_includes_global_agents_skills_with_existing_config() {
         .lines()
         .find(|line| line.contains("global-shared-skill"))
         .expect("global shared skill row");
-    assert_eq!(
-        row.split_whitespace().collect::<Vec<_>>(),
-        vec![
-            "global-shared-skill",
-            "unknown",
-            "-",
-            "✓",
-            "✓",
-            "global",
-            "physical"
-        ]
+    let columns = row.split_whitespace().collect::<Vec<_>>();
+    assert_eq!(columns[0], "global-shared-skill");
+    assert!(
+        columns[1].ends_with(".agents/skills/global-shared-skill"),
+        "{row}"
     );
+    assert_eq!(&columns[2..], &["-", "✓", "✓", "global", "physical"]);
     assert!(!stdout.contains("AGENTS"), "unexpected stdout: {stdout}");
+}
+
+#[test]
+fn skills_manager_list_is_invariant_across_launch_directories() {
+    let home = TempDir::new().unwrap();
+    let first_cwd = TempDir::new().unwrap();
+    let second_cwd = TempDir::new().unwrap();
+    let shared_skill = home
+        .path()
+        .join(".agents")
+        .join("skills")
+        .join("global-shared-skill");
+    fs::create_dir_all(&shared_skill).expect("create global shared skill dir");
+    fs::write(shared_skill.join("SKILL.md"), "# Global shared skill").expect("write skill file");
+    fs::create_dir_all(first_cwd.path().join(".agents/skills/local-only")).unwrap();
+
+    let mut config = skills_manager::config::Config::default_config();
+    config.skills.central_dir = home
+        .path()
+        .join("missing-sources")
+        .to_string_lossy()
+        .into_owned();
+    for agent in config.agents.values_mut() {
+        agent.global_dir = home
+            .path()
+            .join(format!("missing-{}", agent.display_name.to_lowercase()))
+            .to_string_lossy()
+            .into_owned();
+    }
+    write_config(&home, &config);
+
+    let first = config_bin_with_home(&home)
+        .current_dir(first_cwd.path())
+        .args(["list"])
+        .output()
+        .expect("first list runs");
+    let second = config_bin_with_home(&home)
+        .current_dir(second_cwd.path())
+        .args(["list"])
+        .output()
+        .expect("second list runs");
+
+    assert!(first.status.success());
+    assert!(second.status.success());
+    assert_eq!(first.stdout, second.stdout);
+    assert!(
+        !String::from_utf8(first.stdout)
+            .unwrap()
+            .contains("local-only")
+    );
+}
+
+#[test]
+fn skills_manager_scan_rejects_relative_source_before_discovery() {
+    let home = TempDir::new().unwrap();
+    let cwd = TempDir::new().unwrap();
+    let relative_skill = cwd.path().join("relative-source").join("local-only");
+    fs::create_dir_all(&relative_skill).unwrap();
+    fs::write(relative_skill.join("SKILL.md"), "# Local only").unwrap();
+
+    let mut config = skills_manager::config::Config::default_config();
+    config.skills.central_dir = "relative-source".to_string();
+    write_config(&home, &config);
+
+    let output = config_bin_with_home(&home)
+        .current_dir(cwd.path())
+        .args(["scan"])
+        .output()
+        .expect("scan runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("skills.central_dir"), "{stderr}");
+    assert!(stderr.contains("relative-source"), "{stderr}");
+}
+
+#[test]
+fn skills_manager_import_rejects_relative_global_target_before_planning() {
+    let home = TempDir::new().unwrap();
+    let cwd = TempDir::new().unwrap();
+    let skills_root = home.path().join("skill-sources");
+    let skill_dir = skills_root.join("code-review");
+    fs::create_dir_all(&skill_dir).unwrap();
+    fs::write(skill_dir.join("SKILL.md"), "# Code review").unwrap();
+
+    let mut config = skills_manager::config::Config::default_config();
+    config.skills.central_dir = skills_root.to_string_lossy().into_owned();
+    config.agents.get_mut("claude").unwrap().global_dir = "relative-agent".to_string();
+    write_config(&home, &config);
+
+    let output = config_bin_with_home(&home)
+        .current_dir(cwd.path())
+        .args(["import", "code-review", "--to", "claude"])
+        .output()
+        .expect("import runs");
+
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("agents.claude.global_dir"), "{stderr}");
+    assert!(stderr.contains("relative-agent"), "{stderr}");
+}
+
+#[test]
+fn skills_manager_remove_ignores_legacy_project_target() {
+    let home = TempDir::new().unwrap();
+    let project = TempDir::new().unwrap();
+    let project_skill = project.path().join(".claude/skills/local-only");
+    fs::create_dir_all(&project_skill).unwrap();
+    fs::write(project_skill.join("SKILL.md"), "# Local only").unwrap();
+
+    let mut config = skills_manager::config::Config::default_config();
+    config.skills.central_dir = home
+        .path()
+        .join("missing-sources")
+        .to_string_lossy()
+        .into_owned();
+    for agent in config.agents.values_mut() {
+        agent.global_dir = home
+            .path()
+            .join(format!("missing-{}", agent.display_name.to_lowercase()))
+            .to_string_lossy()
+            .into_owned();
+        agent.shared_target_ids.clear();
+    }
+    config.shared_targets.clear();
+    let current_toml = config.to_toml().unwrap();
+    let legacy_toml = current_toml.replace(
+        "global_dir = \"",
+        "project_dir = \".claude/skills\"\nglobal_dir = \"",
+    );
+    let config_path = config_path_for_home(&home);
+    fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+    fs::write(config_path, legacy_toml).unwrap();
+
+    let output = config_bin_with_home(&home)
+        .current_dir(project.path())
+        .args(["remove", "local-only", "--from", "claude"])
+        .output()
+        .expect("remove runs");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("not found in inventory"), "{stdout}");
+    assert!(project_skill.exists());
+}
+
+#[test]
+fn skills_manager_lists_project_local_exposure_but_refuses_to_remove_it() {
+    let home = TempDir::new().unwrap();
+    let sources = TempDir::new().unwrap();
+    let project = sources.path().join("analystloop");
+    let project_skill = project.join(".agents/skills/adx-intake");
+    fs::create_dir_all(project.join(".git")).unwrap();
+    fs::create_dir_all(&project_skill).unwrap();
+    fs::write(project_skill.join("SKILL.md"), "# ADX intake").unwrap();
+
+    let mut config = skills_manager::config::Config::default_config();
+    config.skills.central_dir = home
+        .path()
+        .join("missing-central")
+        .to_string_lossy()
+        .into_owned();
+    config.skills.scan_parent_dirs = vec![sources.path().to_string_lossy().into_owned()];
+    for (agent_id, agent) in &mut config.agents {
+        agent.global_dir = home
+            .path()
+            .join(format!("missing-{agent_id}"))
+            .to_string_lossy()
+            .into_owned();
+        agent.project_dir = None;
+        agent.shared_target_ids.clear();
+    }
+    config.shared_targets.clear();
+    write_config(&home, &config);
+
+    let list = config_bin_with_home(&home)
+        .args(["list"])
+        .output()
+        .expect("list runs");
+    assert!(list.status.success());
+    let stdout = String::from_utf8(list.stdout).unwrap();
+    let row = stdout
+        .lines()
+        .find(|line| line.contains("analystloop/adx-intake"))
+        .expect("project-local row");
+    assert!(row.contains(".agents/skills/adx-intake"), "{row}");
+    assert_eq!(
+        row.split_whitespace()
+            .rev()
+            .take(5)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>(),
+        vec!["-", "✓", "✓", "project-local", "physical"]
+    );
+
+    let remove = config_bin_with_home(&home)
+        .args(["remove", "analystloop/adx-intake"])
+        .output()
+        .expect("remove runs");
+    assert!(remove.status.success());
+    let stdout = String::from_utf8(remove.stdout).unwrap();
+    assert!(stdout.contains("read-only"), "{stdout}");
+    assert!(project_skill.exists());
+}
+
+#[test]
+fn skills_manager_import_plan_is_invariant_across_launch_directories() {
+    let home = TempDir::new().unwrap();
+    let first_cwd = TempDir::new().unwrap();
+    let second_cwd = TempDir::new().unwrap();
+    let skills_root = home.path().join("skill-sources");
+    let skill_dir = skills_root.join("code-review");
+    fs::create_dir_all(&skill_dir).unwrap();
+    fs::write(skill_dir.join("SKILL.md"), "# Code review").unwrap();
+
+    let mut config = skills_manager::config::Config::default_config();
+    config.skills.central_dir = skills_root.to_string_lossy().into_owned();
+    for (agent_id, agent) in &mut config.agents {
+        agent.global_dir = home
+            .path()
+            .join(format!("{agent_id}-skills"))
+            .to_string_lossy()
+            .into_owned();
+        agent.shared_target_ids.clear();
+    }
+    config.shared_targets.clear();
+    write_config(&home, &config);
+
+    let first = config_bin_with_home(&home)
+        .current_dir(first_cwd.path())
+        .args(["import", "code-review", "--to", "claude"])
+        .output()
+        .expect("first import runs");
+    let second = config_bin_with_home(&home)
+        .current_dir(second_cwd.path())
+        .args(["import", "code-review", "--to", "claude"])
+        .output()
+        .expect("second import runs");
+
+    assert!(!first.status.success());
+    assert!(!second.status.success());
+    assert_eq!(first.stdout, second.stdout);
+    assert_eq!(first.stderr, second.stderr);
+    assert!(String::from_utf8(first.stdout).unwrap().contains("Expose"));
+}
+
+#[test]
+fn skills_manager_remove_plan_is_invariant_across_launch_directories() {
+    let home = TempDir::new().unwrap();
+    let first_cwd = TempDir::new().unwrap();
+    let second_cwd = TempDir::new().unwrap();
+    let claude_target = home.path().join("claude-skills");
+    let exposed_skill = claude_target.join("global-only");
+    fs::create_dir_all(&exposed_skill).unwrap();
+    fs::write(exposed_skill.join("SKILL.md"), "# Global only").unwrap();
+
+    let mut config = skills_manager::config::Config::default_config();
+    config.skills.central_dir = home
+        .path()
+        .join("missing-sources")
+        .to_string_lossy()
+        .into_owned();
+    for (agent_id, agent) in &mut config.agents {
+        agent.global_dir = if agent_id == "claude" {
+            claude_target.to_string_lossy().into_owned()
+        } else {
+            home.path()
+                .join(format!("missing-{agent_id}"))
+                .to_string_lossy()
+                .into_owned()
+        };
+        agent.shared_target_ids.clear();
+    }
+    config.shared_targets.clear();
+    write_config(&home, &config);
+
+    let first = config_bin_with_home(&home)
+        .current_dir(first_cwd.path())
+        .args(["remove", "global-only", "--from", "claude"])
+        .output()
+        .expect("first remove runs");
+    let second = config_bin_with_home(&home)
+        .current_dir(second_cwd.path())
+        .args(["remove", "global-only", "--from", "claude"])
+        .output()
+        .expect("second remove runs");
+
+    assert!(!first.status.success());
+    assert!(!second.status.success());
+    assert_eq!(first.stdout, second.stdout);
+    assert_eq!(first.stderr, second.stderr);
+    assert!(
+        String::from_utf8(first.stdout)
+            .unwrap()
+            .contains("DELETE physical copy")
+    );
+    assert!(exposed_skill.exists());
 }

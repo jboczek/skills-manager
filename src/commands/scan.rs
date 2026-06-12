@@ -1,20 +1,12 @@
 use anyhow::Result;
 
-use crate::config::{self, Config};
-use crate::scanner::{self, ScanConfig, SourceKind};
+use crate::commands::helpers;
+use crate::scanner::{self, SourceKind};
 
 pub fn run() -> Result<()> {
-    let config = load_config()?;
-    let mut results = scanner::scan(&ScanConfig {
-        central_dir: config::expand_tilde(&config.skills.central_dir),
-        scan_parent_dirs: config
-            .skills
-            .scan_parent_dirs
-            .iter()
-            .map(|path| config::expand_tilde(path))
-            .collect(),
-        max_scan_depth: config.skills.max_scan_depth as usize,
-    })?;
+    let config = helpers::load_config()?;
+    let context = config.resolve_global_context()?;
+    let mut results = scanner::scan(&helpers::scan_config_from_global(&context))?;
 
     scanner::assign_disambiguation_indices(&mut results);
 
@@ -62,13 +54,6 @@ pub fn run() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn load_config() -> Result<Config> {
-    match Config::default_path() {
-        Some(path) if path.exists() => Config::load_from(&path),
-        _ => Ok(Config::default_config()),
-    }
 }
 
 fn source_label(source_kind: &SourceKind) -> &'static str {

@@ -16,6 +16,12 @@
 7. After implementation, ask yourself: "Am I proud of this code? Would I want to show it to a senior engineer?" If not, rewrite it until you are.
 8. `/docs/AGENTS.md` is a set of rules for maintaining the documentation in this repository. Follow these rules when updating docs or suggesting doc changes. 
 9. When completing PRD work, update the README, matching `docs/features/` document, PRD status/progress notes, roadmap status, and changelog before considering the branch complete.
+10. After the user approves implementation with `yolo`, continue through TDD, implementation, verification, and commits without requesting additional approval between phases.
+11. Do not infer exposure scope from a skill's source path or from the absence of exposures. Model discovered source state and agent exposure state separately before rendering inventory.
+12. `/scan` shows the complete configured source catalog. `/list` shows only real agent exposures, including global and project-local exposures; project-local paths must include enough project-path context to distinguish them from global targets.
+13. Discover project-local exposures in repositories containing `SKILL.md` under both configured source root types. Use fixed agent directory conventions, classify physical project-local skill directories as local to their containing repository, and resolve symlink sources when possible.
+14. Project-local exposures are read-only inventory. Do not allow import, remove, detach, or physical deletion actions for them. The fixed `.agents/skills` convention grants effective availability to Codex and Copilot.
+15. TUI list groups represent repositories, not scope buckets. Group global exposures by source repository and project-local exposures by containing project; keep `global` and `project-local` in the scope column.
 
 
 Before implementation, make a plan and add it to temp file named after the PRD `/docs/temp/prd-xxx-plan.md`. The plan should be a step-by-step outline of how the implementation will proceed and what files need to be modified. Add the plan file but do not commit it.

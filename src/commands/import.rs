@@ -13,8 +13,8 @@ use crate::scanner;
 
 pub fn run(args: ImportArgs) -> Result<()> {
     let config = helpers::load_config()?;
-    let current_dir = helpers::current_dir()?;
-    let mut scan_results = scanner::scan(&helpers::scan_config_from(&config, &current_dir))?;
+    let context = config.resolve_global_context()?;
+    let mut scan_results = scanner::scan(&helpers::scan_config_from_global(&context))?;
     scanner::assign_disambiguation_indices(&mut scan_results);
 
     let matches = helpers::find_scan_results_by_id(&args.skill, &scan_results);
@@ -44,7 +44,7 @@ pub fn run(args: ImportArgs) -> Result<()> {
         }
     };
 
-    let all_agents = helpers::agent_targets_from(&config, &current_dir);
+    let all_agents = helpers::agent_targets_from_global(&context);
     let target_agents = match args.to.as_deref() {
         Some(raw_agents) => {
             let requested = helpers::parse_agents(raw_agents);
@@ -68,7 +68,7 @@ pub fn run(args: ImportArgs) -> Result<()> {
             .collect::<Vec<_>>(),
     };
 
-    let inventory = helpers::fresh_inventory(&config, &current_dir)?;
+    let inventory = helpers::fresh_global_inventory(&context)?;
     let existing_paths = inventory
         .iter()
         .flat_map(|row| row.exposures.iter().map(|exposure| exposure.path.clone()))
@@ -153,7 +153,7 @@ pub fn run(args: ImportArgs) -> Result<()> {
         None => println!("Applied {} change(s).", result.applied.len()),
     }
 
-    let rows = helpers::fresh_inventory(&config, &current_dir)?;
+    let rows = helpers::fresh_global_inventory(&context)?;
     println!("{}", output::render_inventory(&rows));
     Ok(())
 }

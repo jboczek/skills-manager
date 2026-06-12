@@ -18,7 +18,7 @@ pub fn render(frame: &mut Frame, area: Rect, _app: &App) {
     frame.render_widget(block, area);
     frame.render_widget(
         Paragraph::new(Text::from(
-            "Manage local skills for Codex, Claude and Copilot\nType a command or use /help to get started",
+            "Manage global and project-local skills for Codex, Claude and Copilot\nType a command or use /help to get started",
         ))
         .style(Theme::muted()),
         inner,
