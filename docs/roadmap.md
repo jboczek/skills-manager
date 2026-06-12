@@ -13,7 +13,7 @@ V1 PRDs live under `docs/prds/v1/` and are linked from their roadmap items below
 - `docs/bigpicture.md`
 - `docs/interview.md`
 - `docs/skills_manager_rust_guidelines.md`
-- Current repository state: Rust CLI/TUI crate with configuration, source scanning, inventory/list, safe import/remove plans, human-readable CLI workflow, and assistant-style TUI shell slices implemented.
+- Current repository state: Rust CLI/TUI crate with configuration, source scanning, inventory/list, safe import/remove plans, human-readable CLI workflow, and source-grouped assistant-style TUI tables implemented.
 
 ## Roadmap Principles
 
@@ -112,6 +112,19 @@ Create the first usable Rust CLI/TUI that can discover skills, show effective av
 - **Validation signal:** A user can launch the app, inspect status, run list/scan/config flows, complete import/remove with staged plan review and confirmation, and quit cleanly from the TUI.
 - **Status:** Done.
 - **Notes / risks:** Advanced table cell toggling remains deferred to V2 item 011.
+
+
+### 007 v3 - Source-grouped TUI tables
+
+- **Type:** UX
+- **Outcome:** Users can browse large list and scan results as compact, privacy-safe source groups instead of flat skill tables.
+- **Description:** Group list and scan rows by source, collapse every group by default, add Left/Right tree navigation, widen the first column for skill names, show repository-relative or bounded path context without exposing user-specific absolute paths, and include global and project-local `.agents/skills` inventory targets.
+- **Why now:** Table actions made individual rows usable, but large repositories still dominate the initial view and duplicate or unknown source labels remain hard to distinguish.
+- **PRD candidate:** Yes. PRD: [`docs/prds/v1/prd-007-v3-source-grouped-tui-tables.md`](prds/v1/prd-007-v3-source-grouped-tui-tables.md)
+- **Dependencies:** 004, 007, 011.
+- **Validation signal:** List and scan open as collapsed source overviews, expand and collapse consistently with arrow keys, distinguish duplicate sources with safe path context, retain skill-level actions, and show `~/.agents/skills` entries as global Codex/Copilot availability.
+- **Status:** Done.
+- **Notes / risks:** Group identity and fallback path shortening must remain stable without leaking home-directory prefixes. Legacy `.agents` config values must resolve to the standard `.agents/skills` layout without manual migration.
 
 ### Version Validation
 

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 
 use crate::config::{self, Config};
-use crate::domain::InventoryRow;
+use crate::domain::{InventoryRow, Scope};
 use crate::inventory::{self, AgentTarget, InventoryConfig};
 use crate::scanner::{self, ScanConfig, ScanResult};
 
@@ -58,7 +58,16 @@ pub fn agent_targets_from(config: &Config, current_dir: &Path) -> Vec<AgentTarge
                 .iter()
                 .filter_map(|target_id| config.shared_targets.get(target_id))
                 .filter(|target| target.enabled)
-                .map(|target| resolve_path(current_dir, &target.project_dir))
+                .flat_map(|target| {
+                    target
+                        .global_dir
+                        .iter()
+                        .map(|path| (resolve_path(current_dir, path), Scope::Global))
+                        .chain(std::iter::once((
+                            resolve_path(current_dir, &target.project_dir),
+                            Scope::ProjectLocal,
+                        )))
+                })
                 .collect(),
             enabled: agent.enabled,
         })

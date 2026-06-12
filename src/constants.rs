@@ -22,7 +22,8 @@ pub const AGENT_PROJECT_DIR_COPILOT: &str = ".copilot/skills";
 // Shared Targets
 pub const SHARED_TARGET_AGENTS: &str = "agents";
 pub const SHARED_TARGET_DISPLAY_NAME: &str = ".agents";
-pub const SHARED_TARGET_PROJECT_DIR: &str = ".agents";
+pub const SHARED_TARGET_GLOBAL_DIR: &str = "~/.agents/skills";
+pub const SHARED_TARGET_PROJECT_DIR: &str = ".agents/skills";
 
 // Default Skills Configuration
 pub const DEFAULT_SKILLS_CENTRAL_DIR: &str = "~/skills";

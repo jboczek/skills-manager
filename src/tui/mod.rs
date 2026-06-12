@@ -2,6 +2,7 @@ pub mod app;
 pub mod components;
 pub mod events;
 pub mod layout;
+pub mod source_table;
 pub mod theme;
 
 pub fn run() -> anyhow::Result<()> {
@@ -104,11 +105,20 @@ fn event_loop<B: ratatui::backend::Backend>(
             continue;
         }
 
-        if crossterm::event::poll(std::time::Duration::from_millis(50))?
-            && let crossterm::event::Event::Key(key) = crossterm::event::read()?
-            && events::handle_key(app, key)?
-        {
-            break;
+        if crossterm::event::poll(std::time::Duration::from_millis(50))? {
+            match crossterm::event::read()? {
+                crossterm::event::Event::Key(key) if events::handle_key(app, key)? => break,
+                crossterm::event::Event::Resize(width, height) => {
+                    let layout = layout::AppLayout::compute(ratatui::layout::Rect {
+                        x: 0,
+                        y: 0,
+                        width,
+                        height,
+                    });
+                    app.sync_active_table(events::table_height_for_main(layout.main.height));
+                }
+                _ => {}
+            }
         }
 
         if app.mode == app::Mode::Quit {

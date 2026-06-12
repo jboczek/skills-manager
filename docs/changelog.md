@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-06-11
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-06-11 22:59 | Included global and project-local `.agents/skills` entries in list inventory with legacy config migration and Codex/Copilot mapping. | `README.md`, `features/inventory-and-exposure-resolution.md`, `prds/v1/prd-007-v3-source-grouped-tui-tables.md`, `roadmap.md` |
+| 2026-06-11 22:04 | Widened the PRD-007 v3 list and scan skill-name columns by approximately 25%. | `README.md`, `features/assistant-style-tui-shell.md`, `prds/v1/prd-007-v3-source-grouped-tui-tables.md`, `roadmap.md` |
+| 2026-06-11 00:23 | Implemented PRD-007 v3 source-grouped TUI tables with privacy-safe labels, collapsed navigation, refresh preservation, and skill-only actions. | `README.md`, `features/assistant-style-tui-shell.md`, `prds/v1/prd-007-v3-source-grouped-tui-tables.md`, `roadmap.md` |
+
 ## 2026-06-03
 
 | Time | Change | Docs |

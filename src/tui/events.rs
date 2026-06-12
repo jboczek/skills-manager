@@ -2,7 +2,6 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Rect;
 
 use crate::tui::app::{App, ImportStep, Mode, RemoveStep};
-use crate::constants::{AGENT_ID_CLAUDE, AGENT_ID_CODEX, AGENT_NAME_CLAUDE, AGENT_NAME_CODEX};
 
 /// Handle a key event. Returns true if the app should quit.
 pub fn handle_key(app: &mut App, key: KeyEvent) -> anyhow::Result<bool> {
@@ -84,19 +83,28 @@ fn handle_key_with_table_height(
             app.toggle_agent_selection();
         }
         KeyCode::Up if app.mode == Mode::List => {
-            app.list_table.move_up(app.inventory.len(), table_height);
-            app.sync_legacy_list_navigation();
+            app.list_table.move_up(table_height);
         }
         KeyCode::Down if app.mode == Mode::List => {
-            app.list_table.move_down(app.inventory.len(), table_height);
-            app.sync_legacy_list_navigation();
+            app.list_table.move_down(table_height);
+        }
+        KeyCode::Left if app.mode == Mode::List => {
+            app.list_table.move_left(table_height);
+        }
+        KeyCode::Right if app.mode == Mode::List => {
+            app.list_table.move_right(table_height);
         }
         KeyCode::Up if app.mode == Mode::Scan => {
-            app.scan_table.move_up(app.scan_results.len(), table_height);
+            app.scan_table.move_up(table_height);
         }
         KeyCode::Down if app.mode == Mode::Scan => {
-            app.scan_table
-                .move_down(app.scan_results.len(), table_height);
+            app.scan_table.move_down(table_height);
+        }
+        KeyCode::Left if app.mode == Mode::Scan => {
+            app.scan_table.move_left(table_height);
+        }
+        KeyCode::Right if app.mode == Mode::Scan => {
+            app.scan_table.move_right(table_height);
         }
         KeyCode::Char('?') if app.input.is_empty() => {
             app.mode = Mode::Help;
@@ -116,7 +124,7 @@ fn handle_key_with_table_height(
         KeyCode::Char('r')
             if app.input.is_empty() && matches!(app.mode, Mode::List | Mode::Scan) =>
         {
-            app.refresh_active_table()?;
+            app.refresh_active_table(table_height)?;
         }
         KeyCode::Char('/') if app.input.is_empty() => {
             app.input.push('/');
@@ -155,7 +163,7 @@ fn current_table_height() -> usize {
     table_height_for_main(layout.main.height)
 }
 
-fn table_height_for_main(main_height: u16) -> usize {
+pub(crate) fn table_height_for_main(main_height: u16) -> usize {
     usize::from(main_height.saturating_sub(3)).max(1)
 }
 
@@ -165,6 +173,7 @@ mod tests {
 
     use super::*;
     use crate::config::Config;
+    use crate::constants::{AGENT_ID_CLAUDE, AGENT_ID_CODEX, AGENT_NAME_CLAUDE, AGENT_NAME_CODEX};
     use crate::domain::{
         AgentId, ConnectionKind, InventoryRow, Scope, SkillExposure, SkillId, SkillSource,
     };
@@ -282,33 +291,37 @@ mod tests {
             inventory_row("three"),
             inventory_row("four"),
         ];
-        app.list_table.reset(app.inventory.len());
+        app.enter_list_mode();
 
+        handle_key_with_table_height(&mut app, key(KeyCode::Right), 3).expect("key handled");
+        handle_key_with_table_height(&mut app, key(KeyCode::Right), 3).expect("key handled");
         handle_key_with_table_height(&mut app, key(KeyCode::Down), 3).expect("key handled");
         handle_key_with_table_height(&mut app, key(KeyCode::Down), 3).expect("key handled");
 
-        assert_eq!(app.list_table.selected, Some(2));
-        assert_eq!(app.list_table.viewport_offset, 0);
+        assert_eq!(app.list_table.selected_index(), Some(3));
+        assert_eq!(app.list_table.viewport_offset(), 1);
     }
 
     #[test]
-    fn list_down_scrolls_after_selection_moves_past_bottom() {
+    fn right_expands_list_group_and_left_returns_to_parent() {
         let mut app = test_app();
         app.mode = Mode::List;
-        app.inventory = vec![
-            inventory_row("one"),
-            inventory_row("two"),
-            inventory_row("three"),
-            inventory_row("four"),
-        ];
-        app.list_table.reset(app.inventory.len());
+        app.inventory = vec![inventory_row("one"), inventory_row("two")];
+        app.enter_list_mode();
 
-        handle_key_with_table_height(&mut app, key(KeyCode::Down), 3).expect("key handled");
-        handle_key_with_table_height(&mut app, key(KeyCode::Down), 3).expect("key handled");
-        handle_key_with_table_height(&mut app, key(KeyCode::Down), 3).expect("key handled");
+        handle_key_with_table_height(&mut app, key(KeyCode::Right), 3).expect("key handled");
+        handle_key_with_table_height(&mut app, key(KeyCode::Right), 3).expect("key handled");
 
-        assert_eq!(app.list_table.selected, Some(3));
-        assert_eq!(app.list_table.viewport_offset, 1);
+        assert!(app.selected_inventory_row().is_some());
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Left), 3).expect("key handled");
+
+        assert!(app.selected_inventory_row().is_none());
+        assert_eq!(app.list_table.visible_rows().len(), 3);
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Left), 3).expect("key handled");
+
+        assert_eq!(app.list_table.visible_rows().len(), 1);
     }
 
     #[test]
@@ -321,14 +334,47 @@ mod tests {
             scan_result("repo-a/three"),
             scan_result("repo-a/four"),
         ];
-        app.scan_table.reset(app.scan_results.len());
+        app.enter_scan_mode();
 
+        handle_key_with_table_height(&mut app, key(KeyCode::Right), 3).expect("key handled");
+        handle_key_with_table_height(&mut app, key(KeyCode::Right), 3).expect("key handled");
         handle_key_with_table_height(&mut app, key(KeyCode::Down), 3).expect("key handled");
         handle_key_with_table_height(&mut app, key(KeyCode::Down), 3).expect("key handled");
         handle_key_with_table_height(&mut app, key(KeyCode::Down), 3).expect("key handled");
 
-        assert_eq!(app.scan_table.selected, Some(3));
-        assert_eq!(app.scan_table.viewport_offset, 1);
+        assert_eq!(app.scan_table.selected_index(), Some(4));
+        assert_eq!(app.scan_table.viewport_offset(), 2);
+    }
+
+    #[test]
+    fn group_rows_do_not_start_import_or_remove_actions() {
+        let mut app = test_app();
+        app.inventory = vec![inventory_row("one")];
+        app.scan_results = vec![scan_result("repo-a/one")];
+
+        app.enter_list_mode();
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('i')), 3).expect("key handled");
+        assert_eq!(app.mode, Mode::List);
+        assert_eq!(
+            app.info_message.as_deref(),
+            Some("Select a skill inside the group.")
+        );
+
+        app.info_message = None;
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('x')), 3).expect("key handled");
+        assert_eq!(app.mode, Mode::List);
+        assert_eq!(
+            app.info_message.as_deref(),
+            Some("Select a skill inside the group.")
+        );
+
+        app.enter_scan_mode();
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('i')), 3).expect("key handled");
+        assert_eq!(app.mode, Mode::Scan);
+        assert_eq!(
+            app.info_message.as_deref(),
+            Some("Select a skill inside the group.")
+        );
     }
 
     #[test]
@@ -336,7 +382,9 @@ mod tests {
         let mut app = test_app();
         app.mode = Mode::Scan;
         app.scan_results = vec![scan_result("repo-a/one")];
-        app.scan_table.reset(app.scan_results.len());
+        app.enter_scan_mode();
+        app.scan_table.move_right(3);
+        app.scan_table.move_right(3);
 
         handle_key_with_table_height(&mut app, key(KeyCode::Char('i')), 3).expect("key handled");
 
@@ -350,7 +398,9 @@ mod tests {
         app.mode = Mode::List;
         app.inventory = vec![inventory_row("one")];
         app.scan_results = vec![scan_result("repo-a/one")];
-        app.list_table.reset(app.inventory.len());
+        app.enter_list_mode();
+        app.list_table.move_right(3);
+        app.list_table.move_right(3);
 
         handle_key_with_table_height(&mut app, key(KeyCode::Char('i')), 3).expect("key handled");
 
@@ -363,7 +413,9 @@ mod tests {
         let mut app = test_app();
         app.mode = Mode::List;
         app.inventory = vec![inventory_row("one")];
-        app.list_table.reset(app.inventory.len());
+        app.enter_list_mode();
+        app.list_table.move_right(3);
+        app.list_table.move_right(3);
 
         handle_key_with_table_height(&mut app, key(KeyCode::Char('x')), 3).expect("key handled");
 
@@ -382,7 +434,9 @@ mod tests {
         });
         app.mode = Mode::List;
         app.inventory = vec![row];
-        app.list_table.reset(app.inventory.len());
+        app.enter_list_mode();
+        app.list_table.move_right(3);
+        app.list_table.move_right(3);
 
         handle_key_with_table_height(&mut app, key(KeyCode::Char('x')), 3).expect("key handled");
 
@@ -396,7 +450,9 @@ mod tests {
         enable_only(&mut app, AGENT_ID_CODEX);
         app.mode = Mode::Scan;
         app.scan_results = vec![scan_result("repo-a/one")];
-        app.scan_table.reset(app.scan_results.len());
+        app.enter_scan_mode();
+        app.scan_table.move_right(3);
+        app.scan_table.move_right(3);
 
         handle_key_with_table_height(&mut app, key(KeyCode::Char('i')), 3).expect("key handled");
 
@@ -413,7 +469,9 @@ mod tests {
         app.mode = Mode::List;
         app.inventory = vec![inventory_row("one")];
         app.scan_results = vec![scan_result("repo-a/one")];
-        app.list_table.reset(app.inventory.len());
+        app.enter_list_mode();
+        app.list_table.move_right(3);
+        app.list_table.move_right(3);
 
         handle_key_with_table_height(&mut app, key(KeyCode::Char('i')), 3).expect("key handled");
 
@@ -428,7 +486,9 @@ mod tests {
         let mut app = test_app();
         app.mode = Mode::List;
         app.inventory = vec![inventory_row("one")];
-        app.list_table.reset(app.inventory.len());
+        app.enter_list_mode();
+        app.list_table.move_right(3);
+        app.list_table.move_right(3);
 
         handle_key_with_table_height(&mut app, key(KeyCode::Char('x')), 3).expect("key handled");
 
@@ -444,14 +504,16 @@ mod tests {
         point_config_to_missing_paths(&mut app);
         app.mode = Mode::Scan;
         app.scan_results = vec![scan_result("repo-a/one")];
-        app.scan_table.reset(app.scan_results.len());
+        app.enter_scan_mode();
+        app.scan_table.move_right(3);
+        app.scan_table.move_right(3);
 
         handle_key_with_table_height(&mut app, key(KeyCode::Char('r')), 3).expect("key handled");
 
         assert_eq!(app.mode, Mode::Scan);
         assert!(app.scan_results.is_empty());
-        assert_eq!(app.scan_table.selected, None);
-        assert_eq!(app.scan_table.viewport_offset, 0);
+        assert_eq!(app.scan_table.selected_index(), None);
+        assert_eq!(app.scan_table.viewport_offset(), 0);
     }
 
     #[test]
@@ -460,14 +522,16 @@ mod tests {
         point_config_to_missing_paths(&mut app);
         app.mode = Mode::List;
         app.inventory = vec![inventory_row("one")];
-        app.list_table.reset(app.inventory.len());
+        app.enter_list_mode();
+        app.list_table.move_right(3);
+        app.list_table.move_right(3);
 
         handle_key_with_table_height(&mut app, key(KeyCode::Char('r')), 3).expect("key handled");
 
         assert_eq!(app.mode, Mode::List);
         assert!(app.inventory.is_empty());
-        assert_eq!(app.list_table.selected, None);
-        assert_eq!(app.list_table.viewport_offset, 0);
+        assert_eq!(app.list_table.selected_index(), None);
+        assert_eq!(app.list_table.viewport_offset(), 0);
     }
 
     #[test]

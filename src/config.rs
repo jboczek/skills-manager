@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use crate::constants::*;
 use anyhow::Context;
 use directories::{BaseDirs, ProjectDirs};
-use crate::constants::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -34,6 +34,8 @@ pub struct AgentConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SharedTargetConfig {
     pub display_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub global_dir: Option<String>,
     pub project_dir: String,
     pub enabled: bool,
 }
@@ -91,6 +93,7 @@ impl Config {
             SHARED_TARGET_AGENTS.to_string(),
             SharedTargetConfig {
                 display_name: SHARED_TARGET_DISPLAY_NAME.to_string(),
+                global_dir: Some(SHARED_TARGET_GLOBAL_DIR.to_string()),
                 project_dir: SHARED_TARGET_PROJECT_DIR.to_string(),
                 enabled: true,
             },
@@ -118,13 +121,16 @@ impl Config {
 
     /// Parse config from a TOML string without filesystem access (useful in tests).
     pub fn parse(content: &str) -> anyhow::Result<Self> {
-        toml::from_str(content).map_err(|e| anyhow::anyhow!("config parse error: {e}"))
+        let mut config: Self =
+            toml::from_str(content).map_err(|e| anyhow::anyhow!("config parse error: {e}"))?;
+        config.apply_legacy_defaults();
+        Ok(config)
     }
 
     pub fn load_from(path: &Path) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("failed to read config file: {}", path.display()))?;
-        toml::from_str(&content)
+        Self::parse(&content)
             .map_err(|e| anyhow::anyhow!("failed to parse {}: {}", path.display(), e))
     }
 
@@ -157,6 +163,19 @@ impl Config {
             Err(e) => {
                 Err(e).with_context(|| format!("failed to create config: {}", path.display()))
             }
+        }
+    }
+
+    fn apply_legacy_defaults(&mut self) {
+        let Some(agents_target) = self.shared_targets.get_mut(SHARED_TARGET_AGENTS) else {
+            return;
+        };
+
+        if agents_target.global_dir.is_none() {
+            agents_target.global_dir = Some(SHARED_TARGET_GLOBAL_DIR.to_string());
+        }
+        if agents_target.project_dir == ".agents" {
+            agents_target.project_dir = SHARED_TARGET_PROJECT_DIR.to_string();
         }
     }
 }
@@ -248,6 +267,11 @@ confirm_physical_delete = true
         let cfg = Config::default_config();
         assert!(!cfg.agents.contains_key("agents"));
         assert!(cfg.shared_targets.contains_key("agents"));
+        assert_eq!(
+            cfg.shared_targets["agents"].global_dir.as_deref(),
+            Some("~/.agents/skills")
+        );
+        assert_eq!(cfg.shared_targets["agents"].project_dir, ".agents/skills");
     }
 
     #[test]
@@ -267,6 +291,11 @@ confirm_physical_delete = true
             Some(".codex/skills".to_string())
         );
         assert_eq!(cfg.agents["copilot"].shared_target_ids, vec!["agents"]);
+        assert_eq!(
+            cfg.shared_targets["agents"].global_dir.as_deref(),
+            Some("~/.agents/skills")
+        );
+        assert_eq!(cfg.shared_targets["agents"].project_dir, ".agents/skills");
     }
 
     #[test]

@@ -41,13 +41,15 @@ Unknown Git provenance is valid inventory state and renders as `unknown`.
 
 Claude, Codex, and Copilot are the product-facing agent columns. Config-only shared targets such as `.agents` are never rendered as an agent column or command target.
 
-When Codex or Copilot references the shared `.agents` target in config, skills found in `.agents` contribute to that agent's effective availability. If both agents reference the same shared target, a single skill exposure can mark both `CODEX` and `COPILOT`.
+When Codex or Copilot references the shared `.agents` target in config, skills found in global `~/.agents/skills` and project-local `<project>/.agents/skills` contribute to that agent's effective availability. If both agents reference the same shared target, a single skill exposure can mark both `CODEX` and `COPILOT`.
+
+Legacy configs that define only `project_dir = ".agents"` are normalized in memory to the standard `.agents/skills` project directory and the standard `~/.agents/skills` global directory. The config file does not need to be edited before running `/list`.
 
 ## Connections And Scope
 
 Inventory distinguishes symlink exposures from physical copies. For symlinks, the link itself is inspected first, and the resolved target is used only to identify source metadata. Later removal flows must be able to remove a link without deleting the source skill.
 
-Global target directories render as `global`; project target directories and shared project targets render as `local`.
+Global target directories, including `~/.agents/skills`, render as `global`; project target directories and shared project targets render as `local`.
 
 ## Duplicate Names
 
