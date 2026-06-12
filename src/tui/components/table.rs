@@ -299,7 +299,24 @@ fn row_style(selected: bool) -> ratatui::style::Style {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
     use super::*;
+    use crate::tui::source_table::SourceGroupItem;
+
+    fn rendered_lines(terminal: &Terminal<TestBackend>) -> Vec<String> {
+        let buffer = terminal.backend().buffer();
+        (0..buffer.area.height)
+            .map(|y| {
+                (0..buffer.area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+            })
+            .collect()
+    }
 
     #[test]
     fn group_rows_include_marker_context_and_count() {
@@ -323,7 +340,49 @@ mod tests {
 
     #[test]
     fn skill_columns_are_wider_in_list_and_scan() {
-        assert_eq!(LIST_SKILL_COLUMN_WIDTH, 30);
+        assert_eq!(LIST_SKILL_COLUMN_WIDTH, 60);
         assert_eq!(SCAN_SKILL_COLUMN_WIDTH, 35);
+    }
+
+    #[test]
+    fn scan_table_renders_predictably_in_a_narrow_terminal() {
+        let results = vec![ScanResult {
+            skill_id: "repository-with-a-long-name/skill-with-a-long-name".to_string(),
+            skill_path: PathBuf::from(
+                "/workspace/repository-with-a-long-name/skills/skill-with-a-long-name",
+            ),
+            skill_relative_path: Some(PathBuf::from("skills/skill-with-a-long-name")),
+            repo_name: Some("repository-with-a-long-name".to_string()),
+            repo_path: Some(PathBuf::from("/workspace/repository-with-a-long-name")),
+            remote_url: Some("https://example.com/repository-with-a-long-name".to_string()),
+            source_kind: SourceKind::ScanParentDir,
+            disambiguation_index: None,
+        }];
+        let source_table = SourceTable::new(vec![SourceGroupItem {
+            item: 0,
+            skill_name: "skill-with-a-long-name".to_string(),
+            skill_path: results[0].skill_path.clone(),
+            repo_name: results[0].repo_name.clone(),
+            repo_path: results[0].repo_path.clone(),
+            relative_path: results[0].skill_relative_path.clone(),
+        }]);
+        let backend = TestBackend::new(50, 6);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| render_scan_table(frame, frame.area(), &results, &source_table))
+            .unwrap();
+
+        assert_eq!(
+            rendered_lines(&terminal),
+            vec![
+                "┌ Scan ──────────────────────────────────────────┐",
+                "│SKILL    PATH      SOURCE   ORIGIN              │",
+                "│> reposi 1 skill                                │",
+                "│                                                │",
+                "│                                                │",
+                "└────────────────────────────────────────────────┘",
+            ]
+        );
     }
 }

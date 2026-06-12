@@ -1,6 +1,5 @@
 use std::path::Path;
 
-use crate::constants::{AGENT_NAME_CLAUDE, AGENT_NAME_CODEX, AGENT_NAME_COPILOT};
 use crate::domain::ConnectionKind;
 use crate::plan::{ChangePlan, StagedChange};
 use crate::symlink;
@@ -71,6 +70,7 @@ mod tests {
     use tempfile::{Builder, TempDir};
 
     use super::*;
+    use crate::constants::{AGENT_NAME_CLAUDE, AGENT_NAME_CODEX, AGENT_NAME_COPILOT};
     use crate::domain::AgentId;
 
     fn test_dir(name: &str) -> TempDir {
