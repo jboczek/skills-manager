@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use ignore::WalkBuilder;
 
@@ -81,6 +81,19 @@ pub fn assign_disambiguation_indices(results: &mut Vec<ScanResult>) {
             result.disambiguation_index = None;
         }
     }
+}
+
+pub fn exclude_dot_directory_results(results: &mut Vec<ScanResult>) {
+    results.retain(|result| {
+        !result
+            .skill_relative_path
+            .as_ref()
+            .is_some_and(|path| path.components().any(is_dot_component))
+    });
+}
+
+fn is_dot_component(component: Component<'_>) -> bool {
+    matches!(component, Component::Normal(name) if name.to_string_lossy().starts_with('.'))
 }
 
 fn scan_root(
@@ -247,6 +260,30 @@ mod tests {
                 && result.repo_path.as_ref() == Some(&repo_dir)
                 && result.remote_url.is_none()
         }));
+    }
+
+    #[test]
+    fn scan_filter_excludes_skills_under_dot_directories() {
+        let temp = tempdir().unwrap();
+        let repo_dir = temp.path().join("ponytail");
+        let skill_dir = repo_dir.join("skills").join("ponytail");
+        let local_copy_dir = repo_dir.join(".openclaw").join("skills").join("ponytail");
+        fs::create_dir_all(repo_dir.join(".git")).unwrap();
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::create_dir_all(&local_copy_dir).unwrap();
+        fs::write(skill_dir.join("SKILL.md"), "# skill").unwrap();
+        fs::write(local_copy_dir.join("SKILL.md"), "# local copy").unwrap();
+
+        let mut results = scan(&ScanConfig {
+            central_dir: temp.path().to_path_buf(),
+            scan_parent_dirs: vec![],
+            max_scan_depth: 10,
+        })
+        .unwrap();
+        exclude_dot_directory_results(&mut results);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].skill_path, skill_dir);
     }
 
     #[cfg(unix)]

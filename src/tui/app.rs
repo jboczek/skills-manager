@@ -978,6 +978,7 @@ impl App {
 
     fn reload_scan_results(&mut self) -> anyhow::Result<()> {
         self.scan_results = scanner::scan(&helpers::scan_config_from_global(&self.global_context))?;
+        scanner::exclude_dot_directory_results(&mut self.scan_results);
         scanner::assign_disambiguation_indices(&mut self.scan_results);
         self.rebuild_status_messages();
         Ok(())

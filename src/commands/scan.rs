@@ -8,6 +8,7 @@ pub fn run() -> Result<()> {
     let context = config.resolve_global_context()?;
     let mut results = scanner::scan(&helpers::scan_config_from_global(&context))?;
 
+    scanner::exclude_dot_directory_results(&mut results);
     scanner::assign_disambiguation_indices(&mut results);
 
     if results.is_empty() {
