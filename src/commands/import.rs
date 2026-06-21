@@ -5,7 +5,7 @@ use anyhow::{Result, bail};
 
 use crate::cli::ImportArgs;
 use crate::commands::helpers;
-use crate::domain::{AgentId, ConnectionKind};
+use crate::domain::AgentId;
 use crate::output;
 use crate::plan::{ChangePlan, StagedChange};
 use crate::plan_apply;
@@ -106,7 +106,6 @@ pub fn run(args: ImportArgs) -> Result<()> {
             agent_id: AgentId(agent.display_name),
             source_path: selected.skill_path.clone(),
             target_path,
-            connection: ConnectionKind::Symlink,
         });
     }
 

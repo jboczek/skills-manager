@@ -1022,7 +1022,6 @@ impl App {
                     agent_id: AgentId(agent.display_name.clone()),
                     source_path: selected.skill_path.clone(),
                     target_path,
-                    connection: ConnectionKind::Symlink,
                 })
             })
             .collect();
@@ -2099,7 +2098,6 @@ mod tests {
                 agent_id: AgentId("Claude".to_string()),
                 source_path: source,
                 target_path: target,
-                connection: ConnectionKind::Symlink,
             }]),
             selected: Box::new(scan_result("repo-a/skill")),
             target_agents: vec![],
