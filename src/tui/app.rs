@@ -771,8 +771,9 @@ impl App {
                     if plan.has_physical_deletes() {
                         self.import_step = ImportStep::ConfirmPhysical { plan };
                     } else {
-                        let message = self.apply_plan_and_refresh(&plan)?;
-                        self.import_step = ImportStep::Done { message };
+                        self.apply_plan_and_refresh(&plan)?;
+                        self.mode = Mode::Home;
+                        self.import_step = ImportStep::EnterSkill;
                     }
                 } else if normalized == "n" || normalized.is_empty() {
                     self.import_step = ImportStep::Done {
@@ -789,8 +790,9 @@ impl App {
             }
             ImportStep::ConfirmPhysical { plan } => {
                 if input.trim() == "yes" {
-                    let message = self.apply_plan_and_refresh(&plan)?;
-                    self.import_step = ImportStep::Done { message };
+                    self.apply_plan_and_refresh(&plan)?;
+                    self.mode = Mode::Home;
+                    self.import_step = ImportStep::EnterSkill;
                 } else {
                     self.import_step = ImportStep::Done {
                         message: "Aborted.".to_string(),
@@ -2079,6 +2081,35 @@ mod tests {
         app.advance_import("").expect("advance succeeds");
 
         assert_eq!(app.mode, Mode::Home);
+    }
+
+    #[test]
+    fn confirmed_import_returns_home_with_status_message() {
+        let temp = tempdir().expect("tempdir");
+        let config = test_config(temp.path());
+        let source = temp.path().join("skills/repo-a/skill");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("SKILL.md"), "# Skill").unwrap();
+        let target = PathBuf::from(&config.agents["claude"].global_dir).join("skill");
+        let mut app = App::new(config).unwrap();
+        app.mode = Mode::Import;
+        app.import_step = ImportStep::ConfirmPlan {
+            plan: ChangePlan::new(vec![StagedChange::ExposeSkill {
+                skill_name: "repo-a/skill".to_string(),
+                agent_id: AgentId("Claude".to_string()),
+                source_path: source,
+                target_path: target,
+                connection: ConnectionKind::Symlink,
+            }]),
+            selected: Box::new(scan_result("repo-a/skill")),
+            target_agents: vec![],
+        };
+
+        app.advance_import("y").expect("import applies");
+
+        assert_eq!(app.mode, Mode::Home);
+        assert!(matches!(app.import_step, ImportStep::EnterSkill));
+        assert_eq!(app.info_message.as_deref(), Some("Applied 1 change(s)."));
     }
 
     #[test]
