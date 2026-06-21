@@ -42,7 +42,7 @@ const COMMAND_SUGGESTIONS: [CommandSuggestion; 6] = [
     },
     CommandSuggestion {
         label: "/source_add",
-        description: "Use HTTPS/SSH clone URL",
+        description: "Add new skills from Git repository using HTTPS/SSH clone URL",
     },
     CommandSuggestion {
         label: "/config",
