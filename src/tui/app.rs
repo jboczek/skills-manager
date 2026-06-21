@@ -1190,11 +1190,7 @@ fn source_path_for_inventory_row(row: &InventoryRow) -> PathBuf {
 }
 
 fn display_inventory_row(row: &InventoryRow) -> String {
-    if row.skill_id.namespace.is_empty() {
-        row.skill_id.name.clone()
-    } else {
-        format!("{}/{}", row.skill_id.namespace, row.skill_id.name)
-    }
+    row.skill_id.to_string()
 }
 
 fn inventory_skill_label(row: &InventoryRow) -> String {
