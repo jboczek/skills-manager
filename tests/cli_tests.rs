@@ -32,7 +32,22 @@ fn running_without_args_exits_successfully() {
 fn config_bin_with_home(home: &TempDir) -> Command {
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("skills-manager"));
     cmd.env("HOME", home.path());
+    cmd.env("XDG_CONFIG_HOME", home.path().join(".config"));
     cmd
+}
+
+#[test]
+fn config_bin_with_home_isolates_xdg_config_home() {
+    let home = TempDir::new().unwrap();
+    let cmd = config_bin_with_home(&home);
+    let expected = home.path().join(".config");
+
+    let xdg_config_home = cmd
+        .get_envs()
+        .find(|(key, _)| *key == std::ffi::OsStr::new("XDG_CONFIG_HOME"))
+        .and_then(|(_, value)| value.map(PathBuf::from));
+
+    assert_eq!(xdg_config_home.as_deref(), Some(expected.as_path()));
 }
 
 fn config_path_for_home(home: &TempDir) -> PathBuf {
@@ -80,17 +95,14 @@ fn config_init_creates_config_file() {
 #[test]
 fn config_init_twice_does_not_overwrite() {
     let home = TempDir::new().unwrap();
-    let bin = assert_cmd::cargo::cargo_bin!("skills-manager");
 
-    Command::new(bin)
+    config_bin_with_home(&home)
         .args(["config", "init"])
-        .env("HOME", home.path())
         .output()
         .expect("first init runs");
 
-    let output = Command::new(bin)
+    let output = config_bin_with_home(&home)
         .args(["config", "init"])
-        .env("HOME", home.path())
         .output()
         .expect("second init runs");
 
@@ -121,17 +133,14 @@ fn config_show_when_no_file_prints_hint() {
 #[test]
 fn config_show_after_init_prints_toml() {
     let home = TempDir::new().unwrap();
-    let bin = assert_cmd::cargo::cargo_bin!("skills-manager");
 
-    Command::new(bin)
+    config_bin_with_home(&home)
         .args(["config", "init"])
-        .env("HOME", home.path())
         .output()
         .expect("init runs");
 
-    let output = Command::new(bin)
+    let output = config_bin_with_home(&home)
         .args(["config", "show"])
-        .env("HOME", home.path())
         .output()
         .expect("show runs");
 
