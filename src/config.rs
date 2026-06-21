@@ -211,7 +211,6 @@ impl Config {
                     agent_id: agent_id.clone(),
                     display_name: agent.display_name.clone(),
                     global_dir: Some(global_dir),
-                    project_dir: None,
                     shared_target_dirs,
                     enabled: agent.enabled,
                 }
@@ -574,12 +573,6 @@ confirm_physical_delete = true
             .expect("legacy project paths should not block global config");
 
         assert!(context.diagnostics.is_empty());
-        assert!(
-            context
-                .agents
-                .iter()
-                .all(|agent| agent.project_dir.is_none())
-        );
         assert!(
             context
                 .agents
