@@ -386,7 +386,7 @@ fn doctor_with_valid_config_shows_checks() {
 }
 
 #[test]
-fn config_show_normalizes_legacy_project_dirs_and_reports_diagnostics() {
+fn config_show_normalizes_legacy_project_dirs_silently() {
     let home = TempDir::new().unwrap();
     let config_path = config_path_for_home(&home);
     fs::create_dir_all(config_path.parent().unwrap()).unwrap();
@@ -423,12 +423,12 @@ confirm_physical_delete = true
     let stdout = String::from_utf8(output.stdout).unwrap();
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(!stdout.contains("project_dir"), "{stdout}");
-    assert!(stderr.contains("agents.claude.project_dir"), "{stderr}");
-    assert!(stderr.contains("ignored"), "{stderr}");
+    assert!(!stderr.contains("agents.claude.project_dir"), "{stderr}");
+    assert!(!stderr.contains("ignored"), "{stderr}");
 }
 
 #[test]
-fn doctor_reports_ignored_legacy_project_dirs() {
+fn doctor_omits_ignored_legacy_project_dir_warnings() {
     let home = TempDir::new().unwrap();
     let mut config = skills_manager::config::Config::default_config();
     config.skills.central_dir = home.path().join("skills").to_string_lossy().into_owned();
@@ -447,9 +447,11 @@ fn doctor_reports_ignored_legacy_project_dirs() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("WARN"), "{stdout}");
-    assert!(stdout.contains("agents.claude.project_dir"), "{stdout}");
-    assert!(stdout.contains("ignored"), "{stdout}");
+    assert!(!stdout.contains("agents.claude.project_dir"), "{stdout}");
+    assert!(
+        !stdout.contains("ignored in global execution context"),
+        "{stdout}"
+    );
 }
 
 #[test]

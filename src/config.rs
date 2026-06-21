@@ -151,7 +151,7 @@ impl Config {
     }
 
     pub fn resolve_global_context(&self) -> anyhow::Result<GlobalContext> {
-        let diagnostics = self.compatibility_diagnostics();
+        let diagnostics = Vec::new();
         let mut path_errors = Vec::new();
 
         let central_dir = resolve_active_path(
@@ -235,28 +235,6 @@ impl Config {
             agents,
             diagnostics,
         })
-    }
-
-    pub fn compatibility_diagnostics(&self) -> Vec<String> {
-        let agent_diagnostics = self.agents.iter().filter_map(|(agent_id, agent)| {
-            agent.project_dir.as_ref().map(|value| {
-                format!(
-                    "agents.{agent_id}.project_dir is ignored in global execution context: {value}"
-                )
-            })
-        });
-        let shared_target_diagnostics =
-            self.shared_targets
-                .iter()
-                .filter_map(|(target_id, target)| {
-                    target.project_dir.as_ref().map(|value| {
-                        format!(
-                            "shared_targets.{target_id}.project_dir is ignored in global execution context: {value}"
-                        )
-                    })
-                });
-
-        agent_diagnostics.chain(shared_target_diagnostics).collect()
     }
 
     /// Write this config to `path`, creating parent directories as needed.
@@ -588,25 +566,14 @@ confirm_physical_delete = true
     }
 
     #[test]
-    fn resolve_global_context_ignores_legacy_project_dirs_with_diagnostics() {
+    fn resolve_global_context_ignores_legacy_project_dirs_without_diagnostics() {
         let config = Config::parse(EXAMPLE_TOML).expect("legacy config should parse");
 
         let context = config
             .resolve_global_context()
             .expect("legacy project paths should not block global config");
 
-        assert!(
-            context
-                .diagnostics
-                .iter()
-                .any(|message| message.contains("agents.codex.project_dir"))
-        );
-        assert!(
-            context
-                .diagnostics
-                .iter()
-                .any(|message| message.contains("shared_targets.agents.project_dir"))
-        );
+        assert!(context.diagnostics.is_empty());
         assert!(
             context
                 .agents

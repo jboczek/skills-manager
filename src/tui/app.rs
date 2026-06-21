@@ -1400,7 +1400,7 @@ mod tests {
     }
 
     #[test]
-    fn initialization_uses_global_prompt_and_reports_legacy_diagnostics() {
+    fn initialization_uses_global_prompt_and_omits_legacy_diagnostics() {
         let temp = tempdir().expect("tempdir");
         let mut config = test_config(temp.path());
         config.agents.get_mut("claude").unwrap().project_dir = Some(".claude/skills".to_string());
@@ -1413,7 +1413,7 @@ mod tests {
         assert!(
             app.status_messages
                 .iter()
-                .any(|message| message.contains("agents.claude.project_dir"))
+                .all(|message| !message.contains("agents.claude.project_dir"))
         );
         assert!(
             app.status_messages
