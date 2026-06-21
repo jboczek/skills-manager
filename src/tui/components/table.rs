@@ -7,7 +7,8 @@ use crate::scanner::{ScanResult, SourceKind};
 use crate::tui::source_table::{SourceTable, SourceTableRow};
 use crate::tui::theme::Theme;
 
-const LIST_SKILL_COLUMN_WIDTH: u16 = 60;
+const LIST_SKILL_COLUMN_WIDTH: u16 = 57;
+const LIST_SCOPE_COLUMN_WIDTH: u16 = 13;
 const SCAN_SKILL_COLUMN_WIDTH: u16 = 35;
 
 /// Render inventory rows as a table in the given area.
@@ -120,7 +121,7 @@ pub fn render_inventory_table(
             Constraint::Length(8),
             Constraint::Length(8),
             Constraint::Length(10),
-            Constraint::Length(10),
+            Constraint::Length(LIST_SCOPE_COLUMN_WIDTH),
             Constraint::Min(12),
         ],
     )
@@ -305,6 +306,7 @@ mod tests {
     use ratatui::backend::TestBackend;
 
     use super::*;
+    use crate::domain::{AgentId, SkillExposure, SkillId, SkillSource};
     use crate::tui::source_table::SourceGroupItem;
 
     fn rendered_lines(terminal: &Terminal<TestBackend>) -> Vec<String> {
@@ -340,7 +342,7 @@ mod tests {
 
     #[test]
     fn skill_columns_are_wider_in_list_and_scan() {
-        assert_eq!(LIST_SKILL_COLUMN_WIDTH, 60);
+        assert_eq!(LIST_SKILL_COLUMN_WIDTH, 57);
         assert_eq!(SCAN_SKILL_COLUMN_WIDTH, 35);
     }
 
@@ -384,5 +386,45 @@ mod tests {
                 "└────────────────────────────────────────────────┘",
             ]
         );
+    }
+
+    #[test]
+    fn list_table_renders_full_project_local_scope_label() {
+        let rows = vec![InventoryRow {
+            skill_id: SkillId {
+                namespace: "project".to_string(),
+                name: "adx-intake".to_string(),
+            },
+            source: SkillSource {
+                repo_name: Some("project".to_string()),
+                repo_path: Some(PathBuf::from("/workspace/project")),
+                remote_url: None,
+            },
+            scope: Scope::ProjectLocal,
+            exposures: vec![SkillExposure {
+                agent_id: AgentId("codex".to_string()),
+                path: PathBuf::from("/workspace/project/.agents/skills/adx-intake"),
+                connection: ConnectionKind::PhysicalCopy,
+            }],
+            disambiguation_index: None,
+        }];
+        let mut source_table = SourceTable::new(vec![SourceGroupItem {
+            item: 0,
+            skill_name: "project/adx-intake".to_string(),
+            skill_path: PathBuf::from("/workspace/project/.agents/skills/adx-intake"),
+            repo_name: Some("project".to_string()),
+            repo_path: Some(PathBuf::from("/workspace/project")),
+            relative_path: Some(PathBuf::from(".agents/skills/adx-intake")),
+        }]);
+        source_table.move_right(10);
+        let backend = TestBackend::new(140, 6);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| render_inventory_table(frame, frame.area(), &rows, &source_table))
+            .unwrap();
+
+        let output = rendered_lines(&terminal).join("\n");
+        assert!(output.contains("project-local"), "{output}");
     }
 }
