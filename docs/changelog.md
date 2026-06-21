@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-06-21
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-06-21 20:10 | Removed stale warnings for ignored legacy `project_dir` values while keeping legacy configs parseable and normalized output free of those fields. | `README.md`, `features/human-readable-cli-workflow.md`, `features/inventory-and-exposure-resolution.md`, `features/assistant-style-tui-shell.md`, `prds/v2/prd-008-global-execution-context.md`, `roadmap.md` |
+
 ## 2026-06-13
 
 | Time | Change | Docs |

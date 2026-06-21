@@ -62,7 +62,7 @@ The scan source settings live under `[skills]`:
 
 Managed source and target paths must be absolute or begin with `~`. Leading tildes are expanded before validation. Relative active paths are rejected before scanning, inventory construction, or plan creation.
 
-Legacy `project_dir` fields still parse for upgrade compatibility, but they are ignored, reported as diagnostics, and omitted from generated or normalized config.
+Legacy `project_dir` fields still parse for upgrade compatibility, but they are ignored and omitted from generated or normalized config.
 
 ## Skill Scanning
 
@@ -178,7 +178,7 @@ Check local setup:
 skills-manager doctor
 ```
 
-`doctor` validates the global execution context, reports ignored legacy fields, checks configured source directories, checks global agent and shared target directories for writability when they exist, and verifies that the local `git` CLI is available for origin detection. It prints `PASS`, `WARN`, or `FAIL` status lines with affected paths.
+`doctor` validates the global execution context, checks configured source directories, checks global agent and shared target directories for writability when they exist, and verifies that the local `git` CLI is available for origin detection. It prints `PASS`, `WARN`, or `FAIL` status lines with affected paths.
 
 ## Local verification
 

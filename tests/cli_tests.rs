@@ -32,7 +32,22 @@ fn running_without_args_exits_successfully() {
 fn config_bin_with_home(home: &TempDir) -> Command {
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("skills-manager"));
     cmd.env("HOME", home.path());
+    cmd.env("XDG_CONFIG_HOME", home.path().join(".config"));
     cmd
+}
+
+#[test]
+fn config_bin_with_home_isolates_xdg_config_home() {
+    let home = TempDir::new().unwrap();
+    let cmd = config_bin_with_home(&home);
+    let expected = home.path().join(".config");
+
+    let xdg_config_home = cmd
+        .get_envs()
+        .find(|(key, _)| *key == std::ffi::OsStr::new("XDG_CONFIG_HOME"))
+        .and_then(|(_, value)| value.map(PathBuf::from));
+
+    assert_eq!(xdg_config_home.as_deref(), Some(expected.as_path()));
 }
 
 fn config_path_for_home(home: &TempDir) -> PathBuf {
@@ -80,17 +95,14 @@ fn config_init_creates_config_file() {
 #[test]
 fn config_init_twice_does_not_overwrite() {
     let home = TempDir::new().unwrap();
-    let bin = assert_cmd::cargo::cargo_bin!("skills-manager");
 
-    Command::new(bin)
+    config_bin_with_home(&home)
         .args(["config", "init"])
-        .env("HOME", home.path())
         .output()
         .expect("first init runs");
 
-    let output = Command::new(bin)
+    let output = config_bin_with_home(&home)
         .args(["config", "init"])
-        .env("HOME", home.path())
         .output()
         .expect("second init runs");
 
@@ -121,17 +133,14 @@ fn config_show_when_no_file_prints_hint() {
 #[test]
 fn config_show_after_init_prints_toml() {
     let home = TempDir::new().unwrap();
-    let bin = assert_cmd::cargo::cargo_bin!("skills-manager");
 
-    Command::new(bin)
+    config_bin_with_home(&home)
         .args(["config", "init"])
-        .env("HOME", home.path())
         .output()
         .expect("init runs");
 
-    let output = Command::new(bin)
+    let output = config_bin_with_home(&home)
         .args(["config", "show"])
-        .env("HOME", home.path())
         .output()
         .expect("show runs");
 
@@ -386,7 +395,7 @@ fn doctor_with_valid_config_shows_checks() {
 }
 
 #[test]
-fn config_show_normalizes_legacy_project_dirs_and_reports_diagnostics() {
+fn config_show_normalizes_legacy_project_dirs_silently() {
     let home = TempDir::new().unwrap();
     let config_path = config_path_for_home(&home);
     fs::create_dir_all(config_path.parent().unwrap()).unwrap();
@@ -423,12 +432,12 @@ confirm_physical_delete = true
     let stdout = String::from_utf8(output.stdout).unwrap();
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(!stdout.contains("project_dir"), "{stdout}");
-    assert!(stderr.contains("agents.claude.project_dir"), "{stderr}");
-    assert!(stderr.contains("ignored"), "{stderr}");
+    assert!(!stderr.contains("agents.claude.project_dir"), "{stderr}");
+    assert!(!stderr.contains("ignored"), "{stderr}");
 }
 
 #[test]
-fn doctor_reports_ignored_legacy_project_dirs() {
+fn doctor_omits_ignored_legacy_project_dir_warnings() {
     let home = TempDir::new().unwrap();
     let mut config = skills_manager::config::Config::default_config();
     config.skills.central_dir = home.path().join("skills").to_string_lossy().into_owned();
@@ -447,9 +456,11 @@ fn doctor_reports_ignored_legacy_project_dirs() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("WARN"), "{stdout}");
-    assert!(stdout.contains("agents.claude.project_dir"), "{stdout}");
-    assert!(stdout.contains("ignored"), "{stdout}");
+    assert!(!stdout.contains("agents.claude.project_dir"), "{stdout}");
+    assert!(
+        !stdout.contains("ignored in global execution context"),
+        "{stdout}"
+    );
 }
 
 #[test]

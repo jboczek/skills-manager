@@ -42,7 +42,7 @@ const COMMAND_SUGGESTIONS: [CommandSuggestion; 6] = [
     },
     CommandSuggestion {
         label: "/source_add",
-        description: "Add a managed Git skill source",
+        description: "Add new skills from Git repository using HTTPS/SSH clone URL",
     },
     CommandSuggestion {
         label: "/config",
@@ -290,7 +290,8 @@ impl App {
             }
             TuiCommand::SourceAdd(url) => {
                 if url.is_empty() {
-                    self.error_message = Some("Usage: /source_add <git-url>".to_string());
+                    self.error_message =
+                        Some("Usage: /source_add <clone-url> (HTTPS or SSH clone URL)".to_string());
                 } else {
                     match source::preview(&url, &self.global_context.central_dir) {
                         Ok(preview) => {
@@ -440,6 +441,9 @@ impl App {
             .input
             .trim_start()
             .strip_prefix('/')
+            .unwrap_or("")
+            .split_whitespace()
+            .next()
             .unwrap_or("")
             .to_ascii_lowercase();
 
@@ -974,6 +978,7 @@ impl App {
 
     fn reload_scan_results(&mut self) -> anyhow::Result<()> {
         self.scan_results = scanner::scan(&helpers::scan_config_from_global(&self.global_context))?;
+        scanner::exclude_dot_directory_results(&mut self.scan_results);
         scanner::assign_disambiguation_indices(&mut self.scan_results);
         self.rebuild_status_messages();
         Ok(())
@@ -1395,7 +1400,7 @@ mod tests {
     }
 
     #[test]
-    fn initialization_uses_global_prompt_and_reports_legacy_diagnostics() {
+    fn initialization_uses_global_prompt_and_omits_legacy_diagnostics() {
         let temp = tempdir().expect("tempdir");
         let mut config = test_config(temp.path());
         config.agents.get_mut("claude").unwrap().project_dir = Some(".claude/skills".to_string());
@@ -1408,7 +1413,7 @@ mod tests {
         assert!(
             app.status_messages
                 .iter()
-                .any(|message| message.contains("agents.claude.project_dir"))
+                .all(|message| !message.contains("agents.claude.project_dir"))
         );
         assert!(
             app.status_messages
@@ -1986,6 +1991,20 @@ mod tests {
     }
 
     #[test]
+    fn source_add_suggestion_mentions_clone_url_formats() {
+        let app = test_app();
+        let suggestion = app
+            .filtered_command_suggestions()
+            .into_iter()
+            .find(|suggestion| suggestion.label == "/source_add")
+            .expect("source_add suggestion exists");
+
+        assert!(suggestion.description.contains("HTTPS"));
+        assert!(suggestion.description.contains("SSH"));
+        assert!(suggestion.description.contains("clone URL"));
+    }
+
+    #[test]
     fn command_suggestions_filter_by_command_text() {
         let mut app = test_app();
         app.input = "/sc".to_string();
@@ -1998,6 +2017,21 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(labels, vec!["/scan"]);
+    }
+
+    #[test]
+    fn command_suggestions_filter_by_command_text_before_arguments() {
+        let mut app = test_app();
+        app.input = "/source_add https://example.com/org/skills.git".to_string();
+        app.open_command_menu();
+
+        let labels = app
+            .filtered_command_suggestions()
+            .iter()
+            .map(|suggestion| suggestion.label)
+            .collect::<Vec<_>>();
+
+        assert_eq!(labels, vec!["/source_add"]);
     }
 
     #[test]

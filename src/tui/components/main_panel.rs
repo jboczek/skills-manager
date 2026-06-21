@@ -64,7 +64,7 @@ fn render_help(frame: &mut Frame, area: Rect) {
 }
 
 fn help_text() -> &'static str {
-    "Commands\n  /list                     Show current inventory\n  /scan                     Scan for available skills\n  /source_add <git-url>     Add a managed Git source\n  /config                   Show config\n  /help                     Show this help\n  /quit                     Exit\n\nTable actions\n  i                  Import selected skill child\n  x                  Remove selected list skill exposure\n  r                  Refresh current table\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
+    "Commands\n  /list                       Show current inventory\n  /scan                       Scan for available skills\n  /source_add <clone-url>     Add a source from an HTTPS or SSH clone URL\n  /config                     Show config\n  /help                       Show this help\n  /quit                       Exit\n\nTable actions\n  i                  Import selected skill child\n  x                  Remove selected list skill exposure\n  r                  Refresh current table\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
 }
 
 fn render_source_add(frame: &mut Frame, area: Rect, app: &App) {
@@ -73,7 +73,7 @@ fn render_source_add(frame: &mut Frame, area: Rect, app: &App) {
             frame,
             area,
             " Add Source ",
-            "Type /source_add <git-url> in the prompt.",
+            "Type /source_add <clone-url> in the prompt. Use the repository's HTTPS or SSH clone URL.",
         ),
         SourceAddStep::Confirm { preview } => render_text_panel(
             frame,
@@ -300,5 +300,13 @@ mod tests {
         assert!(text.contains("Import selected skill child"));
         assert!(text.contains("Remove selected list skill exposure"));
         assert!(text.contains("Collapse or expand source groups"));
+    }
+
+    #[test]
+    fn help_describes_source_add_clone_url_formats() {
+        let text = help_text();
+
+        assert!(text.contains("/source_add <clone-url>"));
+        assert!(text.contains("HTTPS or SSH clone URL"));
     }
 }

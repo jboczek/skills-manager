@@ -175,7 +175,7 @@ Make Skills Manager independent of the launch directory and reduce manual source
 - **Dependencies:** 004, 006, 007.
 - **Validation signal:** Launching the same configuration from unrelated directories produces the same scan catalog, global plans, and global plus project-local exposure inventory.
 - **Status:** Done.
-- **Notes / risks:** Active managed paths are absolute after leading-tilde expansion. Legacy project target config parses for compatibility but is ignored with diagnostics. List groups are repository-based: global rows use source repositories and project-local rows use containing projects. Project-local rows stay read-only, and no `--project` selector is added.
+- **Notes / risks:** Active managed paths are absolute after leading-tilde expansion. Legacy project target config parses for compatibility but is ignored silently. List groups are repository-based: global rows use source repositories and project-local rows use containing projects. Project-local rows stay read-only, and no `--project` selector is added.
 
 ### 009 - Git URL import into managed source directory
 

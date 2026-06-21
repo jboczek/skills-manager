@@ -19,9 +19,9 @@ skills-manager doctor
 
 `skills-manager list` rebuilds inventory from configured global targets and fixed project-local targets inside scanned repositories. It prints only real exposures, with effective availability for Claude, Codex, and Copilot, actual source path, scope, and connection type. Source-only scan results do not create list rows.
 
-`skills-manager config show` validates and prints normalized TOML. Ignored legacy `project_dir` values are reported as diagnostics and omitted from the normalized output. If the config file is missing, it prints a `config init` hint.
+`skills-manager config show` validates and prints normalized TOML. Ignored legacy `project_dir` values are omitted from the normalized output. If the config file is missing, it prints a `config init` hint.
 
-`skills-manager doctor` validates the global context, reports compatibility diagnostics, checks source directories, checks global target directory writability, and verifies local Git CLI availability. Output is compact status lines with affected paths so failures are actionable.
+`skills-manager doctor` validates the global context, checks source directories, checks global target directory writability, and verifies local Git CLI availability. Output is compact status lines with affected paths so failures are actionable.
 
 ## Import Flow
 

@@ -34,13 +34,15 @@ fn handle_key_with_table_height(
         }
         KeyCode::Enter => {
             if app.command_menu_open() {
-                let Some(command) = app.selected_command_suggestion() else {
-                    app.error_message = Some("No matching command.".to_string());
-                    app.input.clear();
-                    app.close_command_menu();
-                    return Ok(false);
+                let input = app.input.clone();
+                let command = if has_command_arguments(&input) {
+                    input
+                } else if let Some(command) = app.selected_command_suggestion() {
+                    command.label.to_string()
+                } else {
+                    input
                 };
-                let should_quit = app.handle_command(command.label)?;
+                let should_quit = app.handle_command(&command)?;
                 app.input.clear();
                 return Ok(should_quit);
             }
@@ -64,6 +66,12 @@ fn handle_key_with_table_height(
         }
         KeyCode::Down if app.command_menu_open() => {
             app.move_command_suggestion_down();
+        }
+        KeyCode::Tab if app.command_menu_open() => {
+            if let Some(command) = app.selected_command_suggestion() {
+                app.input = completed_command_input(command.label);
+                app.normalize_command_suggestion_selection();
+            }
         }
         KeyCode::Up
             if app.mode == Mode::Import
@@ -149,6 +157,22 @@ fn handle_key_with_table_height(
     }
 
     Ok(false)
+}
+
+fn has_command_arguments(input: &str) -> bool {
+    let normalized = input
+        .trim_start()
+        .strip_prefix('/')
+        .unwrap_or(input.trim_start());
+    normalized.split_whitespace().nth(1).is_some()
+}
+
+fn completed_command_input(label: &str) -> String {
+    if label == "/source_add" {
+        format!("{label} ")
+    } else {
+        label.to_string()
+    }
 }
 
 fn current_table_height() -> usize {
@@ -575,6 +599,34 @@ mod tests {
 
         assert!(!should_quit);
         assert_eq!(app.mode, Mode::Scan);
+        assert_eq!(app.input, "");
+        assert!(!app.command_menu_open());
+    }
+
+    #[test]
+    fn tab_completes_selected_command_suggestion() {
+        let mut app = test_app();
+        app.input = "/sou".to_string();
+        app.open_command_menu();
+
+        handle_key(&mut app, key(KeyCode::Tab)).expect("key handled");
+
+        assert_eq!(app.input, "/source_add ");
+        assert!(app.command_menu_open());
+    }
+
+    #[test]
+    fn enter_submits_typed_command_with_arguments_when_menu_is_open() {
+        let mut app = test_app();
+        app.input = "/source_add https://example.com/org/skills.git".to_string();
+        app.open_command_menu();
+
+        handle_key(&mut app, key(KeyCode::Enter)).expect("key handled");
+
+        assert_ne!(app.error_message.as_deref(), Some("No matching command."));
+        assert_eq!(app.error_message, None);
+        assert_eq!(app.mode, Mode::SourceAdd);
+        assert!(matches!(app.source_add_step, SourceAddStep::Confirm { .. }));
         assert_eq!(app.input, "");
         assert!(!app.command_menu_open());
     }
