@@ -42,7 +42,7 @@ const COMMAND_SUGGESTIONS: [CommandSuggestion; 6] = [
     },
     CommandSuggestion {
         label: "/source_add",
-        description: "Add a managed Git skill source",
+        description: "Use HTTPS/SSH clone URL",
     },
     CommandSuggestion {
         label: "/config",
@@ -290,7 +290,8 @@ impl App {
             }
             TuiCommand::SourceAdd(url) => {
                 if url.is_empty() {
-                    self.error_message = Some("Usage: /source_add <git-url>".to_string());
+                    self.error_message =
+                        Some("Usage: /source_add <clone-url> (HTTPS or SSH clone URL)".to_string());
                 } else {
                     match source::preview(&url, &self.global_context.central_dir) {
                         Ok(preview) => {
@@ -1986,6 +1987,20 @@ mod tests {
                 .iter()
                 .all(|suggestion| !suggestion.description.is_empty())
         );
+    }
+
+    #[test]
+    fn source_add_suggestion_mentions_clone_url_formats() {
+        let app = test_app();
+        let suggestion = app
+            .filtered_command_suggestions()
+            .into_iter()
+            .find(|suggestion| suggestion.label == "/source_add")
+            .expect("source_add suggestion exists");
+
+        assert!(suggestion.description.contains("HTTPS"));
+        assert!(suggestion.description.contains("SSH"));
+        assert!(suggestion.description.contains("clone URL"));
     }
 
     #[test]
