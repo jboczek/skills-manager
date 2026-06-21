@@ -27,8 +27,8 @@ fn handle_key_with_table_height(
             app.input.clear();
             app.mode = Mode::Home;
             app.source_add_step = SourceAddStep::EnterUrl;
-            app.import_step = ImportStep::EnterSkill;
-            app.remove_step = RemoveStep::EnterSkill;
+            app.import_step = ImportStep::default();
+            app.remove_step = RemoveStep::default();
             app.error_message = None;
             app.info_message = None;
         }

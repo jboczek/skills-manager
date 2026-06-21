@@ -99,10 +99,8 @@ pub enum SourceAddStep {
     },
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub enum ImportStep {
-    #[default]
-    EnterSkill,
     Disambiguate {
         matches: Vec<ScanResult>,
     },
@@ -124,13 +122,16 @@ pub enum ImportStep {
     },
 }
 
-#[derive(Debug, Clone, Default)]
+impl Default for ImportStep {
+    fn default() -> Self {
+        Self::Done {
+            message: String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum RemoveStep {
-    #[default]
-    EnterSkill,
-    Disambiguate {
-        matches: Vec<InventoryRow>,
-    },
     SelectExposure {
         selected: Box<InventoryRow>,
     },
@@ -144,6 +145,14 @@ pub enum RemoveStep {
     Done {
         message: String,
     },
+}
+
+impl Default for RemoveStep {
+    fn default() -> Self {
+        Self::Done {
+            message: String::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -208,8 +217,8 @@ impl App {
             global_context,
             prompt_label: "Skills".to_string(),
             source_add_step: SourceAddStep::EnterUrl,
-            import_step: ImportStep::EnterSkill,
-            remove_step: RemoveStep::EnterSkill,
+            import_step: ImportStep::default(),
+            remove_step: RemoveStep::default(),
             error_message: None,
             info_message: None,
             loading: false,
@@ -308,6 +317,7 @@ impl App {
                 } else {
                     " The typed skill name was not used."
                 };
+                self.import_step = ImportStep::default();
                 self.info_message = Some(format!(
                     "Use table shortcuts: run /scan, select a row, then press i. From /list, press i to create missing enabled-agent exposures.{suffix}"
                 ));
@@ -318,6 +328,7 @@ impl App {
                 } else {
                     " The typed skill name was not used."
                 };
+                self.remove_step = RemoveStep::default();
                 self.info_message = Some(format!(
                     "Use table shortcuts: run /list, select an exposed row, then press x to remove it.{suffix}"
                 ));
@@ -632,94 +643,10 @@ impl App {
     /// Handle import flow step progression.
     pub fn advance_import(&mut self, input: &str) -> anyhow::Result<()> {
         match self.import_step.clone() {
-            ImportStep::EnterSkill => {
-                let matches = helpers::find_scan_results_by_id(input.trim(), &self.scan_results);
-                match matches.len() {
-                    0 => {
-                        self.error_message = Some(format!(
-                            "Skill '{}' not found. Try /scan to see available skills.",
-                            input.trim()
-                        ));
-                    }
-                    1 => {
-                        let selected = Box::new(matches[0].clone());
-                        let target_agents = self.enabled_agent_targets();
-                        if target_agents.is_empty() {
-                            self.import_step = ImportStep::Done {
-                                message: "No enabled agents available.".to_string(),
-                            };
-                            self.info_message = Some("No enabled agents available.".to_string());
-                        } else if target_agents.len() == 1 {
-                            let plan = self.build_import_plan(&selected, &target_agents);
-                            self.import_step = if plan.is_empty() {
-                                self.info_message = Some("Nothing to do.".to_string());
-                                ImportStep::Done {
-                                    message: "Nothing to do.".to_string(),
-                                }
-                            } else {
-                                ImportStep::ConfirmPlan {
-                                    plan,
-                                    selected,
-                                    target_agents,
-                                }
-                            };
-                        } else {
-                            self.import_step = ImportStep::SelectAgents {
-                                selected,
-                                agents: target_agents
-                                    .into_iter()
-                                    .map(|t| AgentSelectionItem {
-                                        target: t,
-                                        checked: true,
-                                    })
-                                    .collect(),
-                                focused: 0,
-                            };
-                        }
-                    }
-                    _ => {
-                        self.import_step = ImportStep::Disambiguate {
-                            matches: matches.into_iter().cloned().collect(),
-                        };
-                    }
-                }
-            }
             ImportStep::Disambiguate { matches } => match parse_selection(input, matches.len()) {
                 Some(index) => {
-                    let selected = Box::new(matches[index].clone());
                     let target_agents = self.enabled_agent_targets();
-                    if target_agents.is_empty() {
-                        self.import_step = ImportStep::Done {
-                            message: "No enabled agents available.".to_string(),
-                        };
-                        self.info_message = Some("No enabled agents available.".to_string());
-                    } else if target_agents.len() == 1 {
-                        let plan = self.build_import_plan(&selected, &target_agents);
-                        self.import_step = if plan.is_empty() {
-                            self.info_message = Some("Nothing to do.".to_string());
-                            ImportStep::Done {
-                                message: "Nothing to do.".to_string(),
-                            }
-                        } else {
-                            ImportStep::ConfirmPlan {
-                                plan,
-                                selected,
-                                target_agents,
-                            }
-                        };
-                    } else {
-                        self.import_step = ImportStep::SelectAgents {
-                            selected,
-                            agents: target_agents
-                                .into_iter()
-                                .map(|t| AgentSelectionItem {
-                                    target: t,
-                                    checked: true,
-                                })
-                                .collect(),
-                            focused: 0,
-                        };
-                    }
+                    self.start_import_for_scan_result(matches[index].clone(), target_agents);
                 }
                 None => {
                     self.error_message =
@@ -771,9 +698,9 @@ impl App {
                     if plan.has_physical_deletes() {
                         self.import_step = ImportStep::ConfirmPhysical { plan };
                     } else {
-                        self.apply_plan_and_refresh(&plan)?;
+                        let message = self.apply_plan_and_refresh(&plan)?;
                         self.mode = Mode::Home;
-                        self.import_step = ImportStep::EnterSkill;
+                        self.import_step = ImportStep::Done { message };
                     }
                 } else if normalized == "n" || normalized.is_empty() {
                     self.import_step = ImportStep::Done {
@@ -790,9 +717,9 @@ impl App {
             }
             ImportStep::ConfirmPhysical { plan } => {
                 if input.trim() == "yes" {
-                    self.apply_plan_and_refresh(&plan)?;
+                    let message = self.apply_plan_and_refresh(&plan)?;
                     self.mode = Mode::Home;
-                    self.import_step = ImportStep::EnterSkill;
+                    self.import_step = ImportStep::Done { message };
                 } else {
                     self.import_step = ImportStep::Done {
                         message: "Aborted.".to_string(),
@@ -801,7 +728,7 @@ impl App {
             }
             ImportStep::Done { .. } => {
                 self.mode = Mode::Home;
-                self.import_step = ImportStep::EnterSkill;
+                self.import_step = ImportStep::default();
             }
         }
 
@@ -811,57 +738,6 @@ impl App {
     /// Handle remove flow step progression.
     pub fn advance_remove(&mut self, input: &str) -> anyhow::Result<()> {
         match self.remove_step.clone() {
-            RemoveStep::EnterSkill => {
-                let matches = helpers::find_inventory_rows_by_id(input.trim(), &self.inventory);
-                match matches.len() {
-                    0 => {
-                        self.error_message = Some(format!(
-                            "Skill '{}' not found in inventory. Try /list to see exposed skills.",
-                            input.trim()
-                        ));
-                    }
-                    1 => {
-                        let selected = matches[0].clone();
-                        let plan = self.build_remove_plan(&selected);
-                        self.remove_step = if plan.is_empty() {
-                            RemoveStep::Done {
-                                message: "Nothing to remove.".to_string(),
-                            }
-                        } else {
-                            RemoveStep::ConfirmPlan {
-                                plan,
-                                selected: Box::new(selected),
-                            }
-                        };
-                    }
-                    _ => {
-                        self.remove_step = RemoveStep::Disambiguate {
-                            matches: matches.into_iter().cloned().collect(),
-                        };
-                    }
-                }
-            }
-            RemoveStep::Disambiguate { matches } => match parse_selection(input, matches.len()) {
-                Some(index) => {
-                    let selected = matches[index].clone();
-                    let plan = self.build_remove_plan(&selected);
-                    self.remove_step = if plan.is_empty() {
-                        RemoveStep::Done {
-                            message: "Nothing to remove.".to_string(),
-                        }
-                    } else {
-                        RemoveStep::ConfirmPlan {
-                            plan,
-                            selected: Box::new(selected),
-                        }
-                    };
-                }
-                None => {
-                    self.error_message =
-                        Some(format!("Enter a number between 1 and {}", matches.len()));
-                    self.remove_step = RemoveStep::Disambiguate { matches };
-                }
-            },
             RemoveStep::SelectExposure { selected } => {
                 let removable_exposures = Self::removable_exposures(&selected);
                 match parse_selection(input, removable_exposures.len()) {
@@ -909,7 +785,7 @@ impl App {
             }
             RemoveStep::Done { .. } => {
                 self.mode = Mode::Home;
-                self.remove_step = RemoveStep::EnterSkill;
+                self.remove_step = RemoveStep::default();
             }
         }
 
@@ -919,7 +795,6 @@ impl App {
     /// Return a short one-line hint for the current import step.
     pub fn import_step_hint(&self) -> &'static str {
         match self.import_step {
-            ImportStep::EnterSkill => "Enter skill identifier (e.g. repo-a/code-review):",
             ImportStep::Disambiguate { .. } => "Enter number to select:",
             ImportStep::SelectAgents { .. } => {
                 "Up/Down to move, Space to toggle, Enter to confirm:"
@@ -944,8 +819,6 @@ impl App {
     /// Return a short one-line hint for the current remove step.
     pub fn remove_step_hint(&self) -> &'static str {
         match self.remove_step {
-            RemoveStep::EnterSkill => "Enter skill identifier (e.g. repo-a/code-review):",
-            RemoveStep::Disambiguate { .. } => "Enter number to select:",
             RemoveStep::SelectExposure { .. } => "Enter exposure number to remove:",
             RemoveStep::ConfirmPlan { .. } => "Apply this plan? [y/N]:",
             RemoveStep::ConfirmPhysical { .. } => "Type 'yes' to confirm permanent deletion:",
@@ -1201,14 +1074,6 @@ impl App {
                 .collect(),
             focused: 0,
         };
-    }
-
-    fn build_remove_plan(&self, row: &InventoryRow) -> ChangePlan {
-        let changes = Self::removable_exposures(row)
-            .iter()
-            .flat_map(|exposure| self.build_remove_plan_for_exposure(row, exposure).changes)
-            .collect();
-        ChangePlan::new(changes)
     }
 
     fn build_remove_plan_for_exposure(
@@ -1947,7 +1812,7 @@ mod tests {
             .expect("command succeeds");
 
         assert_eq!(app.mode, Mode::Home);
-        assert!(matches!(app.import_step, ImportStep::EnterSkill));
+        assert!(matches!(app.import_step, ImportStep::Done { .. }));
         assert!(
             app.info_message
                 .as_deref()
@@ -1963,7 +1828,7 @@ mod tests {
             .expect("command succeeds");
 
         assert_eq!(app.mode, Mode::Home);
-        assert!(matches!(app.remove_step, RemoveStep::EnterSkill));
+        assert!(matches!(app.remove_step, RemoveStep::Done { .. }));
         assert!(
             app.info_message
                 .as_deref()
@@ -2061,15 +1926,6 @@ mod tests {
     }
 
     #[test]
-    fn advance_import_enter_skill_not_found() {
-        let mut app = test_app();
-
-        app.advance_import("nonexistent").expect("advance succeeds");
-
-        assert!(app.error_message.is_some());
-    }
-
-    #[test]
     fn advance_import_done_step_resets_to_home() {
         let mut app = test_app();
         app.mode = Mode::Import;
@@ -2106,7 +1962,7 @@ mod tests {
         app.advance_import("y").expect("import applies");
 
         assert_eq!(app.mode, Mode::Home);
-        assert!(matches!(app.import_step, ImportStep::EnterSkill));
+        assert!(matches!(app.import_step, ImportStep::Done { .. }));
         assert_eq!(app.info_message.as_deref(), Some("Applied 1 change(s)."));
     }
 
@@ -2216,12 +2072,6 @@ mod tests {
     #[test]
     fn import_step_hint_returns_string() {
         let app = App {
-            import_step: ImportStep::EnterSkill,
-            ..test_app()
-        };
-        assert!(!app.import_step_hint().is_empty());
-
-        let app = App {
             import_step: ImportStep::Disambiguate {
                 matches: vec![scan_result("repo-a/skill")],
             },
@@ -2268,20 +2118,6 @@ mod tests {
 
     #[test]
     fn remove_step_hint_returns_string() {
-        let app = App {
-            remove_step: RemoveStep::EnterSkill,
-            ..test_app()
-        };
-        assert!(!app.remove_step_hint().is_empty());
-
-        let app = App {
-            remove_step: RemoveStep::Disambiguate {
-                matches: vec![inventory_row("repo-a/skill")],
-            },
-            ..test_app()
-        };
-        assert!(!app.remove_step_hint().is_empty());
-
         let app = App {
             remove_step: RemoveStep::ConfirmPlan {
                 plan: ChangePlan::new(vec![]),
