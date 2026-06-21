@@ -44,17 +44,10 @@ pub struct SharedTargetConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct PreferencesConfig {
-    pub default_connection: String,
-    pub confirm_physical_delete: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Config {
     pub skills: SkillsConfig,
     pub agents: BTreeMap<String, AgentConfig>,
     pub shared_targets: BTreeMap<String, SharedTargetConfig>,
-    pub preferences: PreferencesConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,10 +112,6 @@ impl Config {
             },
             agents,
             shared_targets,
-            preferences: PreferencesConfig {
-                default_connection: "symlink".to_string(),
-                confirm_physical_delete: true,
-            },
         }
     }
 
@@ -380,13 +369,6 @@ confirm_physical_delete = true
     }
 
     #[test]
-    fn default_config_preferences() {
-        let cfg = Config::default_config();
-        assert_eq!(cfg.preferences.default_connection, "symlink");
-        assert!(cfg.preferences.confirm_physical_delete);
-    }
-
-    #[test]
     fn parse_valid_toml() {
         let cfg = Config::parse(EXAMPLE_TOML).expect("valid TOML should parse");
         assert_eq!(cfg.skills.central_dir, "~/skills");
@@ -589,5 +571,16 @@ confirm_physical_delete = true
         let serialized = config.to_toml().expect("config should serialize");
 
         assert!(!serialized.contains("project_dir"));
+    }
+
+    #[test]
+    fn serialization_omits_unused_preferences() {
+        let config = Config::parse(EXAMPLE_TOML).expect("legacy config should parse");
+
+        let serialized = config.to_toml().expect("config should serialize");
+
+        assert!(!serialized.contains("[preferences]"));
+        assert!(!serialized.contains("default_connection"));
+        assert!(!serialized.contains("confirm_physical_delete"));
     }
 }

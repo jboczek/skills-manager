@@ -1,7 +1,5 @@
 use std::path::{Path, PathBuf};
 
-use crate::errors::SkillsError;
-
 pub fn is_symlink(path: &Path) -> anyhow::Result<bool> {
     Ok(std::fs::symlink_metadata(path)?.file_type().is_symlink())
 }
@@ -14,7 +12,7 @@ pub fn read_symlink_target(path: &Path) -> anyhow::Result<PathBuf> {
 /// Create a symlink at `link` pointing to `target`.
 pub fn create_symlink(target: &Path, link: &Path) -> anyhow::Result<()> {
     match std::fs::symlink_metadata(link) {
-        Ok(_) => return Err(SkillsError::TargetAlreadyExists(link.to_path_buf()).into()),
+        Ok(_) => anyhow::bail!("target already exists: {}", link.display()),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
         Err(err) => return Err(err.into()),
     }
