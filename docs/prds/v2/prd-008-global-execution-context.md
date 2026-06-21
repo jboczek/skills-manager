@@ -37,7 +37,7 @@ Make explicit configuration the only discovery boundary. Scanning, inventory, di
 5. As a config editor, I want relative managed paths rejected, so that their meaning cannot change between shells.
 6. As a user, I want leading-tilde paths expanded consistently, so that global configuration stays portable.
 7. As a V1 user, I want old `project_dir` values to parse, so that upgrading does not invalidate my config.
-8. As a V1 user, I want diagnostics when `project_dir` is ignored, so that removed local inventory is understandable.
+8. As a V1 user, I want old `project_dir` values to be ignored silently, so that migrated configs do not produce stale warnings.
 9. As a new user, I want generated config to contain only active fields, so that obsolete concepts are not advertised.
 10. As a user, I want invalid paths reported before scanning or planning, so that partial state is not presented as valid.
 11. As a CLI and TUI user, I want both interfaces to share one global context, so that their results agree.
@@ -51,9 +51,9 @@ Launching list, scan, mutation flows, or the TUI from unrelated directories prod
 
 `/scan` shows the complete source catalog. `/list` shows only skills exposed to at least one agent. Global and project-local exposures are separate rows. Project-local rows include their repository context, are read-only, and never become mutation targets. `.agents/skills` grants effective availability to Codex and Copilot.
 
-The TUI prompt remains the command entry point but no longer shows a directory or Git branch. Status describes global configuration, sources, agents, and diagnostics.
+The TUI prompt remains the command entry point but no longer shows a directory or Git branch. Status describes global configuration, sources, and agents.
 
-Legacy `project_dir` values still parse but produce compatibility diagnostics and have no effect. New and normalized configuration omits them.
+Legacy `project_dir` values still parse but have no effect. New and normalized configuration omits them.
 
 ## Requirements
 
@@ -71,10 +71,10 @@ Legacy `project_dir` values still parse but produce compatibility diagnostics an
 - Project-local rows are read-only and cannot be imported into, detached, removed, or physically deleted.
 - Import and removal must preserve V1 plan preview, confirmation, connection classification, rescan, and deletion safeguards.
 - Every mutation target must belong to the validated configured global targets.
-- Legacy agent and shared-target `project_dir` values must parse, be ignored, emit diagnostics, and be omitted from new or normalized config.
+- Legacy agent and shared-target `project_dir` values must parse, be ignored silently, and be omitted from new or normalized config.
 - No CLI command may accept `--project`.
 - The TUI must not detect or display CWD or Git branch as managed context.
-- CLI and TUI flows must consume the same resolved global context and diagnostics.
+- CLI and TUI flows must consume the same resolved global context.
 - Invalid configuration must name the field and rejected value.
 
 ## Success criteria
@@ -85,7 +85,7 @@ Legacy `project_dir` values still parse but produce compatibility diagnostics an
 - Every list row has at least one effective agent exposure.
 - Global and project-local copies of the same skill remain distinguishable.
 - Every active relative managed path fails before filesystem discovery or mutation.
-- Legacy `project_dir` configs load with diagnostics and do not define project-local inventory targets.
+- Legacy `project_dir` configs load without warnings and do not define project-local inventory targets.
 - New configuration contains no `project_dir` fields.
 - The TUI contains no CWD or Git branch context.
 - V1 scan, inventory, disambiguation, and mutation safety remains intact for global paths.
@@ -98,7 +98,7 @@ Legacy `project_dir` values still parse but produce compatibility diagnostics an
 - CWD is unavailable, deleted after launch, or inside a Git worktree.
 - A relative path exists beneath CWD and would have been valid under V1.
 - A symlink in a global target points to a source outside configured source roots.
-- Config validation reports both ignored legacy fields and fatal relative active paths.
+- Config validation rejects fatal relative active paths while ignoring legacy fields silently.
 
 ## Dependencies
 
@@ -107,36 +107,37 @@ Legacy `project_dir` values still parse but produce compatibility diagnostics an
 
 ## Implementation decisions
 
-- Use one resolved global context for CLI and TUI containing validated sources, enabled global targets, shared targets, and diagnostics.
+- Use one resolved global context for CLI and TUI containing validated sources, enabled global targets, and shared targets.
 - Keep raw configuration parsing separate from active configuration resolution so legacy fields can be accepted without influencing behavior.
 - Treat path validation as a configuration boundary, not a scanner or planner fallback.
 - Preserve V1 scan, availability, connection, and plan concepts while separating source catalog entries from exposure inventory rows.
 - Derive read-only project-local targets from scanned repository roots and fixed conventions, not from CWD or legacy `project_dir` configuration.
-- Render compatibility diagnostics consistently in configuration inspection, doctor output, and TUI status without blocking otherwise valid global behavior.
+- Keep legacy `project_dir` parsing as a migration compatibility path only; do not surface it in configuration inspection, doctor output, or TUI status.
 
 ## Testing decisions
 
-- Add configuration tests for absolute paths, leading-tilde expansion, rejected relative paths, ignored legacy `project_dir` values, diagnostics, and serialization without legacy fields.
+- Add configuration tests for absolute paths, leading-tilde expansion, rejected relative paths, ignored legacy `project_dir` values, and serialization without legacy fields.
 - Add launch-directory invariance tests for list, scan, import planning, and removal planning.
 - Add inventory tests proving source-only rows are excluded, configured global/shared targets still produce effective availability, project-local conventions are discovered, `.agents` maps to Codex and Copilot, and contexts do not collapse.
 - Add plan tests proving every generated target belongs to validated global targets and relative configuration cannot reach plan creation.
-- Add TUI state and rendering tests proving prompt and status content contain no CWD or Git branch and still show useful global configuration diagnostics.
+- Add TUI state and rendering tests proving prompt and status content contain no CWD, Git branch, or stale legacy-field warnings.
 - Retain V1 regression coverage for scan boundaries, disambiguation, detach safety, physical deletion, partial apply, and rescanning.
 
 ## Progress notes
 
-- 2026-06-12: Added a resolved global context that expands leading tildes, validates every active source and global target as absolute, and aggregates compatibility diagnostics.
+- 2026-06-12: Added a resolved global context that expands leading tildes and validates every active source and global target as absolute.
 - 2026-06-12: Removed CWD resolution and project-local targets from scan, inventory, doctor, import, remove, and TUI flows.
-- 2026-06-12: Kept legacy `project_dir` parsing while ignoring those values, reporting diagnostics, and omitting them from generated or normalized config.
+- 2026-06-12: Kept legacy `project_dir` parsing while ignoring those values and omitting them from generated or normalized config.
 - 2026-06-12: Removed TUI launch-directory and Git-branch state and replaced it with a global prompt and global-context status.
-- 2026-06-12: Added CLI and TUI regression coverage for invalid relative paths, ignored local targets, global shared targets, diagnostics, and launch-directory-invariant inventory and plans.
+- 2026-06-12: Added CLI and TUI regression coverage for invalid relative paths, ignored local targets, global shared targets, and launch-directory-invariant inventory and plans.
+- 2026-06-21: Removed stale compatibility warnings for ignored legacy `project_dir` values from config inspection, doctor output, and TUI status while preserving silent parsing.
 - 2026-06-12: Reopened the PRD after correcting the model: source scanning remains global and complete, while list inventory contains only real global or read-only project-local exposures discovered inside configured source repositories.
 - 2026-06-12: Separated source catalog entries from inventory rows, added fixed project-local target discovery, grouped TUI rows by exposure context, rendered actual source paths, and blocked local mutation in CLI and TUI.
 - 2026-06-12: Corrected TUI grouping so global rows are separated by source repository instead of sharing one scope bucket; project-local rows remain grouped by containing project.
 
 ## Tasks
 
-- [x] Add failing configuration tests for path validation, tilde expansion, legacy fields, diagnostics, and serialization.
+- [x] Add failing configuration tests for path validation, tilde expansion, legacy fields, silent ignore behavior, and serialization.
 - [x] Implement one resolved global context shared by CLI and TUI.
 - [x] Migrate scan, list, doctor, import, and remove to validated global sources and targets.
 - [x] Remove CWD and Git branch from TUI state and rendering.

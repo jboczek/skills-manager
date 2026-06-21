@@ -50,7 +50,7 @@ Claude, Codex, and Copilot are the product-facing agent columns. Config-only sha
 
 When Codex or Copilot references the shared `.agents` target in config, skills found in global `~/.agents/skills` contribute to that agent's effective availability. If both agents reference the same shared target, a single skill exposure can mark both `CODEX` and `COPILOT`.
 
-Legacy `project_dir` values still parse but are ignored and reported as compatibility diagnostics. Project-local inventory is derived from scanned repositories and fixed conventions, not those legacy fields.
+Legacy `project_dir` values still parse but are ignored. Project-local inventory is derived from scanned repositories and fixed conventions, not those legacy fields.
 
 ## Connections And Scope
 

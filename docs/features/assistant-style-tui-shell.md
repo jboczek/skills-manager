@@ -56,7 +56,7 @@ Scan mode runs the shared scanner and groups the complete source catalog by sour
 
 Repository-backed groups use the canonical repository root as identity. Repositories with the same folder name remain separate and receive distinguishing safe path context. Unresolved sources use their privacy-safe source container as identity, so unrelated `unknown` rows are not merged. Display labels omit standard home-directory prefixes and user names.
 
-Config mode shows the resolved config path and normalized TOML. Compatibility diagnostics for ignored legacy fields appear in the status feed. Rich config editing remains outside the current scope.
+Config mode shows the resolved config path and normalized TOML. Ignored legacy fields are omitted from the normalized output. Rich config editing remains outside the current scope.
 
 Help mode lists prompt commands and key behavior.
 
