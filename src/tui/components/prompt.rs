@@ -10,6 +10,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     render_command_menu(frame, area, app);
 
     let prompt_prefix = match app.mode {
+        Mode::SourceAdd => format!("{} > ", app.source_add_step_hint()),
         Mode::Import => format!("{} > ", app.import_step_hint()),
         Mode::Remove => format!("{} > ", app.remove_step_hint()),
         _ => "> ".to_string(),

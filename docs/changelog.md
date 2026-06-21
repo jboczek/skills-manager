@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-06-13
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-06-13 00:06 | Implemented PRD-009 managed Git source import with preview-before-mutation, temporary clone scanning and cleanup, strict same-origin reuse, CLI/TUI skill selection, and staged exposure confirmation. | `README.md`, `features/git-source-import.md`, `prds/v2/prd-009-git-url-import-into-managed-source-directory.md`, `roadmap.md` |
+
 ## 2026-06-12
 
 | Time | Change | Docs |

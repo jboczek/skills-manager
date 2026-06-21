@@ -1,7 +1,7 @@
 ---
 title: Git URL import into managed source directory
 summary: Add Git repositories as managed skill sources, scan them safely, and expose selected skills through the existing staged workflow.
-status: planned
+status: done
 roadmap: v2
 ---
 
@@ -123,3 +123,23 @@ An existing destination is reused and scanned only when its canonical `origin` m
 - Test collision behavior for same origin, different origin, missing origin, non-Git directory, file, and symlink destinations.
 - Record Git commands to prove submodules are disabled and reuse performs no fetch or pull.
 - Assert only selected skills produce staged changes and exposure cancellation leaves the source without exposures.
+
+## Progress notes
+
+- 2026-06-13: Added canonical Git URL handling for HTTPS, SSH URL, SCP-style SSH, and `file://` forms, including safe destination-name derivation and embedded HTTP credential rejection.
+- 2026-06-13: Added temporary clone acquisition beneath global `central_dir`, disabled submodule recursion, scanned before promotion, and cleaned failed or skill-less clones.
+- 2026-06-13: Added strict destination collision behavior with same-origin scan-only reuse and rejection of files, symlinks, non-Git directories, missing origins, and different origins.
+- 2026-06-13: Added interactive `skills-manager source add <git-url>` with preview-before-mutation, optional multi-skill selection, and delegation to existing staged CLI exposure plans.
+- 2026-06-13: Added `/source add <git-url>` to the TUI with preview, confirmation, skill selection, and delegation to the existing agent-selection and exposure-plan state.
+- 2026-06-13: Added regression coverage proving no mutation before confirmation, cleanup on failure, no updates during reuse, selective exposure, and source retention after exposure cancellation.
+
+## Tasks
+
+- [x] Add Git URL canonicalization and repository-name tests.
+- [x] Implement temporary clone, bounded pre-promotion scan, promotion, and cleanup.
+- [x] Implement strict same-origin reuse and collision rejection.
+- [x] Add the interactive CLI `source add` workflow.
+- [x] Add the TUI `/source add` workflow.
+- [x] Delegate selected skills to existing staged exposure plans.
+- [x] Add CLI, TUI, and temporary Git repository regression coverage.
+- [x] Update README, durable feature documentation, roadmap, and changelog.

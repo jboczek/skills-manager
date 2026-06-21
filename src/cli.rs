@@ -19,10 +19,29 @@ pub struct Cli {
 pub enum Commands {
     List,
     Scan,
+    Source(SourceArgs),
     Import(ImportArgs),
     Remove(RemoveArgs),
     Config(ConfigArgs),
     Doctor,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Parser)]
+pub struct SourceArgs {
+    #[command(subcommand)]
+    pub subcommand: SourceSubcommand,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
+pub enum SourceSubcommand {
+    /// Add a Git repository to the managed source directory.
+    Add(SourceAddArgs),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Parser)]
+pub struct SourceAddArgs {
+    /// Git repository URL.
+    pub git_url: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Parser)]
@@ -61,4 +80,28 @@ pub enum ConfigSubcommand {
     Path,
     /// Print the current configuration.
     Show,
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::{Cli, Commands, SourceSubcommand};
+
+    #[test]
+    fn parses_source_add_command() {
+        let cli = Cli::try_parse_from([
+            "skills-manager",
+            "source",
+            "add",
+            "https://example.com/org/skills.git",
+        ])
+        .unwrap();
+
+        let Some(Commands::Source(args)) = cli.command else {
+            panic!("expected source command");
+        };
+        let SourceSubcommand::Add(args) = args.subcommand;
+        assert_eq!(args.git_url, "https://example.com/org/skills.git");
+    }
 }

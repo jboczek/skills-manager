@@ -16,6 +16,7 @@ Core prompt commands:
 
 - `/list`: refresh and show current inventory.
 - `/scan`: scan configured source roots.
+- `/source add <git-url>`: add or reuse a managed Git source, then optionally expose one discovered skill.
 - `/config`: show the config path and current TOML.
 - `/help`: show commands and key hints.
 - `/quit`: exit.
@@ -126,15 +127,33 @@ analystloop/adx-intake    /Users/me/pgit/analystloop/.agents/...  -        ✓  
 
 PRDs live under `docs/prds/`. Durable feature documentation lives under `docs/features/`.
 
-## V2 planning
+## Managed Git Sources
+
+Add a Git repository to the configured global `central_dir`:
+
+```bash
+skills-manager source add https://github.com/example/skills.git
+```
+
+The CLI and `/source add <git-url>` TUI flow show the URL and derived destination before mutation and require confirmation. The destination is `central_dir/<repository-name>`, with a trailing `.git` removed from the repository name.
+
+New repositories are cloned to a unique temporary directory beneath `central_dir` with submodule recursion disabled. Skills Manager scans the temporary clone with the existing bounded, non-symlink-following scanner. A repository with no `SKILL.md` is removed instead of promoted. A valid clone is renamed to its final destination only after the scan succeeds.
+
+An existing destination is reused only when its readable canonical `origin` matches the requested URL. Reuse scans the local checkout as-is and never fetches, pulls, resets, or checks out content. Files, symlinks, non-Git directories, missing origins, and different origins are rejected without overwrite or suffix guessing.
+
+After acquisition, selecting skills is optional. The CLI accepts comma-separated skill numbers; the TUI accepts one skill number. Selected skills enter the existing staged exposure workflow. Declining exposure keeps the managed source and creates no agent targets.
+
+Skills Manager stores no credentials. Git uses the user's existing SSH configuration, credential helpers, and other normal Git authentication.
+
+## V2 status
 
 V2 is specified as three ordered slices:
 
 1. [Global execution context](docs/prds/v2/prd-008-global-execution-context.md): completed; removes launch-directory dependence while reporting read-only project-local exposures inside configured source repositories.
-2. [Git URL import into the managed source directory](docs/prds/v2/prd-009-git-url-import-into-managed-source-directory.md): acquire and scan a source before selecting skills to expose.
+2. [Git URL import into the managed source directory](docs/prds/v2/prd-009-git-url-import-into-managed-source-directory.md): completed; safely acquires or reuses a managed source before optional staged exposure.
 3. [Manual install migration](docs/prds/v2/prd-010-manual-install-migration.md): conservatively convert physical global installs into managed sources and symlink exposures.
 
-The remaining V2 source-import and migration slices are planned.
+The remaining V2 migration slice is planned.
 
 ## Importing And Removing Skills
 

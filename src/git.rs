@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use anyhow::{Context, bail};
+
 pub fn find_repo_root(path: &Path) -> Option<PathBuf> {
     let start = if path.is_dir() { path } else { path.parent()? };
 
@@ -23,6 +25,38 @@ pub fn origin_url(repo: &Path) -> anyhow::Result<Option<String>> {
     } else {
         Ok(None)
     }
+}
+
+pub fn clone_repository(url: &str, destination: &Path) -> anyhow::Result<()> {
+    let output = Command::new("git")
+        .args([
+            "-c",
+            "submodule.recurse=false",
+            "clone",
+            "--no-recurse-submodules",
+        ])
+        .arg(url)
+        .arg(destination)
+        .output()
+        .with_context(|| format!("failed to start git clone for {url}"))?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    bail!("git clone failed: {}", stderr.trim());
+}
+
+pub fn clone_arguments(url: &str, destination: &Path) -> Vec<String> {
+    vec![
+        "-c".to_string(),
+        "submodule.recurse=false".to_string(),
+        "clone".to_string(),
+        "--no-recurse-submodules".to_string(),
+        url.to_string(),
+        destination.display().to_string(),
+    ]
 }
 
 #[cfg(test)]

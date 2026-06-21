@@ -186,8 +186,8 @@ Make Skills Manager independent of the launch directory and reduce manual source
 - **PRD candidate:** Yes. PRD: [`docs/prds/v2/prd-009-git-url-import-into-managed-source-directory.md`](prds/v2/prd-009-git-url-import-into-managed-source-directory.md)
 - **Dependencies:** 003, 006, 008.
 - **Validation signal:** A user can import from a test Git repository and still preview exposures before applying them.
-- **Status:** Planned.
-- **Notes / risks:** Remote import must not auto-execute code, recurse into submodules, overwrite a conflicting source, or silently update an existing checkout.
+- **Status:** Done.
+- **Notes / risks:** Source acquisition previews URL and destination, clones with submodules disabled, scans before promotion, cleans failures, reuses only a matching canonical origin without network updates, and delegates selected skills to existing staged exposure plans.
 
 ### 010 - Manual install migration
 
@@ -282,7 +282,7 @@ V3 works if Skills Manager becomes the trusted local place to curate, audit, and
 | 006 | Safe import and removal plans | V1 | [`docs/prds/v1/prd-006-safe-import-and-removal-plans.md`](prds/v1/prd-006-safe-import-and-removal-plans.md) | High | Done | 004 |
 | 007 | Assistant-style TUI shell | V1 | [`docs/prds/v1/prd-007-assistant-style-tui-shell.md`](prds/v1/prd-007-assistant-style-tui-shell.md) | High | Done | 004, 005, 006 |
 | 008 | Global execution context | V2 | [`docs/prds/v2/prd-008-global-execution-context.md`](prds/v2/prd-008-global-execution-context.md) | High | Planned | 004, 006, 007 |
-| 009 | Git URL import into managed source directory | V2 | [`docs/prds/v2/prd-009-git-url-import-into-managed-source-directory.md`](prds/v2/prd-009-git-url-import-into-managed-source-directory.md) | Medium | Planned | 003, 006, 008 |
+| 009 | Git URL import into managed source directory | V2 | [`docs/prds/v2/prd-009-git-url-import-into-managed-source-directory.md`](prds/v2/prd-009-git-url-import-into-managed-source-directory.md) | Medium | Done | 003, 006, 008 |
 | 010 | Manual install migration | V2 | [`docs/prds/v2/prd-010-manual-install-migration.md`](prds/v2/prd-010-manual-install-migration.md) | Medium | Planned | 004, 006, 008 |
 | 011 | Assistant-style TUI table actions | V1 | [`docs/prds/v1/prd-007-v2-assistant-style-tui-table-actions.md`](prds/v1/prd-007-v2-assistant-style-tui-table-actions.md) | Medium | Done | 006, 007 |
 | 012 | Context budget visibility | V3 | `docs/prds/012-context-budget-visibility.md` | Low | Parking lot | 004, 007 |
@@ -299,6 +299,7 @@ V3 works if Skills Manager becomes the trusted local place to curate, audit, and
 
 ## Change Log
 
+- 2026-06-13: Completed PRD-009 managed Git source import with preview, temporary clone validation, strict origin-aware reuse, CLI/TUI selection, and staged exposure delegation.
 - 2026-06-12: Added and linked the complete V2 PRD set for global execution, managed Git source import, and conservative manual-install migration.
 - 2026-06-12: Reframed V2 around globally launched, current-directory-independent operation; removed arbitrary project targeting, moved completed TUI actions into V1, and aligned V1 statuses.
 - 2026-05-19: Added V1 PRD links for roadmap items 001-007 and marked those PRDs as drafted.

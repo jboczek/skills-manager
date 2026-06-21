@@ -12,7 +12,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             "arrows browse/expand   i import skill   x remove skill   r refresh   esc back   q quit"
         }
         Mode::Scan => "arrows browse/expand   i import skill   r refresh   esc back   q quit",
-        Mode::Import | Mode::Remove => "enter confirm   esc cancel",
+        Mode::SourceAdd | Mode::Import | Mode::Remove => "enter confirm   esc cancel",
         Mode::Help => "esc back",
         Mode::Config => "esc back   q quit",
         Mode::Quit => "quitting...",

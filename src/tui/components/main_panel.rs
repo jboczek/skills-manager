@@ -5,7 +5,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use crate::config::Config;
 use crate::domain::{ConnectionKind, InventoryRow};
 use crate::output::render_inventory;
-use crate::tui::app::{App, ImportStep, Mode, RemoveStep};
+use crate::tui::app::{App, ImportStep, Mode, RemoveStep, SourceAddStep};
 use crate::tui::components::{dialog, table};
 use crate::tui::theme::Theme;
 
@@ -16,7 +16,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             area,
             " Home ",
             &format!(
-                "Welcome to Skills Manager.\n\nLoaded skills: {}\nEnabled agents: {}\n\nTry /list, /scan, /config or /help. Use table shortcuts for import and remove actions.",
+                "Welcome to Skills Manager.\n\nLoaded skills: {}\nEnabled agents: {}\n\nTry /list, /scan, /source_add, /config or /help. Use table shortcuts for import and remove actions.",
                 app.inventory.len().max(app.scan_results.len()),
                 app.config
                     .agents
@@ -39,6 +39,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
                 table::render_scan_table(frame, area, &app.scan_results, &app.scan_table);
             }
         }
+        Mode::SourceAdd => render_source_add(frame, area, app),
         Mode::Config => render_config(frame, area, app),
         Mode::Help => render_help(frame, area),
         Mode::Import => render_import(frame, area, app),
@@ -63,7 +64,56 @@ fn render_help(frame: &mut Frame, area: Rect) {
 }
 
 fn help_text() -> &'static str {
-    "Commands\n  /list              Show current inventory\n  /scan              Scan for available skills\n  /config            Show config\n  /help              Show this help\n  /quit              Exit\n\nTable actions\n  i                  Import selected skill child\n  x                  Remove selected list skill exposure\n  r                  Refresh current table\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
+    "Commands\n  /list                     Show current inventory\n  /scan                     Scan for available skills\n  /source_add <git-url>     Add a managed Git source\n  /config                   Show config\n  /help                     Show this help\n  /quit                     Exit\n\nTable actions\n  i                  Import selected skill child\n  x                  Remove selected list skill exposure\n  r                  Refresh current table\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
+}
+
+fn render_source_add(frame: &mut Frame, area: Rect, app: &App) {
+    match &app.source_add_step {
+        SourceAddStep::EnterUrl => render_text_panel(
+            frame,
+            area,
+            " Add Source ",
+            "Type /source_add <git-url> in the prompt.",
+        ),
+        SourceAddStep::Confirm { preview } => render_text_panel(
+            frame,
+            area,
+            " Add Source ",
+            &format!(
+                "Source URL\n  {}\n\nDestination\n  {}",
+                preview.url,
+                preview.destination.display()
+            ),
+        ),
+        SourceAddStep::SelectSkill {
+            source_path,
+            skills,
+            outcome,
+        } => {
+            let action = match outcome {
+                crate::source::AcquireOutcome::Cloned => "Added",
+                crate::source::AcquireOutcome::Reused => "Reused",
+            };
+            let rows = skills
+                .iter()
+                .enumerate()
+                .map(|(index, skill)| format!("{}. {}", index + 1, skill.skill_id))
+                .collect::<Vec<_>>()
+                .join("\n");
+            render_text_panel(
+                frame,
+                area,
+                " Add Source ",
+                &format!(
+                    "{action} source\n  {}\n\nDiscovered skills\n{rows}",
+                    source_path.display()
+                ),
+            );
+        }
+        SourceAddStep::Done { message } => {
+            render_text_panel(frame, area, " Add Source ", message);
+        }
+    }
 }
 
 fn render_import(frame: &mut Frame, area: Rect, app: &App) {

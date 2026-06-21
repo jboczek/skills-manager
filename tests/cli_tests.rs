@@ -13,7 +13,9 @@ fn help_lists_the_v1_commands() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("help output is utf8");
-    for command in ["list", "scan", "import", "remove", "config", "doctor"] {
+    for command in [
+        "list", "scan", "source", "import", "remove", "config", "doctor",
+    ] {
         assert!(stdout.contains(command), "missing {command} in help output");
     }
 }
@@ -251,6 +253,35 @@ fn write_config(home: &TempDir, config: &skills_manager::config::Config) {
     let config_path = config_path_for_home(home);
     fs::create_dir_all(config_path.parent().expect("config parent")).expect("create config parent");
     fs::write(&config_path, config.to_toml().expect("config toml")).expect("write config");
+}
+
+#[test]
+fn source_add_previews_without_mutating_in_non_interactive_mode() {
+    let home = TempDir::new().unwrap();
+    let remote = home.path().join("remote-skills");
+    let central = home.path().join("managed-sources");
+    fs::create_dir_all(&remote).unwrap();
+
+    let mut config = skills_manager::config::Config::default_config();
+    config.skills.central_dir = central.to_string_lossy().into_owned();
+    write_config(&home, &config);
+    let remote_url = format!("file://{}", remote.display());
+
+    let output = config_bin_with_home(&home)
+        .args(["source", "add", &remote_url])
+        .output()
+        .expect("source add runs");
+
+    assert!(!output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stdout.contains(&format!("Source URL: {remote_url}")));
+    assert!(stdout.contains(&format!(
+        "Destination: {}",
+        central.join("remote-skills").display()
+    )));
+    assert!(stderr.contains("non-interactive mode"));
+    assert!(!central.exists(), "preview must not create central_dir");
 }
 
 #[test]

@@ -7,6 +7,7 @@ pub mod import;
 pub mod list;
 pub mod remove;
 pub mod scan;
+pub mod source;
 pub mod tui;
 
 fn placeholder(command: &str) {

@@ -9,12 +9,14 @@ use crate::inventory::{self, AgentTarget};
 use crate::plan::{ChangePlan, StagedChange};
 use crate::plan_apply;
 use crate::scanner::{self, ScanResult};
+use crate::source::{self, AcquireOutcome, SourcePreview};
 use crate::tui::source_table::{SourceGroupItem, SourceTable, SourceTableRow};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TuiCommand {
     List,
     Scan,
+    SourceAdd(String),
     Import(String),
     Remove(String),
     Config,
@@ -29,7 +31,7 @@ pub struct CommandSuggestion {
     pub description: &'static str,
 }
 
-const COMMAND_SUGGESTIONS: [CommandSuggestion; 5] = [
+const COMMAND_SUGGESTIONS: [CommandSuggestion; 6] = [
     CommandSuggestion {
         label: "/list",
         description: "Show exposed skills and availability",
@@ -37,6 +39,10 @@ const COMMAND_SUGGESTIONS: [CommandSuggestion; 5] = [
     CommandSuggestion {
         label: "/scan",
         description: "Discover skills from configured sources",
+    },
+    CommandSuggestion {
+        label: "/source_add",
+        description: "Add a managed Git skill source",
     },
     CommandSuggestion {
         label: "/config",
@@ -53,7 +59,7 @@ const COMMAND_SUGGESTIONS: [CommandSuggestion; 5] = [
 ];
 
 /// Parse a command string typed in the prompt.
-/// Accepts "list", "/list", "scan", "/scan", "import <skill>", etc.
+/// Accepts "list", "/list", "scan", "/scan", "source_add <git-url>", etc.
 pub fn parse_command(input: &str) -> TuiCommand {
     let trimmed = input.trim();
     let normalized = trimmed.strip_prefix('/').unwrap_or(trimmed);
@@ -66,6 +72,7 @@ pub fn parse_command(input: &str) -> TuiCommand {
     match command {
         "list" => TuiCommand::List,
         "scan" => TuiCommand::Scan,
+        "source_add" => TuiCommand::SourceAdd(argument),
         "import" => TuiCommand::Import(argument),
         "remove" => TuiCommand::Remove(argument),
         "config" => TuiCommand::Config,
@@ -73,6 +80,23 @@ pub fn parse_command(input: &str) -> TuiCommand {
         "q" | "quit" => TuiCommand::Quit,
         _ => TuiCommand::Unknown(trimmed.to_string()),
     }
+}
+
+#[derive(Debug, Clone, Default)]
+pub enum SourceAddStep {
+    #[default]
+    EnterUrl,
+    Confirm {
+        preview: SourcePreview,
+    },
+    SelectSkill {
+        source_path: PathBuf,
+        skills: Vec<ScanResult>,
+        outcome: AcquireOutcome,
+    },
+    Done {
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone, Default)]
@@ -128,6 +152,7 @@ pub enum Mode {
     Home,
     List,
     Scan,
+    SourceAdd,
     Config,
     Help,
     Import,
@@ -158,6 +183,7 @@ pub struct App {
     pub config: Config,
     pub global_context: GlobalContext,
     pub prompt_label: String,
+    pub source_add_step: SourceAddStep,
     pub import_step: ImportStep,
     pub remove_step: RemoveStep,
     pub error_message: Option<String>,
@@ -181,6 +207,7 @@ impl App {
             config,
             global_context,
             prompt_label: "Skills".to_string(),
+            source_add_step: SourceAddStep::EnterUrl,
             import_step: ImportStep::EnterSkill,
             remove_step: RemoveStep::EnterSkill,
             error_message: None,
@@ -235,6 +262,10 @@ impl App {
         self.close_command_menu();
 
         match self.mode {
+            Mode::SourceAdd => {
+                self.advance_source_add(input)?;
+                return Ok(false);
+            }
             Mode::Import => {
                 self.advance_import(input)?;
                 return Ok(false);
@@ -256,6 +287,19 @@ impl App {
                 self.mode = Mode::Scan;
                 self.loading = true;
                 self.pending_load = Some(PendingLoad::Scan);
+            }
+            TuiCommand::SourceAdd(url) => {
+                if url.is_empty() {
+                    self.error_message = Some("Usage: /source_add <git-url>".to_string());
+                } else {
+                    match source::preview(&url, &self.global_context.central_dir) {
+                        Ok(preview) => {
+                            self.mode = Mode::SourceAdd;
+                            self.source_add_step = SourceAddStep::Confirm { preview };
+                        }
+                        Err(error) => self.error_message = Some(error.to_string()),
+                    }
+                }
             }
             TuiCommand::Import(skill) => {
                 let suffix = if skill.trim().is_empty() {
@@ -296,6 +340,86 @@ impl App {
         }
 
         Ok(false)
+    }
+
+    pub fn advance_source_add(&mut self, input: &str) -> anyhow::Result<()> {
+        self.error_message = None;
+        match self.source_add_step.clone() {
+            SourceAddStep::EnterUrl => {
+                self.mode = Mode::Home;
+            }
+            SourceAddStep::Confirm { preview } => {
+                let normalized = input.trim().to_ascii_lowercase();
+                if normalized == "y" {
+                    match source::acquire(&preview, self.global_context.max_scan_depth) {
+                        Ok(mut acquired) => {
+                            acquired
+                                .skills
+                                .sort_by(|left, right| left.skill_id.cmp(&right.skill_id));
+                            self.reload_scan_results()?;
+                            self.refresh_inventory()?;
+                            self.info_message = Some(match acquired.outcome {
+                                AcquireOutcome::Cloned => {
+                                    format!("Added source at {}.", acquired.path.display())
+                                }
+                                AcquireOutcome::Reused => {
+                                    format!("Reused source at {}.", acquired.path.display())
+                                }
+                            });
+                            self.source_add_step = SourceAddStep::SelectSkill {
+                                source_path: acquired.path,
+                                skills: acquired.skills,
+                                outcome: acquired.outcome,
+                            };
+                        }
+                        Err(error) => {
+                            self.error_message = Some(error.to_string());
+                            self.source_add_step = SourceAddStep::Done {
+                                message: "Source was not added.".to_string(),
+                            };
+                        }
+                    }
+                } else if normalized == "n" || normalized.is_empty() {
+                    self.source_add_step = SourceAddStep::Done {
+                        message: "Aborted.".to_string(),
+                    };
+                } else {
+                    self.error_message = Some("Add this source? [y/N]".to_string());
+                    self.source_add_step = SourceAddStep::Confirm { preview };
+                }
+            }
+            SourceAddStep::SelectSkill {
+                source_path,
+                skills,
+                outcome,
+            } => {
+                if input.trim().is_empty() {
+                    self.source_add_step = SourceAddStep::Done {
+                        message: "Source kept without new exposures.".to_string(),
+                    };
+                    return Ok(());
+                }
+                let Some(index) = parse_selection(input, skills.len()) else {
+                    self.error_message =
+                        Some(format!("Enter a number between 1 and {}", skills.len()));
+                    self.source_add_step = SourceAddStep::SelectSkill {
+                        source_path,
+                        skills,
+                        outcome,
+                    };
+                    return Ok(());
+                };
+                let selected = skills[index].clone();
+                let target_agents = self.enabled_agent_targets();
+                self.start_import_for_scan_result(selected, target_agents);
+            }
+            SourceAddStep::Done { .. } => {
+                self.mode = Mode::Home;
+                self.source_add_step = SourceAddStep::EnterUrl;
+            }
+        }
+
+        Ok(())
     }
 
     pub fn command_menu_open(&self) -> bool {
@@ -800,6 +924,17 @@ impl App {
         }
     }
 
+    pub fn source_add_step_hint(&self) -> &'static str {
+        match self.source_add_step {
+            SourceAddStep::EnterUrl => "Enter /source_add <git-url>:",
+            SourceAddStep::Confirm { .. } => "Add this source? [y/N]:",
+            SourceAddStep::SelectSkill { .. } => {
+                "Enter skill number to expose, or Enter to keep source only:"
+            }
+            SourceAddStep::Done { .. } => "Press Enter to return to home.",
+        }
+    }
+
     /// Return a short one-line hint for the current remove step.
     pub fn remove_step_hint(&self) -> &'static str {
         match self.remove_step {
@@ -1224,7 +1359,9 @@ fn parse_selection(input: &str, max: usize) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use std::path::PathBuf;
+    use std::process::Command;
 
     use tempfile::tempdir;
 
@@ -1360,6 +1497,22 @@ mod tests {
         assert_eq!(
             parse_command("import repo-a/skill"),
             TuiCommand::Import("repo-a/skill".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_command_source_add_with_url() {
+        assert_eq!(
+            parse_command("/source_add https://example.com/org/skills.git"),
+            TuiCommand::SourceAdd("https://example.com/org/skills.git".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_command_source_add_with_space_is_unknown() {
+        assert_eq!(
+            parse_command("/source add https://example.com/org/skills.git"),
+            TuiCommand::Unknown("/source add https://example.com/org/skills.git".to_string())
         );
     }
 
@@ -1663,6 +1816,124 @@ mod tests {
     }
 
     #[test]
+    fn source_add_decline_leaves_managed_directory_unchanged() {
+        let temp = tempdir().expect("tempdir");
+        let remote = create_git_repo(temp.path().join("remote-skills"));
+        let central = temp.path().join("central");
+        let mut config = test_config(temp.path());
+        config.skills.central_dir = central.to_string_lossy().into_owned();
+        let mut app = App::new(config).unwrap();
+
+        app.handle_command(&format!("/source_add file://{}", remote.display()))
+            .unwrap();
+        app.advance_source_add("n").unwrap();
+
+        assert!(!central.exists());
+        assert!(matches!(app.source_add_step, SourceAddStep::Done { .. }));
+    }
+
+    #[test]
+    fn source_add_selects_one_skill_and_delegates_to_import_plan() {
+        let temp = tempdir().expect("tempdir");
+        let remote = create_git_repo(temp.path().join("remote-skills"));
+        let central = temp.path().join("central");
+        let mut config = test_config(temp.path());
+        config.skills.central_dir = central.to_string_lossy().into_owned();
+        let mut app = App::new(config).unwrap();
+
+        app.handle_command(&format!("/source_add file://{}", remote.display()))
+            .unwrap();
+        app.advance_source_add("y").unwrap();
+        app.advance_source_add("1").unwrap();
+
+        assert!(central.join("remote-skills").exists());
+        assert_eq!(app.mode, Mode::Import);
+        assert!(matches!(app.import_step, ImportStep::SelectAgents { .. }));
+    }
+
+    #[test]
+    fn source_add_multi_skill_selection_delegates_only_selected_skill() {
+        let temp = tempdir().expect("tempdir");
+        let remote = create_git_repo(temp.path().join("remote-skills"));
+        fs::create_dir_all(remote.join("docs")).unwrap();
+        fs::write(remote.join("docs/SKILL.md"), "# Docs").unwrap();
+        git(&["-C", remote.to_str().unwrap(), "add", "."]);
+        git(&[
+            "-C",
+            remote.to_str().unwrap(),
+            "-c",
+            "user.name=Skills Manager Tests",
+            "-c",
+            "user.email=tests@example.com",
+            "commit",
+            "-m",
+            "add docs skill",
+        ]);
+        let mut config = test_config(temp.path());
+        config.skills.central_dir = temp.path().join("central").to_string_lossy().into_owned();
+        let mut app = App::new(config).unwrap();
+
+        app.handle_command(&format!("/source_add file://{}", remote.display()))
+            .unwrap();
+        app.advance_source_add("y").unwrap();
+        app.advance_source_add("2").unwrap();
+
+        let ImportStep::SelectAgents { selected, .. } = &app.import_step else {
+            panic!("expected selected skill to enter import flow");
+        };
+        assert_eq!(selected.skill_id, "remote-skills/docs");
+    }
+
+    #[test]
+    fn cancelling_exposure_after_source_add_keeps_source_without_targets() {
+        let temp = tempdir().expect("tempdir");
+        let remote = create_git_repo(temp.path().join("remote-skills"));
+        let central = temp.path().join("central");
+        let mut config = test_config(temp.path());
+        config.skills.central_dir = central.to_string_lossy().into_owned();
+        let target_paths = config
+            .agents
+            .values()
+            .map(|agent| PathBuf::from(&agent.global_dir))
+            .collect::<Vec<_>>();
+        let mut app = App::new(config).unwrap();
+
+        app.handle_command(&format!("/source_add file://{}", remote.display()))
+            .unwrap();
+        app.advance_source_add("y").unwrap();
+        app.advance_source_add("1").unwrap();
+        app.advance_import("").unwrap();
+        app.advance_import("n").unwrap();
+
+        assert!(central.join("remote-skills").exists());
+        assert!(target_paths.iter().all(|path| !path.exists()));
+        assert!(matches!(app.import_step, ImportStep::Done { .. }));
+    }
+
+    fn create_git_repo(path: PathBuf) -> PathBuf {
+        fs::create_dir_all(path.join("code-review")).unwrap();
+        fs::write(path.join("code-review/SKILL.md"), "# Code review").unwrap();
+        git(&["init", path.to_str().unwrap()]);
+        git(&["-C", path.to_str().unwrap(), "add", "."]);
+        git(&[
+            "-C",
+            path.to_str().unwrap(),
+            "-c",
+            "user.name=Skills Manager Tests",
+            "-c",
+            "user.email=tests@example.com",
+            "commit",
+            "-m",
+            "initial",
+        ]);
+        path
+    }
+
+    fn git(args: &[&str]) {
+        assert!(Command::new("git").args(args).status().unwrap().success());
+    }
+
+    #[test]
     fn handle_command_import_guides_to_table_shortcut() {
         let mut app = test_app();
 
@@ -1703,7 +1974,10 @@ mod tests {
             .map(|suggestion| suggestion.label)
             .collect::<Vec<_>>();
 
-        assert_eq!(labels, vec!["/list", "/scan", "/config", "/help", "/quit"]);
+        assert_eq!(
+            labels,
+            vec!["/list", "/scan", "/source_add", "/config", "/help", "/quit"]
+        );
         assert!(
             app.filtered_command_suggestions()
                 .iter()

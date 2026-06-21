@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Rect;
 
-use crate::tui::app::{App, ImportStep, Mode, RemoveStep};
+use crate::tui::app::{App, ImportStep, Mode, RemoveStep, SourceAddStep};
 
 /// Handle a key event. Returns true if the app should quit.
 pub fn handle_key(app: &mut App, key: KeyEvent) -> anyhow::Result<bool> {
@@ -26,6 +26,7 @@ fn handle_key_with_table_height(
             }
             app.input.clear();
             app.mode = Mode::Home;
+            app.source_add_step = SourceAddStep::EnterUrl;
             app.import_step = ImportStep::EnterSkill;
             app.remove_step = RemoveStep::EnterSkill;
             app.error_message = None;
