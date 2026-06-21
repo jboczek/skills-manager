@@ -441,6 +441,9 @@ impl App {
             .trim_start()
             .strip_prefix('/')
             .unwrap_or("")
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
             .to_ascii_lowercase();
 
         COMMAND_SUGGESTIONS
@@ -1998,6 +2001,21 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(labels, vec!["/scan"]);
+    }
+
+    #[test]
+    fn command_suggestions_filter_by_command_text_before_arguments() {
+        let mut app = test_app();
+        app.input = "/source_add https://example.com/org/skills.git".to_string();
+        app.open_command_menu();
+
+        let labels = app
+            .filtered_command_suggestions()
+            .iter()
+            .map(|suggestion| suggestion.label)
+            .collect::<Vec<_>>();
+
+        assert_eq!(labels, vec!["/source_add"]);
     }
 
     #[test]
