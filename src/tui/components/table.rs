@@ -16,7 +16,7 @@ pub fn render_inventory_table(
     frame: &mut Frame,
     area: Rect,
     rows: &[InventoryRow],
-    source_table: &SourceTable<usize>,
+    source_table: &SourceTable,
 ) {
     if rows.is_empty() {
         render_empty(frame, area, " Inventory ", "No skills found.");
@@ -149,7 +149,7 @@ pub fn render_scan_table(
     frame: &mut Frame,
     area: Rect,
     results: &[ScanResult],
-    source_table: &SourceTable<usize>,
+    source_table: &SourceTable,
 ) {
     if results.is_empty() {
         render_empty(frame, area, " Scan ", "No scan results available.");

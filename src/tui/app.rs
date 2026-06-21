@@ -187,8 +187,8 @@ pub struct App {
     pub inventory: Vec<InventoryRow>,
     pub scan_results: Vec<ScanResult>,
     pub status_messages: Vec<String>,
-    pub list_table: SourceTable<usize>,
-    pub scan_table: SourceTable<usize>,
+    pub list_table: SourceTable,
+    pub scan_table: SourceTable,
     pub config: Config,
     pub global_context: GlobalContext,
     pub prompt_label: String,
@@ -916,7 +916,7 @@ impl App {
         }
     }
 
-    fn selection_required_message(&self, table: &SourceTable<usize>) -> String {
+    fn selection_required_message(&self, table: &SourceTable) -> String {
         if matches!(table.selected_row(), Some(SourceTableRow::Group { .. })) {
             "Select a skill inside the group.".to_string()
         } else {
@@ -924,7 +924,7 @@ impl App {
         }
     }
 
-    fn scan_table_items(&self) -> Vec<SourceGroupItem<usize>> {
+    fn scan_table_items(&self) -> Vec<SourceGroupItem> {
         self.scan_results
             .iter()
             .enumerate()
@@ -939,7 +939,7 @@ impl App {
             .collect()
     }
 
-    fn list_table_items(&self) -> Vec<SourceGroupItem<usize>> {
+    fn list_table_items(&self) -> Vec<SourceGroupItem> {
         self.inventory
             .iter()
             .enumerate()
