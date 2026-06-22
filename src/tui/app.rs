@@ -9,113 +9,16 @@ use crate::inventory::{self, AgentTarget};
 use crate::plan::{ChangePlan, StagedChange};
 use crate::plan_apply;
 use crate::scanner::{self, ScanResult};
-use crate::source::{self, AcquireOutcome, SourcePreview};
+use crate::source::{self, AcquireOutcome};
 use crate::tui::source_table::{SourceGroupItem, SourceTable, SourceTableRow};
 
 mod command;
+mod state;
 
 pub use command::{CommandSuggestion, TuiCommand, parse_command};
+pub use state::{AgentSelectionItem, ImportStep, Mode, PendingLoad, RemoveStep, SourceAddStep};
 
 use command::COMMAND_SUGGESTIONS;
-
-#[derive(Debug, Clone, Default)]
-pub enum SourceAddStep {
-    #[default]
-    EnterUrl,
-    Confirm {
-        preview: SourcePreview,
-    },
-    SelectSkill {
-        source_path: PathBuf,
-        skills: Vec<ScanResult>,
-        outcome: AcquireOutcome,
-    },
-    Done {
-        message: String,
-    },
-}
-
-#[derive(Debug, Clone)]
-pub enum ImportStep {
-    Disambiguate {
-        matches: Vec<ScanResult>,
-    },
-    SelectAgents {
-        selected: Box<ScanResult>,
-        agents: Vec<AgentSelectionItem>,
-        focused: usize,
-    },
-    ConfirmPlan {
-        plan: ChangePlan,
-        selected: Box<ScanResult>,
-        target_agents: Vec<AgentTarget>,
-    },
-    ConfirmPhysical {
-        plan: ChangePlan,
-    },
-    Done {
-        message: String,
-    },
-}
-
-impl Default for ImportStep {
-    fn default() -> Self {
-        Self::Done {
-            message: String::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum RemoveStep {
-    SelectExposure {
-        selected: Box<InventoryRow>,
-    },
-    ConfirmPlan {
-        plan: ChangePlan,
-        selected: Box<InventoryRow>,
-    },
-    ConfirmPhysical {
-        plan: ChangePlan,
-    },
-    Done {
-        message: String,
-    },
-}
-
-impl Default for RemoveStep {
-    fn default() -> Self {
-        Self::Done {
-            message: String::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub enum Mode {
-    #[default]
-    Home,
-    List,
-    Scan,
-    SourceAdd,
-    Config,
-    Help,
-    Import,
-    Remove,
-    Quit,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PendingLoad {
-    List,
-    Scan,
-}
-
-#[derive(Debug, Clone)]
-pub struct AgentSelectionItem {
-    pub target: AgentTarget,
-    pub checked: bool,
-}
 
 pub struct App {
     pub mode: Mode,
