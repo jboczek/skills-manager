@@ -12,6 +12,7 @@ mod workflows;
 
 pub use command::{CommandSuggestion, TuiCommand, parse_command};
 pub use state::{AgentSelectionItem, ImportStep, Mode, PendingLoad, RemoveStep, SourceAddStep};
+pub(crate) use workflows::removable_exposures;
 
 use command::COMMAND_SUGGESTIONS;
 
@@ -50,7 +51,7 @@ impl App {
             config,
             global_context,
             prompt_label: "Skills".to_string(),
-            source_add_step: SourceAddStep::EnterUrl,
+            source_add_step: SourceAddStep::default(),
             import_step: ImportStep::default(),
             remove_step: RemoveStep::default(),
             error_message: None,
@@ -495,6 +496,14 @@ mod tests {
             parse_command("foobar"),
             TuiCommand::Unknown("foobar".to_string())
         );
+    }
+
+    #[test]
+    fn source_add_step_default_is_done() {
+        assert!(matches!(
+            SourceAddStep::default(),
+            SourceAddStep::Done { .. }
+        ));
     }
 
     #[test]

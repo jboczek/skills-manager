@@ -5,7 +5,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use crate::config::Config;
 use crate::domain::{ConnectionKind, InventoryRow};
 use crate::output::render_inventory;
-use crate::tui::app::{App, ImportStep, Mode, RemoveStep, SourceAddStep};
+use crate::tui::app::{App, ImportStep, Mode, RemoveStep, SourceAddStep, removable_exposures};
 use crate::tui::components::{dialog, table};
 use crate::tui::theme::Theme;
 
@@ -69,12 +69,6 @@ fn help_text() -> &'static str {
 
 fn render_source_add(frame: &mut Frame, area: Rect, app: &App) {
     match &app.source_add_step {
-        SourceAddStep::EnterUrl => render_text_panel(
-            frame,
-            area,
-            " Add Source ",
-            "Type /source_add <clone-url> in the prompt. Use the repository's HTTPS or SSH clone URL.",
-        ),
         SourceAddStep::Confirm { preview } => render_text_panel(
             frame,
             area,
@@ -228,14 +222,8 @@ fn render_text_panel(frame: &mut Frame, area: Rect, title: &str, body: &str) {
 }
 
 fn removable_exposure_lines(row: &InventoryRow) -> String {
-    row.exposures
+    removable_exposures(row)
         .iter()
-        .filter(|exposure| {
-            matches!(
-                exposure.connection,
-                ConnectionKind::Symlink | ConnectionKind::PhysicalCopy
-            )
-        })
         .enumerate()
         .map(|(index, exposure)| {
             format!(

@@ -15,9 +15,6 @@ impl App {
     pub fn advance_source_add(&mut self, input: &str) -> anyhow::Result<()> {
         self.error_message = None;
         match self.source_add_step.clone() {
-            SourceAddStep::EnterUrl => {
-                self.mode = Mode::Home;
-            }
             SourceAddStep::Confirm { preview } => {
                 let normalized = input.trim().to_ascii_lowercase();
                 if normalized == "y" {
@@ -85,7 +82,7 @@ impl App {
             }
             SourceAddStep::Done { .. } => {
                 self.mode = Mode::Home;
-                self.source_add_step = SourceAddStep::EnterUrl;
+                self.source_add_step = SourceAddStep::default();
             }
         }
 
@@ -166,7 +163,7 @@ impl App {
             return Ok(());
         }
 
-        let removable_exposures = Self::removable_exposures(&selected);
+        let removable_exposures = removable_exposures(&selected);
         self.mode = Mode::Remove;
         match removable_exposures.len() {
             0 => {
@@ -291,7 +288,7 @@ impl App {
     pub fn advance_remove(&mut self, input: &str) -> anyhow::Result<()> {
         match self.remove_step.clone() {
             RemoveStep::SelectExposure { selected } => {
-                let removable_exposures = Self::removable_exposures(&selected);
+                let removable_exposures = removable_exposures(&selected);
                 match parse_selection(input, removable_exposures.len()) {
                     Some(index) => {
                         let plan = self
@@ -359,7 +356,6 @@ impl App {
 
     pub fn source_add_step_hint(&self) -> &'static str {
         match self.source_add_step {
-            SourceAddStep::EnterUrl => "Enter /source_add <git-url>:",
             SourceAddStep::Confirm { .. } => "Add this source? [y/N]:",
             SourceAddStep::SelectSkill { .. } => {
                 "Enter skill number to expose, or Enter to keep source only:"
@@ -542,22 +538,6 @@ impl App {
         ChangePlan::new(change.into_iter().collect())
     }
 
-    fn removable_exposures(row: &InventoryRow) -> Vec<SkillExposure> {
-        if row.scope == Scope::ProjectLocal {
-            return Vec::new();
-        }
-        row.exposures
-            .iter()
-            .filter(|exposure| {
-                matches!(
-                    exposure.connection,
-                    ConnectionKind::Symlink | ConnectionKind::PhysicalCopy
-                )
-            })
-            .cloned()
-            .collect()
-    }
-
     fn apply_plan_and_refresh(&mut self, plan: &ChangePlan) -> anyhow::Result<String> {
         for change in &plan.changes {
             if let StagedChange::ExposeSkill { target_path, .. } = change
@@ -586,4 +566,20 @@ impl App {
         self.refresh_inventory()?;
         Ok(message)
     }
+}
+
+pub(crate) fn removable_exposures(row: &InventoryRow) -> Vec<SkillExposure> {
+    if row.scope == Scope::ProjectLocal {
+        return Vec::new();
+    }
+    row.exposures
+        .iter()
+        .filter(|exposure| {
+            matches!(
+                exposure.connection,
+                ConnectionKind::Symlink | ConnectionKind::PhysicalCopy
+            )
+        })
+        .cloned()
+        .collect()
 }

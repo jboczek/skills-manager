@@ -6,10 +6,8 @@ use crate::plan::ChangePlan;
 use crate::scanner::ScanResult;
 use crate::source::{AcquireOutcome, SourcePreview};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub enum SourceAddStep {
-    #[default]
-    EnterUrl,
     Confirm {
         preview: SourcePreview,
     },
@@ -21,6 +19,14 @@ pub enum SourceAddStep {
     Done {
         message: String,
     },
+}
+
+impl Default for SourceAddStep {
+    fn default() -> Self {
+        Self::Done {
+            message: String::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
