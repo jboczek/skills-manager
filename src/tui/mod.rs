@@ -75,9 +75,7 @@ pub fn run() -> anyhow::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    if let Err(error) = app.initialize() {
-        app.error_message = Some(error.to_string());
-    }
+    app.start_initial_load();
 
     let result = event_loop(&mut terminal, &mut app);
     let cleanup_result = cleanup_terminal(&mut terminal, &mut cleanup);
@@ -93,6 +91,8 @@ fn event_loop<B: ratatui::backend::Backend>(
         terminal
             .draw(|frame| draw(frame, app))
             .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+
+        app.poll_initial_load();
 
         if app.pending_load.is_some() {
             if let Err(error) = app.execute_pending_load() {

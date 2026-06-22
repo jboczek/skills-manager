@@ -1,6 +1,10 @@
+use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::thread;
+
 use crate::commands::helpers;
 use crate::config::{Config, GlobalContext};
 use crate::domain::InventoryRow;
+use crate::inventory::{self, InventoryConfig};
 use crate::scanner::{self, ScanResult};
 use crate::source;
 use crate::tui::source_table::SourceTable;
@@ -34,7 +38,14 @@ pub struct App {
     pub info_message: Option<String>,
     pub loading: bool,
     pub pending_load: Option<PendingLoad>,
+    initial_loading: bool,
+    initial_load: Option<Receiver<anyhow::Result<InitialLoad>>>,
     command_menu_selected: Option<usize>,
+}
+
+struct InitialLoad {
+    scan_results: Vec<ScanResult>,
+    inventory: Vec<InventoryRow>,
 }
 
 impl App {
@@ -58,16 +69,65 @@ impl App {
             info_message: None,
             loading: false,
             pending_load: None,
+            initial_loading: false,
+            initial_load: None,
             command_menu_selected: None,
         })
     }
 
     /// Load initial global scan and inventory state.
     pub fn initialize(&mut self) -> anyhow::Result<()> {
-        self.reload_scan_results()?;
-        self.refresh_inventory()?;
-        self.rebuild_status_messages();
+        let load = load_initial_state(self.global_context.clone())?;
+        self.apply_initial_load(load);
         Ok(())
+    }
+
+    pub fn start_initial_load(&mut self) {
+        if self.initial_loading {
+            return;
+        }
+
+        self.initial_loading = true;
+        self.rebuild_status_messages();
+
+        let context = self.global_context.clone();
+        let (sender, receiver) = mpsc::channel();
+        self.initial_load = Some(receiver);
+        thread::spawn(move || {
+            let _ = sender.send(load_initial_state(context));
+        });
+    }
+
+    pub fn poll_initial_load(&mut self) {
+        let result = match self.initial_load.as_ref().map(Receiver::try_recv) {
+            Some(Ok(result)) => result,
+            Some(Err(TryRecvError::Empty)) | None => return,
+            Some(Err(TryRecvError::Disconnected)) => {
+                Err(anyhow::anyhow!("initial skill scan stopped unexpectedly"))
+            }
+        };
+
+        self.initial_load = None;
+        match result {
+            Ok(load) => self.apply_initial_load(load),
+            Err(error) => {
+                self.initial_loading = false;
+                self.error_message = Some(error.to_string());
+                self.rebuild_status_messages();
+            }
+        }
+    }
+
+    pub fn initial_load_in_progress(&self) -> bool {
+        self.initial_loading
+    }
+
+    pub fn loaded_skills_label(&self) -> String {
+        if self.initial_loading {
+            "(loading)".to_string()
+        } else {
+            self.loaded_skill_count().to_string()
+        }
     }
 
     /// Refresh inventory from filesystem.
@@ -296,17 +356,22 @@ impl App {
     }
 
     fn rebuild_status_messages(&mut self) {
+        let scan_status = if self.initial_loading {
+            "loading"
+        } else {
+            "OK"
+        };
         self.status_messages = vec![
             format!(
                 "• Global context: {} skills, {} agents",
-                self.inventory.len().max(self.scan_results.len()),
+                self.loaded_skills_label(),
                 self.global_context
                     .agents
                     .iter()
                     .filter(|agent| agent.enabled)
                     .count()
             ),
-            "• Scan: OK".to_string(),
+            format!("• Scan: {scan_status}"),
         ];
         self.status_messages.extend(
             self.global_context
@@ -315,6 +380,36 @@ impl App {
                 .map(|diagnostic| format!("• Warning: {diagnostic}")),
         );
     }
+
+    fn apply_initial_load(&mut self, load: InitialLoad) {
+        self.initial_loading = false;
+        self.initial_load = None;
+        self.scan_results = load.scan_results;
+        self.inventory = load.inventory;
+        self.rebuild_status_messages();
+    }
+
+    fn loaded_skill_count(&self) -> usize {
+        self.inventory.len().max(self.scan_results.len())
+    }
+}
+
+fn load_initial_state(context: GlobalContext) -> anyhow::Result<InitialLoad> {
+    let raw_scan_results = scanner::scan(&helpers::scan_config_from_global(&context))?;
+    let mut scan_results = raw_scan_results.clone();
+    scanner::exclude_dot_directory_results(&mut scan_results);
+    scanner::assign_disambiguation_indices(&mut scan_results);
+
+    let mut inventory = inventory::build_inventory(&InventoryConfig {
+        agents: helpers::agent_targets_from_global(&context),
+        scan_results: raw_scan_results,
+    });
+    inventory::assign_disambiguation_indices(&mut inventory);
+
+    Ok(InitialLoad {
+        scan_results,
+        inventory,
+    })
 }
 
 #[cfg(test)]
@@ -376,6 +471,52 @@ mod tests {
             app.status_messages
                 .iter()
                 .all(|message| !message.contains(&launch_dir.display().to_string()))
+        );
+    }
+
+    #[test]
+    fn start_initial_load_shows_loading_skill_stats() {
+        let mut app = test_app();
+
+        app.start_initial_load();
+
+        assert!(app.initial_load_in_progress());
+        assert_eq!(app.loaded_skills_label(), "(loading)");
+        assert!(
+            app.status_messages
+                .iter()
+                .any(|message| message.contains("(loading) skills"))
+        );
+        assert!(
+            app.status_messages
+                .iter()
+                .any(|message| message.contains("Scan: loading"))
+        );
+    }
+
+    #[test]
+    fn apply_initial_load_replaces_loading_stats_with_loaded_data() {
+        let mut app = test_app();
+        app.start_initial_load();
+
+        app.apply_initial_load(InitialLoad {
+            scan_results: vec![scan_result("repo-a/one")],
+            inventory: vec![inventory_row("repo-a/one")],
+        });
+
+        assert!(!app.initial_load_in_progress());
+        assert_eq!(app.loaded_skills_label(), "1");
+        assert_eq!(app.scan_results.len(), 1);
+        assert_eq!(app.inventory.len(), 1);
+        assert!(
+            app.status_messages
+                .iter()
+                .any(|message| message.contains("1 skills"))
+        );
+        assert!(
+            app.status_messages
+                .iter()
+                .any(|message| message.contains("Scan: OK"))
         );
     }
 

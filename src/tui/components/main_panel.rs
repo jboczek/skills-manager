@@ -17,7 +17,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             " Home ",
             &format!(
                 "Welcome to Skills Manager.\n\nLoaded skills: {}\nEnabled agents: {}\n\nTry /list, /scan, /source_add, /config or /help. Use table shortcuts for import and remove actions.",
-                app.inventory.len().max(app.scan_results.len()),
+                app.loaded_skills_label(),
                 app.config
                     .agents
                     .values()
