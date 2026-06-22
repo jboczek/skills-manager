@@ -12,75 +12,11 @@ use crate::scanner::{self, ScanResult};
 use crate::source::{self, AcquireOutcome, SourcePreview};
 use crate::tui::source_table::{SourceGroupItem, SourceTable, SourceTableRow};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TuiCommand {
-    List,
-    Scan,
-    SourceAdd(String),
-    Import(String),
-    Remove(String),
-    Config,
-    Help,
-    Quit,
-    Unknown(String),
-}
+mod command;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CommandSuggestion {
-    pub label: &'static str,
-    pub description: &'static str,
-}
+pub use command::{CommandSuggestion, TuiCommand, parse_command};
 
-const COMMAND_SUGGESTIONS: [CommandSuggestion; 6] = [
-    CommandSuggestion {
-        label: "/list",
-        description: "Show exposed skills and availability",
-    },
-    CommandSuggestion {
-        label: "/scan",
-        description: "Discover skills from configured sources",
-    },
-    CommandSuggestion {
-        label: "/source_add",
-        description: "Add new skills from Git repository using HTTPS/SSH clone URL",
-    },
-    CommandSuggestion {
-        label: "/config",
-        description: "Show current configuration",
-    },
-    CommandSuggestion {
-        label: "/help",
-        description: "Show commands and keybindings",
-    },
-    CommandSuggestion {
-        label: "/quit",
-        description: "Exit Skills Manager",
-    },
-];
-
-/// Parse a command string typed in the prompt.
-/// Accepts "list", "/list", "scan", "/scan", "source_add <git-url>", etc.
-pub fn parse_command(input: &str) -> TuiCommand {
-    let trimmed = input.trim();
-    let normalized = trimmed.strip_prefix('/').unwrap_or(trimmed);
-    let mut parts = normalized.split_whitespace();
-    let Some(command) = parts.next() else {
-        return TuiCommand::Unknown(input.to_string());
-    };
-    let argument = parts.collect::<Vec<_>>().join(" ");
-
-    match command {
-        "list" => TuiCommand::List,
-        "scan" => TuiCommand::Scan,
-        "source_add" => TuiCommand::SourceAdd(argument),
-        "import" => TuiCommand::Import(argument),
-        "remove" => TuiCommand::Remove(argument),
-        "config" => TuiCommand::Config,
-        "help" | "?" => TuiCommand::Help,
-        "q" | "quit" => TuiCommand::Quit,
-        _ => TuiCommand::Unknown(trimmed.to_string()),
-    }
-}
+use command::COMMAND_SUGGESTIONS;
 
 #[derive(Debug, Clone, Default)]
 pub enum SourceAddStep {
@@ -311,27 +247,19 @@ impl App {
                     }
                 }
             }
-            TuiCommand::Import(skill) => {
-                let suffix = if skill.trim().is_empty() {
-                    ""
-                } else {
-                    " The typed skill name was not used."
-                };
+            TuiCommand::Import => {
                 self.import_step = ImportStep::default();
-                self.info_message = Some(format!(
-                    "Use table shortcuts: run /scan, select a row, then press i. From /list, press i to create missing enabled-agent exposures.{suffix}"
-                ));
+                self.info_message = Some(
+                    "Use table shortcuts: run /scan, select a row, then press i. From /list, press i to create missing enabled-agent exposures."
+                        .to_string(),
+                );
             }
-            TuiCommand::Remove(skill) => {
-                let suffix = if skill.trim().is_empty() {
-                    ""
-                } else {
-                    " The typed skill name was not used."
-                };
+            TuiCommand::Remove => {
                 self.remove_step = RemoveStep::default();
-                self.info_message = Some(format!(
-                    "Use table shortcuts: run /list, select an exposed row, then press x to remove it.{suffix}"
-                ));
+                self.info_message = Some(
+                    "Use table shortcuts: run /list, select an exposed row, then press x to remove it."
+                        .to_string(),
+                );
             }
             TuiCommand::Config => {
                 self.mode = Mode::Config;
@@ -1361,10 +1289,12 @@ mod tests {
 
     #[test]
     fn parse_command_import_with_arg() {
-        assert_eq!(
-            parse_command("import repo-a/skill"),
-            TuiCommand::Import("repo-a/skill".to_string())
-        );
+        assert_eq!(parse_command("import repo-a/skill"), TuiCommand::Import);
+    }
+
+    #[test]
+    fn parse_command_remove_with_arg() {
+        assert_eq!(parse_command("remove repo-a/skill"), TuiCommand::Remove);
     }
 
     #[test]
