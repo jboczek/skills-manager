@@ -9,8 +9,8 @@ pub enum GroupKey {
 }
 
 #[derive(Debug, Clone)]
-pub struct SourceGroupItem<T> {
-    pub item: T,
+pub struct SourceGroupItem {
+    pub item: usize,
     pub skill_name: String,
     pub skill_path: PathBuf,
     pub repo_name: Option<String>,
@@ -19,23 +19,23 @@ pub struct SourceGroupItem<T> {
 }
 
 #[derive(Debug, Clone)]
-pub struct SourceTableItem<T> {
-    pub item: T,
+pub struct SourceTableItem {
+    pub item: usize,
     pub skill_name: String,
     pub display_path: String,
     skill_path: PathBuf,
 }
 
 #[derive(Debug, Clone)]
-pub struct SourceGroup<T> {
+pub struct SourceGroup {
     pub key: GroupKey,
     pub name: String,
     pub context: String,
-    pub items: Vec<SourceTableItem<T>>,
+    pub items: Vec<SourceTableItem>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SourceTableRow<T> {
+pub enum SourceTableRow {
     Group {
         key: GroupKey,
         name: String,
@@ -45,7 +45,7 @@ pub enum SourceTableRow<T> {
     },
     Item {
         group_key: GroupKey,
-        item: T,
+        item: usize,
         skill_name: String,
         display_path: String,
         source_path: PathBuf,
@@ -53,14 +53,14 @@ pub enum SourceTableRow<T> {
 }
 
 #[derive(Debug, Clone)]
-pub struct SourceTable<T> {
-    groups: Vec<SourceGroup<T>>,
+pub struct SourceTable {
+    groups: Vec<SourceGroup>,
     expanded: HashSet<GroupKey>,
     selected: Option<usize>,
     viewport_offset: usize,
 }
 
-impl<T> Default for SourceTable<T> {
+impl Default for SourceTable {
     fn default() -> Self {
         Self {
             groups: Vec::new(),
@@ -71,8 +71,8 @@ impl<T> Default for SourceTable<T> {
     }
 }
 
-impl<T: Clone> SourceTable<T> {
-    pub fn new(items: Vec<SourceGroupItem<T>>) -> Self {
+impl SourceTable {
+    pub fn new(items: Vec<SourceGroupItem>) -> Self {
         let groups = build_groups(items);
         Self {
             selected: (!groups.is_empty()).then_some(0),
@@ -82,7 +82,7 @@ impl<T: Clone> SourceTable<T> {
         }
     }
 
-    pub fn groups(&self) -> &[SourceGroup<T>] {
+    pub fn groups(&self) -> &[SourceGroup] {
         &self.groups
     }
 
@@ -98,7 +98,7 @@ impl<T: Clone> SourceTable<T> {
         self.viewport_offset
     }
 
-    pub fn visible_rows(&self) -> Vec<SourceTableRow<T>> {
+    pub fn visible_rows(&self) -> Vec<SourceTableRow> {
         let mut rows = Vec::new();
         for group in &self.groups {
             let expanded = self.expanded.contains(&group.key);
@@ -112,7 +112,7 @@ impl<T: Clone> SourceTable<T> {
             if expanded {
                 rows.extend(group.items.iter().map(|item| SourceTableRow::Item {
                     group_key: group.key.clone(),
-                    item: item.item.clone(),
+                    item: item.item,
                     skill_name: item.skill_name.clone(),
                     display_path: item.display_path.clone(),
                     source_path: item.skill_path.clone(),
@@ -122,7 +122,7 @@ impl<T: Clone> SourceTable<T> {
         rows
     }
 
-    pub fn selected_row(&self) -> Option<SourceTableRow<T>> {
+    pub fn selected_row(&self) -> Option<SourceTableRow> {
         self.selected
             .and_then(|selected| self.visible_rows().get(selected).cloned())
     }
@@ -212,7 +212,7 @@ impl<T: Clone> SourceTable<T> {
         self.viewport_offset = offset.min(max_offset);
     }
 
-    pub fn refresh(&mut self, items: Vec<SourceGroupItem<T>>, viewport_height: usize) {
+    pub fn refresh(&mut self, items: Vec<SourceGroupItem>, viewport_height: usize) {
         let selection = self.selection_key();
         let groups = build_groups(items);
         let surviving_keys = groups
@@ -248,7 +248,7 @@ enum SelectionKey {
     Item(GroupKey, PathBuf),
 }
 
-fn find_selection<T>(rows: &[SourceTableRow<T>], selection: &SelectionKey) -> Option<usize> {
+fn find_selection(rows: &[SourceTableRow], selection: &SelectionKey) -> Option<usize> {
     match selection {
         SelectionKey::Group(selected_key) => rows.iter().position(
             |row| matches!(row, SourceTableRow::Group { key, .. } if key == selected_key),
@@ -273,8 +273,8 @@ fn find_selection<T>(rows: &[SourceTableRow<T>], selection: &SelectionKey) -> Op
     }
 }
 
-fn build_groups<T>(items: Vec<SourceGroupItem<T>>) -> Vec<SourceGroup<T>> {
-    let mut groups = Vec::<SourceGroup<T>>::new();
+fn build_groups(items: Vec<SourceGroupItem>) -> Vec<SourceGroup> {
+    let mut groups = Vec::<SourceGroup>::new();
     let mut indices = HashMap::<GroupKey, usize>::new();
 
     for item in items {
@@ -313,7 +313,7 @@ fn build_groups<T>(items: Vec<SourceGroupItem<T>>) -> Vec<SourceGroup<T>> {
     groups
 }
 
-fn item_labels<T>(item: &SourceGroupItem<T>) -> (GroupKey, String, String, String) {
+fn item_labels(item: &SourceGroupItem) -> (GroupKey, String, String, String) {
     if let Some(repo_path) = &item.repo_path {
         let context = bounded_path_suffix(repo_path, 2);
         let display_path = item
@@ -359,7 +359,7 @@ fn item_labels<T>(item: &SourceGroupItem<T>) -> (GroupKey, String, String, Strin
     )
 }
 
-fn disambiguate_group_contexts<T>(groups: &mut [SourceGroup<T>]) {
+fn disambiguate_group_contexts(groups: &mut [SourceGroup]) {
     let mut counts = HashMap::new();
     for group in groups.iter() {
         *counts
@@ -453,7 +453,7 @@ mod tests {
         repo_name: Option<&str>,
         repo_path: Option<&str>,
         relative_path: Option<&str>,
-    ) -> SourceGroupItem<usize> {
+    ) -> SourceGroupItem {
         SourceGroupItem {
             item: id,
             skill_name: skill_name.to_string(),
@@ -841,7 +841,7 @@ mod tests {
 
     #[test]
     fn empty_table_has_no_visible_or_selected_rows() {
-        let table = SourceTable::<usize>::new(Vec::new());
+        let table = SourceTable::new(Vec::new());
 
         assert!(table.visible_rows().is_empty());
         assert_eq!(table.selected_index(), None);

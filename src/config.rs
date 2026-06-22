@@ -44,17 +44,10 @@ pub struct SharedTargetConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct PreferencesConfig {
-    pub default_connection: String,
-    pub confirm_physical_delete: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Config {
     pub skills: SkillsConfig,
     pub agents: BTreeMap<String, AgentConfig>,
     pub shared_targets: BTreeMap<String, SharedTargetConfig>,
-    pub preferences: PreferencesConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,10 +112,6 @@ impl Config {
             },
             agents,
             shared_targets,
-            preferences: PreferencesConfig {
-                default_connection: "symlink".to_string(),
-                confirm_physical_delete: true,
-            },
         }
     }
 
@@ -211,7 +200,6 @@ impl Config {
                     agent_id: agent_id.clone(),
                     display_name: agent.display_name.clone(),
                     global_dir: Some(global_dir),
-                    project_dir: None,
                     shared_target_dirs,
                     enabled: agent.enabled,
                 }
@@ -378,13 +366,6 @@ confirm_physical_delete = true
             Some("~/.agents/skills")
         );
         assert!(cfg.shared_targets["agents"].project_dir.is_none());
-    }
-
-    #[test]
-    fn default_config_preferences() {
-        let cfg = Config::default_config();
-        assert_eq!(cfg.preferences.default_connection, "symlink");
-        assert!(cfg.preferences.confirm_physical_delete);
     }
 
     #[test]
@@ -578,12 +559,6 @@ confirm_physical_delete = true
             context
                 .agents
                 .iter()
-                .all(|agent| agent.project_dir.is_none())
-        );
-        assert!(
-            context
-                .agents
-                .iter()
                 .flat_map(|agent| agent.shared_target_dirs.iter())
                 .all(|(_, scope)| *scope == crate::domain::Scope::Global)
         );
@@ -596,5 +571,16 @@ confirm_physical_delete = true
         let serialized = config.to_toml().expect("config should serialize");
 
         assert!(!serialized.contains("project_dir"));
+    }
+
+    #[test]
+    fn serialization_omits_unused_preferences() {
+        let config = Config::parse(EXAMPLE_TOML).expect("legacy config should parse");
+
+        let serialized = config.to_toml().expect("config should serialize");
+
+        assert!(!serialized.contains("[preferences]"));
+        assert!(!serialized.contains("default_connection"));
+        assert!(!serialized.contains("confirm_physical_delete"));
     }
 }

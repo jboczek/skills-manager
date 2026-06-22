@@ -58,15 +58,9 @@ pub fn render_inventory(rows: &[InventoryRow]) -> String {
 }
 
 fn skill_display(row: &InventoryRow) -> String {
-    let base = if row.skill_id.namespace.is_empty() {
-        row.skill_id.name.clone()
-    } else {
-        format!("{}/{}", row.skill_id.namespace, row.skill_id.name)
-    };
-
     match row.disambiguation_index {
-        Some(index) => format!("({index}) {base}"),
-        None => base,
+        Some(index) => format!("({index}) {}", row.skill_id),
+        None => row.skill_id.to_string(),
     }
 }
 

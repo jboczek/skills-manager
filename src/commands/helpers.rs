@@ -132,11 +132,7 @@ fn matches_skill_id(input: &str, candidate: &str) -> bool {
 }
 
 fn display_skill_id(row: &InventoryRow) -> String {
-    if row.skill_id.namespace.is_empty() {
-        row.skill_id.name.clone()
-    } else {
-        format!("{}/{}", row.skill_id.namespace, row.skill_id.name)
-    }
+    row.skill_id.to_string()
 }
 
 fn row_context(row: &InventoryRow) -> String {

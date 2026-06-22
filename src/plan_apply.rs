@@ -1,6 +1,3 @@
-use std::path::Path;
-
-use crate::domain::ConnectionKind;
 use crate::plan::{ChangePlan, StagedChange};
 use crate::symlink;
 
@@ -35,32 +32,13 @@ fn apply_change(change: &StagedChange) -> anyhow::Result<()> {
         StagedChange::ExposeSkill {
             source_path,
             target_path,
-            connection,
             ..
-        } => match connection {
-            ConnectionKind::Symlink => symlink::create_symlink(source_path, target_path),
-            ConnectionKind::PhysicalCopy => copy_dir_all(source_path, target_path),
-            _ => Err(anyhow::anyhow!("unsupported connection kind for expose")),
-        },
+        } => symlink::create_symlink(source_path, target_path),
         StagedChange::DetachSkill { target_path, .. } => symlink::remove_symlink(target_path),
         StagedChange::DeletePhysicalCopy { target_path, .. } => {
             symlink::remove_physical_copy(target_path)
         }
     }
-}
-
-fn copy_dir_all(src: &Path, dst: &Path) -> anyhow::Result<()> {
-    std::fs::create_dir_all(dst)?;
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let dst_path = dst.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
-            copy_dir_all(&entry.path(), &dst_path)?;
-        } else {
-            std::fs::copy(entry.path(), dst_path)?;
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -95,7 +73,6 @@ mod tests {
             agent_id: AgentId(AGENT_NAME_CLAUDE.to_string()),
             source_path: source.clone(),
             target_path: target.clone(),
-            connection: ConnectionKind::Symlink,
         }]));
 
         assert!(result.failed.is_none());
@@ -155,14 +132,12 @@ mod tests {
             agent_id: AgentId(AGENT_NAME_CLAUDE.to_string()),
             source_path: source_one,
             target_path: target_one.clone(),
-            connection: ConnectionKind::Symlink,
         };
         let second = StagedChange::ExposeSkill {
             skill_name: "repo-a/docs".to_string(),
             agent_id: AgentId(AGENT_NAME_CODEX.to_string()),
             source_path: source_two,
             target_path: target_two.clone(),
-            connection: ConnectionKind::Symlink,
         };
 
         let result = apply_plan(&ChangePlan::new(vec![first.clone(), second.clone()]));

@@ -59,11 +59,7 @@ pub fn run(args: RemoveArgs) -> Result<()> {
         None => None,
     };
 
-    let display_skill = if selected.skill_id.namespace.is_empty() {
-        selected.skill_id.name.clone()
-    } else {
-        format!("{}/{}", selected.skill_id.namespace, selected.skill_id.name)
-    };
+    let display_skill = selected.skill_id.to_string();
     let mut changes = Vec::new();
     for exposure in &selected.exposures {
         if agent_filter.as_ref().is_some_and(|requested| {

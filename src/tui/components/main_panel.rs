@@ -118,12 +118,6 @@ fn render_source_add(frame: &mut Frame, area: Rect, app: &App) {
 
 fn render_import(frame: &mut Frame, area: Rect, app: &App) {
     match &app.import_step {
-        ImportStep::EnterSkill => render_text_panel(
-            frame,
-            area,
-            " Import ",
-            "Import a skill\n\nType the skill identifier in the prompt below.",
-        ),
         ImportStep::Disambiguate { matches } => {
             let body = matches
                 .iter()
@@ -190,28 +184,6 @@ fn render_import(frame: &mut Frame, area: Rect, app: &App) {
 
 fn render_remove(frame: &mut Frame, area: Rect, app: &App) {
     match &app.remove_step {
-        RemoveStep::EnterSkill => render_text_panel(
-            frame,
-            area,
-            " Remove ",
-            "Remove a skill\n\nType the skill identifier in the prompt below.",
-        ),
-        RemoveStep::Disambiguate { matches } => {
-            let body = matches
-                .iter()
-                .enumerate()
-                .map(|(index, row)| {
-                    format!(
-                        "{}. {}/{}",
-                        index + 1,
-                        row.skill_id.namespace,
-                        row.skill_id.name
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-            render_text_panel(frame, area, " Remove ", &body);
-        }
         RemoveStep::SelectExposure { selected } => {
             let body = removable_exposure_lines(selected);
             render_text_panel(frame, area, " Remove ", &body);

@@ -151,8 +151,8 @@ fn config_show_after_init_prints_toml() {
         "expected TOML output with [skills], got: {stdout}"
     );
     assert!(
-        stdout.contains("[preferences]"),
-        "expected [preferences] section"
+        !stdout.contains("[preferences]"),
+        "unexpected [preferences] section"
     );
     assert!(stdout.contains("claude"), "expected claude agent in output");
 }

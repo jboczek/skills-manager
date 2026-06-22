@@ -18,7 +18,6 @@ pub struct AgentTarget {
     pub agent_id: String,
     pub display_name: String,
     pub global_dir: Option<PathBuf>,
-    pub project_dir: Option<PathBuf>,
     pub shared_target_dirs: Vec<(PathBuf, Scope)>,
     pub enabled: bool,
 }
@@ -345,11 +344,7 @@ fn finalize_row(row: RowAccumulator) -> InventoryRow {
 }
 
 fn display_skill_id(row: &InventoryRow) -> String {
-    if row.skill_id.namespace.is_empty() {
-        row.skill_id.name.clone()
-    } else {
-        format!("{}/{}", row.skill_id.namespace, row.skill_id.name)
-    }
+    row.skill_id.to_string()
 }
 
 fn row_sort_key(row: &InventoryRow) -> (String, String, String) {
@@ -393,7 +388,6 @@ mod tests {
                 agent_id: "claude".to_string(),
                 display_name: "Claude".to_string(),
                 global_dir: Some(temp.path().join("missing")),
-                project_dir: None,
                 shared_target_dirs: vec![],
                 enabled: true,
             }],
@@ -436,7 +430,6 @@ mod tests {
                     agent_id: "codex".to_string(),
                     display_name: "Codex".to_string(),
                     global_dir: None,
-                    project_dir: None,
                     shared_target_dirs: vec![],
                     enabled: true,
                 },
@@ -444,7 +437,6 @@ mod tests {
                     agent_id: "copilot".to_string(),
                     display_name: "Copilot".to_string(),
                     global_dir: None,
-                    project_dir: None,
                     shared_target_dirs: vec![],
                     enabled: true,
                 },
@@ -502,7 +494,6 @@ mod tests {
                 agent_id: "codex".to_string(),
                 display_name: "Codex".to_string(),
                 global_dir: Some(global_root),
-                project_dir: None,
                 shared_target_dirs: vec![],
                 enabled: true,
             }],
@@ -594,7 +585,6 @@ mod tests {
                     agent_id: agent_id.to_string(),
                     display_name: agent_id.to_string(),
                     global_dir: None,
-                    project_dir: None,
                     shared_target_dirs: vec![],
                     enabled: true,
                 })
@@ -661,7 +651,6 @@ mod tests {
                 agent_id: "codex".to_string(),
                 display_name: "Codex".to_string(),
                 global_dir: None,
-                project_dir: None,
                 shared_target_dirs: vec![],
                 enabled: true,
             }],
@@ -691,7 +680,6 @@ mod tests {
                 agent_id: "claude".to_string(),
                 display_name: "Claude".to_string(),
                 global_dir: Some(target_root),
-                project_dir: None,
                 shared_target_dirs: vec![],
                 enabled: true,
             }],
@@ -717,7 +705,6 @@ mod tests {
                 agent_id: "claude".to_string(),
                 display_name: "Claude".to_string(),
                 global_dir: Some(target_root),
-                project_dir: None,
                 shared_target_dirs: vec![],
                 enabled: true,
             }],
@@ -745,7 +732,6 @@ mod tests {
                     agent_id: "claude".to_string(),
                     display_name: "Claude".to_string(),
                     global_dir: Some(claude_root),
-                    project_dir: None,
                     shared_target_dirs: vec![],
                     enabled: true,
                 },
@@ -753,7 +739,6 @@ mod tests {
                     agent_id: "codex".to_string(),
                     display_name: "Codex".to_string(),
                     global_dir: Some(codex_root),
-                    project_dir: None,
                     shared_target_dirs: vec![],
                     enabled: true,
                 },
@@ -772,7 +757,6 @@ mod tests {
                 agent_id: "copilot".to_string(),
                 display_name: "Copilot".to_string(),
                 global_dir: Some(PathBuf::from("/path/that/does/not/exist")),
-                project_dir: None,
                 shared_target_dirs: vec![],
                 enabled: true,
             }],
@@ -803,7 +787,6 @@ mod tests {
                     agent_id: "codex".to_string(),
                     display_name: "Codex".to_string(),
                     global_dir: Some(codex_root),
-                    project_dir: None,
                     shared_target_dirs: vec![],
                     enabled: true,
                 },
@@ -811,7 +794,6 @@ mod tests {
                     agent_id: "copilot".to_string(),
                     display_name: "Copilot".to_string(),
                     global_dir: Some(copilot_root),
-                    project_dir: None,
                     shared_target_dirs: vec![],
                     enabled: true,
                 },

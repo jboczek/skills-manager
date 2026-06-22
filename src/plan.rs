@@ -1,7 +1,7 @@
 use std::fmt::Write;
 use std::path::PathBuf;
 
-use crate::domain::{AgentId, ConnectionKind};
+use crate::domain::AgentId;
 
 /// A single proposed filesystem mutation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,7 +11,6 @@ pub enum StagedChange {
         agent_id: AgentId,
         source_path: PathBuf,
         target_path: PathBuf,
-        connection: ConnectionKind,
     },
     DetachSkill {
         skill_name: String,
@@ -57,15 +56,13 @@ impl ChangePlan {
                     agent_id,
                     source_path,
                     target_path,
-                    connection,
                 } => {
                     let _ = write!(
                         rendered,
-                        "  Expose {skill_name} to {}\n    source: {}\n    target: {}\n    connection: {}",
+                        "  Expose {skill_name} to {}\n    source: {}\n    target: {}",
                         agent_id.0,
                         source_path.display(),
                         target_path.display(),
-                        render_connection(*connection),
                     );
                 }
                 StagedChange::DetachSkill {
@@ -99,15 +96,6 @@ impl ChangePlan {
     }
 }
 
-fn render_connection(connection: ConnectionKind) -> &'static str {
-    match connection {
-        ConnectionKind::Symlink => "symlink",
-        ConnectionKind::PhysicalCopy => "physical copy",
-        ConnectionKind::Missing => "missing",
-        ConnectionKind::Unknown => "unknown",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -121,14 +109,13 @@ mod tests {
             agent_id: AgentId("Claude".to_string()),
             source_path: PathBuf::from("/Users/me/skills/repo-a/code-review"),
             target_path: PathBuf::from("/Users/me/.claude/skills/code-review"),
-            connection: ConnectionKind::Symlink,
         }]);
 
         let rendered = plan.render();
 
         assert!(rendered.contains("source:"));
         assert!(rendered.contains("target:"));
-        assert!(rendered.contains("connection: symlink"));
+        assert!(!rendered.contains("connection:"));
     }
 
     #[test]
