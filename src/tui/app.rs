@@ -1,16 +1,13 @@
-use std::fs;
-use std::path::{Path, PathBuf};
-
 use crate::commands::helpers;
 use crate::config::{Config, GlobalContext};
-use crate::domain::{ConnectionKind, InventoryRow, Scope};
-use crate::inventory;
+use crate::domain::InventoryRow;
 use crate::scanner::{self, ScanResult};
 use crate::source;
-use crate::tui::source_table::{SourceGroupItem, SourceTable, SourceTableRow};
+use crate::tui::source_table::SourceTable;
 
 mod command;
 mod state;
+mod tables;
 mod workflows;
 
 pub use command::{CommandSuggestion, TuiCommand, parse_command};
@@ -297,115 +294,6 @@ impl App {
         Ok(())
     }
 
-    fn selected_scan_result(&self) -> Option<ScanResult> {
-        match self.scan_table.selected_row()? {
-            SourceTableRow::Item { item, .. } => self.scan_results.get(item).cloned(),
-            SourceTableRow::Group { .. } => None,
-        }
-    }
-
-    pub(crate) fn selected_inventory_row(&self) -> Option<InventoryRow> {
-        match self.list_table.selected_row()? {
-            SourceTableRow::Item { item, .. } => self.inventory.get(item).cloned(),
-            SourceTableRow::Group { .. } => None,
-        }
-    }
-
-    fn selection_required_message(&self, table: &SourceTable) -> String {
-        if matches!(table.selected_row(), Some(SourceTableRow::Group { .. })) {
-            "Select a skill inside the group.".to_string()
-        } else {
-            "No skill row selected.".to_string()
-        }
-    }
-
-    fn scan_table_items(&self) -> Vec<SourceGroupItem> {
-        self.scan_results
-            .iter()
-            .enumerate()
-            .map(|(index, result)| SourceGroupItem {
-                item: index,
-                skill_name: scan_skill_label(result),
-                skill_path: result.skill_path.clone(),
-                repo_name: result.repo_name.clone(),
-                repo_path: result.repo_path.clone(),
-                relative_path: result.skill_relative_path.clone(),
-            })
-            .collect()
-    }
-
-    fn list_table_items(&self) -> Vec<SourceGroupItem> {
-        self.inventory
-            .iter()
-            .enumerate()
-            .map(|(index, row)| {
-                let skill_path = source_path_for_inventory_row(row);
-                let (repo_name, repo_path, relative_path) = match row.scope {
-                    Scope::Global => {
-                        let relative_path = row
-                            .source
-                            .repo_path
-                            .as_ref()
-                            .and_then(|root| skill_path.strip_prefix(root).ok())
-                            .map(Path::to_path_buf);
-                        (
-                            row.source.repo_name.clone(),
-                            row.source.repo_path.clone(),
-                            relative_path,
-                        )
-                    }
-                    Scope::ProjectLocal => {
-                        let project_root = row.exposures.first().and_then(|exposure| {
-                            inventory::project_root_from_exposure_path(&exposure.path)
-                        });
-                        let repo_name = project_root
-                            .as_ref()
-                            .and_then(|path| path.file_name())
-                            .map(|name| name.to_string_lossy().into_owned())
-                            .or_else(|| Some("project-local".to_string()));
-                        let relative_path = project_root
-                            .as_ref()
-                            .and_then(|root| skill_path.strip_prefix(root).ok())
-                            .map(Path::to_path_buf);
-                        (repo_name, project_root, relative_path)
-                    }
-                };
-                SourceGroupItem {
-                    item: index,
-                    skill_name: inventory_skill_label(row),
-                    skill_path,
-                    repo_name,
-                    repo_path,
-                    relative_path,
-                }
-            })
-            .collect()
-    }
-
-    fn scan_result_for_inventory_row(&self, row: &InventoryRow) -> Option<&ScanResult> {
-        let display_id = display_inventory_row(row);
-        let local_index = self
-            .inventory
-            .iter()
-            .filter(|candidate| {
-                display_inventory_row(candidate) == display_id
-                    && candidate.source.repo_path == row.source.repo_path
-            })
-            .position(|candidate| candidate == row)
-            .unwrap_or(0);
-        let matches = self
-            .scan_results
-            .iter()
-            .filter(|result| {
-                result.skill_id == display_id && result.repo_path == row.source.repo_path
-            })
-            .collect::<Vec<_>>();
-        matches
-            .get(local_index)
-            .copied()
-            .or_else(|| matches.first().copied())
-    }
-
     fn rebuild_status_messages(&mut self) {
         self.status_messages = vec![
             format!(
@@ -428,56 +316,6 @@ impl App {
     }
 }
 
-fn source_path_for_inventory_row(row: &InventoryRow) -> PathBuf {
-    let Some(exposure) = row.exposures.first() else {
-        return row
-            .source
-            .repo_path
-            .as_ref()
-            .map(|path| path.join(&row.skill_id.name))
-            .unwrap_or_else(|| PathBuf::from(&row.skill_id.name));
-    };
-    if exposure.connection == ConnectionKind::Symlink {
-        return fs::canonicalize(&exposure.path).unwrap_or_else(|_| exposure.path.clone());
-    }
-    exposure.path.clone()
-}
-
-fn display_inventory_row(row: &InventoryRow) -> String {
-    row.skill_id.to_string()
-}
-
-fn inventory_skill_label(row: &InventoryRow) -> String {
-    match row.disambiguation_index {
-        Some(index) => format!("({index}) {}", row.skill_id.name),
-        None => row.skill_id.name.clone(),
-    }
-}
-
-fn scan_skill_label(result: &ScanResult) -> String {
-    let name = result
-        .skill_path
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| {
-            result
-                .skill_id
-                .rsplit('/')
-                .next()
-                .unwrap_or(&result.skill_id)
-                .to_string()
-        });
-    match result.disambiguation_index {
-        Some(index) => format!("({index}) {name}"),
-        None => name,
-    }
-}
-
-fn parse_selection(input: &str, max: usize) -> Option<usize> {
-    let index = input.trim().parse::<usize>().ok()?;
-    (1..=max).contains(&index).then_some(index - 1)
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -492,6 +330,7 @@ mod tests {
     };
     use crate::plan::{ChangePlan, StagedChange};
     use crate::scanner::SourceKind;
+    use crate::tui::source_table::SourceTableRow;
 
     fn test_config(root: &std::path::Path) -> Config {
         let mut config = Config::default_config();

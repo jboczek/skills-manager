@@ -1,10 +1,8 @@
 use std::collections::HashSet;
 use std::fs;
 
-use super::{
-    AgentSelectionItem, App, ImportStep, Mode, RemoveStep, SourceAddStep, display_inventory_row,
-    parse_selection,
-};
+use super::tables::{display_inventory_row, parse_selection};
+use super::{AgentSelectionItem, App, ImportStep, Mode, RemoveStep, SourceAddStep};
 use crate::commands::helpers;
 use crate::domain::{AgentId, ConnectionKind, InventoryRow, Scope, SkillExposure};
 use crate::inventory::AgentTarget;
