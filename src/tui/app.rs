@@ -1,185 +1,24 @@
-use std::collections::HashSet;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::thread;
 
 use crate::commands::helpers;
 use crate::config::{Config, GlobalContext};
-use crate::domain::{AgentId, ConnectionKind, InventoryRow, Scope, SkillExposure};
-use crate::inventory::{self, AgentTarget};
-use crate::plan::{ChangePlan, StagedChange};
-use crate::plan_apply;
+use crate::domain::InventoryRow;
+use crate::inventory::{self, InventoryConfig};
 use crate::scanner::{self, ScanResult};
-use crate::source::{self, AcquireOutcome, SourcePreview};
-use crate::tui::source_table::{SourceGroupItem, SourceTable, SourceTableRow};
+use crate::source;
+use crate::tui::source_table::SourceTable;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TuiCommand {
-    List,
-    Scan,
-    SourceAdd(String),
-    Import(String),
-    Remove(String),
-    Config,
-    Help,
-    Quit,
-    Unknown(String),
-}
+mod command;
+mod state;
+mod tables;
+mod workflows;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CommandSuggestion {
-    pub label: &'static str,
-    pub description: &'static str,
-}
+pub use command::{CommandSuggestion, TuiCommand, parse_command};
+pub use state::{AgentSelectionItem, ImportStep, Mode, PendingLoad, RemoveStep, SourceAddStep};
+pub(crate) use workflows::removable_exposures;
 
-const COMMAND_SUGGESTIONS: [CommandSuggestion; 6] = [
-    CommandSuggestion {
-        label: "/list",
-        description: "Show exposed skills and availability",
-    },
-    CommandSuggestion {
-        label: "/scan",
-        description: "Discover skills from configured sources",
-    },
-    CommandSuggestion {
-        label: "/source_add",
-        description: "Add new skills from Git repository using HTTPS/SSH clone URL",
-    },
-    CommandSuggestion {
-        label: "/config",
-        description: "Show current configuration",
-    },
-    CommandSuggestion {
-        label: "/help",
-        description: "Show commands and keybindings",
-    },
-    CommandSuggestion {
-        label: "/quit",
-        description: "Exit Skills Manager",
-    },
-];
-
-/// Parse a command string typed in the prompt.
-/// Accepts "list", "/list", "scan", "/scan", "source_add <git-url>", etc.
-pub fn parse_command(input: &str) -> TuiCommand {
-    let trimmed = input.trim();
-    let normalized = trimmed.strip_prefix('/').unwrap_or(trimmed);
-    let mut parts = normalized.split_whitespace();
-    let Some(command) = parts.next() else {
-        return TuiCommand::Unknown(input.to_string());
-    };
-    let argument = parts.collect::<Vec<_>>().join(" ");
-
-    match command {
-        "list" => TuiCommand::List,
-        "scan" => TuiCommand::Scan,
-        "source_add" => TuiCommand::SourceAdd(argument),
-        "import" => TuiCommand::Import(argument),
-        "remove" => TuiCommand::Remove(argument),
-        "config" => TuiCommand::Config,
-        "help" | "?" => TuiCommand::Help,
-        "q" | "quit" => TuiCommand::Quit,
-        _ => TuiCommand::Unknown(trimmed.to_string()),
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub enum SourceAddStep {
-    #[default]
-    EnterUrl,
-    Confirm {
-        preview: SourcePreview,
-    },
-    SelectSkill {
-        source_path: PathBuf,
-        skills: Vec<ScanResult>,
-        outcome: AcquireOutcome,
-    },
-    Done {
-        message: String,
-    },
-}
-
-#[derive(Debug, Clone)]
-pub enum ImportStep {
-    Disambiguate {
-        matches: Vec<ScanResult>,
-    },
-    SelectAgents {
-        selected: Box<ScanResult>,
-        agents: Vec<AgentSelectionItem>,
-        focused: usize,
-    },
-    ConfirmPlan {
-        plan: ChangePlan,
-        selected: Box<ScanResult>,
-        target_agents: Vec<AgentTarget>,
-    },
-    ConfirmPhysical {
-        plan: ChangePlan,
-    },
-    Done {
-        message: String,
-    },
-}
-
-impl Default for ImportStep {
-    fn default() -> Self {
-        Self::Done {
-            message: String::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum RemoveStep {
-    SelectExposure {
-        selected: Box<InventoryRow>,
-    },
-    ConfirmPlan {
-        plan: ChangePlan,
-        selected: Box<InventoryRow>,
-    },
-    ConfirmPhysical {
-        plan: ChangePlan,
-    },
-    Done {
-        message: String,
-    },
-}
-
-impl Default for RemoveStep {
-    fn default() -> Self {
-        Self::Done {
-            message: String::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub enum Mode {
-    #[default]
-    Home,
-    List,
-    Scan,
-    SourceAdd,
-    Config,
-    Help,
-    Import,
-    Remove,
-    Quit,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PendingLoad {
-    List,
-    Scan,
-}
-
-#[derive(Debug, Clone)]
-pub struct AgentSelectionItem {
-    pub target: AgentTarget,
-    pub checked: bool,
-}
+use command::COMMAND_SUGGESTIONS;
 
 pub struct App {
     pub mode: Mode,
@@ -199,7 +38,14 @@ pub struct App {
     pub info_message: Option<String>,
     pub loading: bool,
     pub pending_load: Option<PendingLoad>,
+    initial_loading: bool,
+    initial_load: Option<Receiver<anyhow::Result<InitialLoad>>>,
     command_menu_selected: Option<usize>,
+}
+
+struct InitialLoad {
+    scan_results: Vec<ScanResult>,
+    inventory: Vec<InventoryRow>,
 }
 
 impl App {
@@ -216,23 +62,72 @@ impl App {
             config,
             global_context,
             prompt_label: "Skills".to_string(),
-            source_add_step: SourceAddStep::EnterUrl,
+            source_add_step: SourceAddStep::default(),
             import_step: ImportStep::default(),
             remove_step: RemoveStep::default(),
             error_message: None,
             info_message: None,
             loading: false,
             pending_load: None,
+            initial_loading: false,
+            initial_load: None,
             command_menu_selected: None,
         })
     }
 
     /// Load initial global scan and inventory state.
     pub fn initialize(&mut self) -> anyhow::Result<()> {
-        self.reload_scan_results()?;
-        self.refresh_inventory()?;
-        self.rebuild_status_messages();
+        let load = load_initial_state(self.global_context.clone())?;
+        self.apply_initial_load(load);
         Ok(())
+    }
+
+    pub fn start_initial_load(&mut self) {
+        if self.initial_loading {
+            return;
+        }
+
+        self.initial_loading = true;
+        self.rebuild_status_messages();
+
+        let context = self.global_context.clone();
+        let (sender, receiver) = mpsc::channel();
+        self.initial_load = Some(receiver);
+        thread::spawn(move || {
+            let _ = sender.send(load_initial_state(context));
+        });
+    }
+
+    pub fn poll_initial_load(&mut self) {
+        let result = match self.initial_load.as_ref().map(Receiver::try_recv) {
+            Some(Ok(result)) => result,
+            Some(Err(TryRecvError::Empty)) | None => return,
+            Some(Err(TryRecvError::Disconnected)) => {
+                Err(anyhow::anyhow!("initial skill scan stopped unexpectedly"))
+            }
+        };
+
+        self.initial_load = None;
+        match result {
+            Ok(load) => self.apply_initial_load(load),
+            Err(error) => {
+                self.initial_loading = false;
+                self.error_message = Some(error.to_string());
+                self.rebuild_status_messages();
+            }
+        }
+    }
+
+    pub fn initial_load_in_progress(&self) -> bool {
+        self.initial_loading
+    }
+
+    pub fn loaded_skills_label(&self) -> String {
+        if self.initial_loading {
+            "(loading)".to_string()
+        } else {
+            self.loaded_skill_count().to_string()
+        }
     }
 
     /// Refresh inventory from filesystem.
@@ -311,27 +206,19 @@ impl App {
                     }
                 }
             }
-            TuiCommand::Import(skill) => {
-                let suffix = if skill.trim().is_empty() {
-                    ""
-                } else {
-                    " The typed skill name was not used."
-                };
+            TuiCommand::Import => {
                 self.import_step = ImportStep::default();
-                self.info_message = Some(format!(
-                    "Use table shortcuts: run /scan, select a row, then press i. From /list, press i to create missing enabled-agent exposures.{suffix}"
-                ));
+                self.info_message = Some(
+                    "Use table shortcuts: run /scan, select a row, then press i. From /list, press i to create missing enabled-agent exposures."
+                        .to_string(),
+                );
             }
-            TuiCommand::Remove(skill) => {
-                let suffix = if skill.trim().is_empty() {
-                    ""
-                } else {
-                    " The typed skill name was not used."
-                };
+            TuiCommand::Remove => {
                 self.remove_step = RemoveStep::default();
-                self.info_message = Some(format!(
-                    "Use table shortcuts: run /list, select an exposed row, then press x to remove it.{suffix}"
-                ));
+                self.info_message = Some(
+                    "Use table shortcuts: run /list, select an exposed row, then press x to remove it."
+                        .to_string(),
+                );
             }
             TuiCommand::Config => {
                 self.mode = Mode::Config;
@@ -352,86 +239,6 @@ impl App {
         }
 
         Ok(false)
-    }
-
-    pub fn advance_source_add(&mut self, input: &str) -> anyhow::Result<()> {
-        self.error_message = None;
-        match self.source_add_step.clone() {
-            SourceAddStep::EnterUrl => {
-                self.mode = Mode::Home;
-            }
-            SourceAddStep::Confirm { preview } => {
-                let normalized = input.trim().to_ascii_lowercase();
-                if normalized == "y" {
-                    match source::acquire(&preview, self.global_context.max_scan_depth) {
-                        Ok(mut acquired) => {
-                            acquired
-                                .skills
-                                .sort_by(|left, right| left.skill_id.cmp(&right.skill_id));
-                            self.reload_scan_results()?;
-                            self.refresh_inventory()?;
-                            self.info_message = Some(match acquired.outcome {
-                                AcquireOutcome::Cloned => {
-                                    format!("Added source at {}.", acquired.path.display())
-                                }
-                                AcquireOutcome::Reused => {
-                                    format!("Reused source at {}.", acquired.path.display())
-                                }
-                            });
-                            self.source_add_step = SourceAddStep::SelectSkill {
-                                source_path: acquired.path,
-                                skills: acquired.skills,
-                                outcome: acquired.outcome,
-                            };
-                        }
-                        Err(error) => {
-                            self.error_message = Some(error.to_string());
-                            self.source_add_step = SourceAddStep::Done {
-                                message: "Source was not added.".to_string(),
-                            };
-                        }
-                    }
-                } else if normalized == "n" || normalized.is_empty() {
-                    self.source_add_step = SourceAddStep::Done {
-                        message: "Aborted.".to_string(),
-                    };
-                } else {
-                    self.error_message = Some("Add this source? [y/N]".to_string());
-                    self.source_add_step = SourceAddStep::Confirm { preview };
-                }
-            }
-            SourceAddStep::SelectSkill {
-                source_path,
-                skills,
-                outcome,
-            } => {
-                if input.trim().is_empty() {
-                    self.source_add_step = SourceAddStep::Done {
-                        message: "Source kept without new exposures.".to_string(),
-                    };
-                    return Ok(());
-                }
-                let Some(index) = parse_selection(input, skills.len()) else {
-                    self.error_message =
-                        Some(format!("Enter a number between 1 and {}", skills.len()));
-                    self.source_add_step = SourceAddStep::SelectSkill {
-                        source_path,
-                        skills,
-                        outcome,
-                    };
-                    return Ok(());
-                };
-                let selected = skills[index].clone();
-                let target_agents = self.enabled_agent_targets();
-                self.start_import_for_scan_result(selected, target_agents);
-            }
-            SourceAddStep::Done { .. } => {
-                self.mode = Mode::Home;
-                self.source_add_step = SourceAddStep::EnterUrl;
-            }
-        }
-
-        Ok(())
     }
 
     pub fn command_menu_open(&self) -> bool {
@@ -509,106 +316,6 @@ impl App {
         self.scan_table = SourceTable::new(self.scan_table_items());
     }
 
-    pub fn start_import_from_selected_scan_row(&mut self) -> anyhow::Result<()> {
-        self.error_message = None;
-        self.info_message = None;
-
-        let Some(selected) = self.selected_scan_result() else {
-            self.info_message = Some(self.selection_required_message(&self.scan_table));
-            return Ok(());
-        };
-
-        let target_agents = self.enabled_agent_targets();
-        self.start_import_for_scan_result(selected, target_agents);
-        Ok(())
-    }
-
-    pub fn start_import_from_selected_list_row(&mut self) -> anyhow::Result<()> {
-        self.error_message = None;
-        self.info_message = None;
-
-        let Some(row) = self.selected_inventory_row() else {
-            self.info_message = Some(self.selection_required_message(&self.list_table));
-            return Ok(());
-        };
-        if row.scope == Scope::ProjectLocal {
-            self.info_message =
-                Some("Project-local exposures are read-only and cannot be imported.".to_string());
-            return Ok(());
-        }
-
-        let target_agents = self.missing_enabled_agent_targets(&row);
-        if target_agents.is_empty() {
-            self.info_message =
-                Some("Selected skill already has all enabled-agent exposures.".to_string());
-            return Ok(());
-        }
-
-        let skill_id = display_inventory_row(&row);
-        if let Some(selected) = self.scan_result_for_inventory_row(&row).cloned() {
-            self.start_import_for_scan_result(selected, target_agents);
-            return Ok(());
-        }
-        let matches = helpers::find_scan_results_by_id(&skill_id, &self.scan_results);
-        match matches.len() {
-            0 => {
-                self.info_message =
-                    Some("Selected skill has no scanned source to import from.".to_string());
-            }
-            1 => {
-                self.start_import_for_scan_result(matches[0].clone(), target_agents);
-            }
-            _ => {
-                self.mode = Mode::Import;
-                self.import_step = ImportStep::Disambiguate {
-                    matches: matches.into_iter().cloned().collect(),
-                };
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn start_remove_from_selected_list_row(&mut self) -> anyhow::Result<()> {
-        self.error_message = None;
-        self.info_message = None;
-
-        let Some(selected) = self.selected_inventory_row() else {
-            self.info_message = Some(self.selection_required_message(&self.list_table));
-            return Ok(());
-        };
-        if selected.scope == Scope::ProjectLocal {
-            self.info_message =
-                Some("Project-local exposures are read-only and cannot be removed.".to_string());
-            return Ok(());
-        }
-
-        let removable_exposures = Self::removable_exposures(&selected);
-        self.mode = Mode::Remove;
-        match removable_exposures.len() {
-            0 => {
-                self.remove_step = RemoveStep::Done {
-                    message: "Selected row has no removable exposures.".to_string(),
-                };
-                self.info_message = Some("Selected row has no removable exposures.".to_string());
-            }
-            1 => {
-                let plan = self.build_remove_plan_for_exposure(&selected, &removable_exposures[0]);
-                self.remove_step = RemoveStep::ConfirmPlan {
-                    plan,
-                    selected: Box::new(selected),
-                };
-            }
-            _ => {
-                self.remove_step = RemoveStep::SelectExposure {
-                    selected: Box::new(selected),
-                };
-            }
-        }
-
-        Ok(())
-    }
-
     pub fn refresh_active_table(&mut self, viewport_height: usize) -> anyhow::Result<()> {
         self.error_message = None;
         self.info_message = None;
@@ -640,217 +347,6 @@ impl App {
         }
     }
 
-    /// Handle import flow step progression.
-    pub fn advance_import(&mut self, input: &str) -> anyhow::Result<()> {
-        match self.import_step.clone() {
-            ImportStep::Disambiguate { matches } => match parse_selection(input, matches.len()) {
-                Some(index) => {
-                    let target_agents = self.enabled_agent_targets();
-                    self.start_import_for_scan_result(matches[index].clone(), target_agents);
-                }
-                None => {
-                    self.error_message =
-                        Some(format!("Enter a number between 1 and {}", matches.len()));
-                    self.import_step = ImportStep::Disambiguate { matches };
-                }
-            },
-            ImportStep::SelectAgents {
-                selected,
-                agents,
-                focused,
-            } => {
-                let target_agents: Vec<AgentTarget> = agents
-                    .iter()
-                    .filter(|item| item.checked)
-                    .map(|item| item.target.clone())
-                    .collect();
-                if target_agents.is_empty() {
-                    self.error_message =
-                        Some("Select at least one agent. Use Space to toggle.".to_string());
-                    self.import_step = ImportStep::SelectAgents {
-                        selected,
-                        agents,
-                        focused,
-                    };
-                    return Ok(());
-                }
-                let plan = self.build_import_plan(&selected, &target_agents);
-                if plan.is_empty() {
-                    self.import_step = ImportStep::Done {
-                        message: "Nothing to do.".to_string(),
-                    };
-                    self.info_message = Some("Nothing to do.".to_string());
-                } else {
-                    self.import_step = ImportStep::ConfirmPlan {
-                        plan,
-                        selected,
-                        target_agents,
-                    };
-                }
-            }
-            ImportStep::ConfirmPlan {
-                plan,
-                selected,
-                target_agents,
-            } => {
-                let normalized = input.trim().to_ascii_lowercase();
-                if normalized == "y" {
-                    if plan.has_physical_deletes() {
-                        self.import_step = ImportStep::ConfirmPhysical { plan };
-                    } else {
-                        let message = self.apply_plan_and_refresh(&plan)?;
-                        self.mode = Mode::Home;
-                        self.import_step = ImportStep::Done { message };
-                    }
-                } else if normalized == "n" || normalized.is_empty() {
-                    self.import_step = ImportStep::Done {
-                        message: "Aborted.".to_string(),
-                    };
-                } else {
-                    self.error_message = Some("Apply this plan? [y/N]".to_string());
-                    self.import_step = ImportStep::ConfirmPlan {
-                        plan,
-                        selected,
-                        target_agents,
-                    };
-                }
-            }
-            ImportStep::ConfirmPhysical { plan } => {
-                if input.trim() == "yes" {
-                    let message = self.apply_plan_and_refresh(&plan)?;
-                    self.mode = Mode::Home;
-                    self.import_step = ImportStep::Done { message };
-                } else {
-                    self.import_step = ImportStep::Done {
-                        message: "Aborted.".to_string(),
-                    };
-                }
-            }
-            ImportStep::Done { .. } => {
-                self.mode = Mode::Home;
-                self.import_step = ImportStep::default();
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Handle remove flow step progression.
-    pub fn advance_remove(&mut self, input: &str) -> anyhow::Result<()> {
-        match self.remove_step.clone() {
-            RemoveStep::SelectExposure { selected } => {
-                let removable_exposures = Self::removable_exposures(&selected);
-                match parse_selection(input, removable_exposures.len()) {
-                    Some(index) => {
-                        let plan = self
-                            .build_remove_plan_for_exposure(&selected, &removable_exposures[index]);
-                        self.remove_step = RemoveStep::ConfirmPlan { plan, selected };
-                    }
-                    None => {
-                        self.error_message = Some(format!(
-                            "Enter a number between 1 and {}",
-                            removable_exposures.len()
-                        ));
-                        self.remove_step = RemoveStep::SelectExposure { selected };
-                    }
-                }
-            }
-            RemoveStep::ConfirmPlan { plan, selected } => {
-                let normalized = input.trim().to_ascii_lowercase();
-                if normalized == "y" {
-                    if plan.has_physical_deletes() {
-                        self.remove_step = RemoveStep::ConfirmPhysical { plan };
-                    } else {
-                        let message = self.apply_plan_and_refresh(&plan)?;
-                        self.remove_step = RemoveStep::Done { message };
-                    }
-                } else if normalized == "n" || normalized.is_empty() {
-                    self.remove_step = RemoveStep::Done {
-                        message: "Aborted.".to_string(),
-                    };
-                } else {
-                    self.error_message = Some("Apply this plan? [y/N]".to_string());
-                    self.remove_step = RemoveStep::ConfirmPlan { plan, selected };
-                }
-            }
-            RemoveStep::ConfirmPhysical { plan } => {
-                if input.trim() == "yes" {
-                    let message = self.apply_plan_and_refresh(&plan)?;
-                    self.remove_step = RemoveStep::Done { message };
-                } else {
-                    self.remove_step = RemoveStep::Done {
-                        message: "Aborted.".to_string(),
-                    };
-                }
-            }
-            RemoveStep::Done { .. } => {
-                self.mode = Mode::Home;
-                self.remove_step = RemoveStep::default();
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Return a short one-line hint for the current import step.
-    pub fn import_step_hint(&self) -> &'static str {
-        match self.import_step {
-            ImportStep::Disambiguate { .. } => "Enter number to select:",
-            ImportStep::SelectAgents { .. } => {
-                "Up/Down to move, Space to toggle, Enter to confirm:"
-            }
-            ImportStep::ConfirmPlan { .. } => "Apply this plan? [y/N]:",
-            ImportStep::ConfirmPhysical { .. } => "Type 'yes' to confirm permanent deletion:",
-            ImportStep::Done { .. } => "Press Enter to return to home.",
-        }
-    }
-
-    pub fn source_add_step_hint(&self) -> &'static str {
-        match self.source_add_step {
-            SourceAddStep::EnterUrl => "Enter /source_add <git-url>:",
-            SourceAddStep::Confirm { .. } => "Add this source? [y/N]:",
-            SourceAddStep::SelectSkill { .. } => {
-                "Enter skill number to expose, or Enter to keep source only:"
-            }
-            SourceAddStep::Done { .. } => "Press Enter to return to home.",
-        }
-    }
-
-    /// Return a short one-line hint for the current remove step.
-    pub fn remove_step_hint(&self) -> &'static str {
-        match self.remove_step {
-            RemoveStep::SelectExposure { .. } => "Enter exposure number to remove:",
-            RemoveStep::ConfirmPlan { .. } => "Apply this plan? [y/N]:",
-            RemoveStep::ConfirmPhysical { .. } => "Type 'yes' to confirm permanent deletion:",
-            RemoveStep::Done { .. } => "Press Enter to return to home.",
-        }
-    }
-
-    pub fn move_agent_selection_up(&mut self) {
-        if let ImportStep::SelectAgents { focused, .. } = &mut self.import_step {
-            *focused = focused.saturating_sub(1);
-        }
-    }
-
-    pub fn move_agent_selection_down(&mut self) {
-        if let ImportStep::SelectAgents {
-            agents, focused, ..
-        } = &mut self.import_step
-        {
-            *focused = (*focused + 1).min(agents.len().saturating_sub(1));
-        }
-    }
-
-    pub fn toggle_agent_selection(&mut self) {
-        if let ImportStep::SelectAgents {
-            agents, focused, ..
-        } = &mut self.import_step
-            && let Some(item) = agents.get_mut(*focused)
-        {
-            item.checked = !item.checked;
-        }
-    }
-
     fn reload_scan_results(&mut self) -> anyhow::Result<()> {
         self.scan_results = scanner::scan(&helpers::scan_config_from_global(&self.global_context))?;
         scanner::exclude_dot_directory_results(&mut self.scan_results);
@@ -859,311 +355,23 @@ impl App {
         Ok(())
     }
 
-    fn build_import_plan(
-        &self,
-        selected: &ScanResult,
-        target_agents: &[AgentTarget],
-    ) -> ChangePlan {
-        let existing_paths = self
-            .inventory
-            .iter()
-            .flat_map(|row| row.exposures.iter().map(|exposure| exposure.path.clone()))
-            .collect::<HashSet<_>>();
-        let skill_name = selected
-            .skill_path
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| {
-                selected
-                    .skill_id
-                    .rsplit('/')
-                    .next()
-                    .unwrap_or(&selected.skill_id)
-                    .to_string()
-            });
-
-        let changes = target_agents
-            .iter()
-            .filter_map(|agent| {
-                let global_dir = agent.global_dir.as_ref()?;
-                let target_path = global_dir.join(&skill_name);
-                if existing_paths.contains(&target_path) || target_path.exists() {
-                    return None;
-                }
-                Some(StagedChange::ExposeSkill {
-                    skill_name: selected.skill_id.clone(),
-                    agent_id: AgentId(agent.display_name.clone()),
-                    source_path: selected.skill_path.clone(),
-                    target_path,
-                })
-            })
-            .collect();
-
-        ChangePlan::new(changes)
-    }
-
-    fn selected_scan_result(&self) -> Option<ScanResult> {
-        match self.scan_table.selected_row()? {
-            SourceTableRow::Item { item, .. } => self.scan_results.get(item).cloned(),
-            SourceTableRow::Group { .. } => None,
-        }
-    }
-
-    pub(crate) fn selected_inventory_row(&self) -> Option<InventoryRow> {
-        match self.list_table.selected_row()? {
-            SourceTableRow::Item { item, .. } => self.inventory.get(item).cloned(),
-            SourceTableRow::Group { .. } => None,
-        }
-    }
-
-    fn selection_required_message(&self, table: &SourceTable) -> String {
-        if matches!(table.selected_row(), Some(SourceTableRow::Group { .. })) {
-            "Select a skill inside the group.".to_string()
-        } else {
-            "No skill row selected.".to_string()
-        }
-    }
-
-    fn scan_table_items(&self) -> Vec<SourceGroupItem> {
-        self.scan_results
-            .iter()
-            .enumerate()
-            .map(|(index, result)| SourceGroupItem {
-                item: index,
-                skill_name: scan_skill_label(result),
-                skill_path: result.skill_path.clone(),
-                repo_name: result.repo_name.clone(),
-                repo_path: result.repo_path.clone(),
-                relative_path: result.skill_relative_path.clone(),
-            })
-            .collect()
-    }
-
-    fn list_table_items(&self) -> Vec<SourceGroupItem> {
-        self.inventory
-            .iter()
-            .enumerate()
-            .map(|(index, row)| {
-                let skill_path = source_path_for_inventory_row(row);
-                let (repo_name, repo_path, relative_path) = match row.scope {
-                    Scope::Global => {
-                        let relative_path = row
-                            .source
-                            .repo_path
-                            .as_ref()
-                            .and_then(|root| skill_path.strip_prefix(root).ok())
-                            .map(Path::to_path_buf);
-                        (
-                            row.source.repo_name.clone(),
-                            row.source.repo_path.clone(),
-                            relative_path,
-                        )
-                    }
-                    Scope::ProjectLocal => {
-                        let project_root = row.exposures.first().and_then(|exposure| {
-                            inventory::project_root_from_exposure_path(&exposure.path)
-                        });
-                        let repo_name = project_root
-                            .as_ref()
-                            .and_then(|path| path.file_name())
-                            .map(|name| name.to_string_lossy().into_owned())
-                            .or_else(|| Some("project-local".to_string()));
-                        let relative_path = project_root
-                            .as_ref()
-                            .and_then(|root| skill_path.strip_prefix(root).ok())
-                            .map(Path::to_path_buf);
-                        (repo_name, project_root, relative_path)
-                    }
-                };
-                SourceGroupItem {
-                    item: index,
-                    skill_name: inventory_skill_label(row),
-                    skill_path,
-                    repo_name,
-                    repo_path,
-                    relative_path,
-                }
-            })
-            .collect()
-    }
-
-    fn scan_result_for_inventory_row(&self, row: &InventoryRow) -> Option<&ScanResult> {
-        let display_id = display_inventory_row(row);
-        let local_index = self
-            .inventory
-            .iter()
-            .filter(|candidate| {
-                display_inventory_row(candidate) == display_id
-                    && candidate.source.repo_path == row.source.repo_path
-            })
-            .position(|candidate| candidate == row)
-            .unwrap_or(0);
-        let matches = self
-            .scan_results
-            .iter()
-            .filter(|result| {
-                result.skill_id == display_id && result.repo_path == row.source.repo_path
-            })
-            .collect::<Vec<_>>();
-        matches
-            .get(local_index)
-            .copied()
-            .or_else(|| matches.first().copied())
-    }
-
-    fn enabled_agent_targets(&self) -> Vec<AgentTarget> {
-        helpers::agent_targets_from_global(&self.global_context)
-            .into_iter()
-            .filter(|agent| agent.enabled)
-            .collect()
-    }
-
-    fn missing_enabled_agent_targets(&self, row: &InventoryRow) -> Vec<AgentTarget> {
-        let exposed_agent_ids = row
-            .exposures
-            .iter()
-            .map(|exposure| exposure.agent_id.0.clone())
-            .collect::<HashSet<_>>();
-
-        self.enabled_agent_targets()
-            .into_iter()
-            .filter(|agent| !exposed_agent_ids.contains(&agent.agent_id))
-            .collect()
-    }
-
-    fn start_import_for_scan_result(
-        &mut self,
-        selected: ScanResult,
-        target_agents: Vec<AgentTarget>,
-    ) {
-        self.mode = Mode::Import;
-
-        if target_agents.is_empty() {
-            self.import_step = ImportStep::Done {
-                message: "No enabled agents available.".to_string(),
-            };
-            self.info_message = Some("No enabled agents available.".to_string());
-            return;
-        }
-
-        if target_agents.len() == 1 {
-            let plan = self.build_import_plan(&selected, &target_agents);
-            self.import_step = if plan.is_empty() {
-                self.info_message = Some("Nothing to do.".to_string());
-                ImportStep::Done {
-                    message: "Nothing to do.".to_string(),
-                }
-            } else {
-                ImportStep::ConfirmPlan {
-                    plan,
-                    selected: Box::new(selected),
-                    target_agents,
-                }
-            };
-            return;
-        }
-
-        self.import_step = ImportStep::SelectAgents {
-            selected: Box::new(selected),
-            agents: target_agents
-                .into_iter()
-                .map(|target| AgentSelectionItem {
-                    target,
-                    checked: true,
-                })
-                .collect(),
-            focused: 0,
-        };
-    }
-
-    fn build_remove_plan_for_exposure(
-        &self,
-        row: &InventoryRow,
-        exposure: &SkillExposure,
-    ) -> ChangePlan {
-        if row.scope == Scope::ProjectLocal {
-            return ChangePlan::new(Vec::new());
-        }
-        let skill_name = display_inventory_row(row);
-        let display_name = self
-            .config
-            .agents
-            .get(&exposure.agent_id.0)
-            .map(|agent| agent.display_name.clone())
-            .unwrap_or_else(|| exposure.agent_id.0.clone());
-        let change = match exposure.connection {
-            ConnectionKind::Symlink => Some(StagedChange::DetachSkill {
-                skill_name,
-                agent_id: AgentId(display_name),
-                target_path: exposure.path.clone(),
-            }),
-            ConnectionKind::PhysicalCopy => Some(StagedChange::DeletePhysicalCopy {
-                skill_name,
-                agent_id: AgentId(display_name),
-                target_path: exposure.path.clone(),
-            }),
-            ConnectionKind::Missing | ConnectionKind::Unknown => None,
-        };
-        ChangePlan::new(change.into_iter().collect())
-    }
-
-    fn removable_exposures(row: &InventoryRow) -> Vec<SkillExposure> {
-        if row.scope == Scope::ProjectLocal {
-            return Vec::new();
-        }
-        row.exposures
-            .iter()
-            .filter(|exposure| {
-                matches!(
-                    exposure.connection,
-                    ConnectionKind::Symlink | ConnectionKind::PhysicalCopy
-                )
-            })
-            .cloned()
-            .collect()
-    }
-
-    fn apply_plan_and_refresh(&mut self, plan: &ChangePlan) -> anyhow::Result<String> {
-        for change in &plan.changes {
-            if let StagedChange::ExposeSkill { target_path, .. } = change
-                && let Some(parent) = target_path.parent()
-            {
-                fs::create_dir_all(parent)?;
-            }
-        }
-
-        let result = plan_apply::apply_plan(plan);
-        let had_failure = result.failed.is_some();
-        let message = match &result.failed {
-            Some((_, error)) => format!(
-                "Applied {} change(s). 1 change failed: {error}",
-                result.applied.len()
-            ),
-            None => format!("Applied {} change(s).", result.applied.len()),
-        };
-
-        if had_failure {
-            self.error_message = Some(message.clone());
-        } else {
-            self.info_message = Some(message.clone());
-        }
-
-        self.refresh_inventory()?;
-        Ok(message)
-    }
-
     fn rebuild_status_messages(&mut self) {
+        let scan_status = if self.initial_loading {
+            "loading"
+        } else {
+            "OK"
+        };
         self.status_messages = vec![
             format!(
                 "• Global context: {} skills, {} agents",
-                self.inventory.len().max(self.scan_results.len()),
+                self.loaded_skills_label(),
                 self.global_context
                     .agents
                     .iter()
                     .filter(|agent| agent.enabled)
                     .count()
             ),
-            "• Scan: OK".to_string(),
+            format!("• Scan: {scan_status}"),
         ];
         self.status_messages.extend(
             self.global_context
@@ -1172,56 +380,36 @@ impl App {
                 .map(|diagnostic| format!("• Warning: {diagnostic}")),
         );
     }
-}
 
-fn source_path_for_inventory_row(row: &InventoryRow) -> PathBuf {
-    let Some(exposure) = row.exposures.first() else {
-        return row
-            .source
-            .repo_path
-            .as_ref()
-            .map(|path| path.join(&row.skill_id.name))
-            .unwrap_or_else(|| PathBuf::from(&row.skill_id.name));
-    };
-    if exposure.connection == ConnectionKind::Symlink {
-        return fs::canonicalize(&exposure.path).unwrap_or_else(|_| exposure.path.clone());
+    fn apply_initial_load(&mut self, load: InitialLoad) {
+        self.initial_loading = false;
+        self.initial_load = None;
+        self.scan_results = load.scan_results;
+        self.inventory = load.inventory;
+        self.rebuild_status_messages();
     }
-    exposure.path.clone()
-}
 
-fn display_inventory_row(row: &InventoryRow) -> String {
-    row.skill_id.to_string()
-}
-
-fn inventory_skill_label(row: &InventoryRow) -> String {
-    match row.disambiguation_index {
-        Some(index) => format!("({index}) {}", row.skill_id.name),
-        None => row.skill_id.name.clone(),
+    fn loaded_skill_count(&self) -> usize {
+        self.inventory.len().max(self.scan_results.len())
     }
 }
 
-fn scan_skill_label(result: &ScanResult) -> String {
-    let name = result
-        .skill_path
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| {
-            result
-                .skill_id
-                .rsplit('/')
-                .next()
-                .unwrap_or(&result.skill_id)
-                .to_string()
-        });
-    match result.disambiguation_index {
-        Some(index) => format!("({index}) {name}"),
-        None => name,
-    }
-}
+fn load_initial_state(context: GlobalContext) -> anyhow::Result<InitialLoad> {
+    let raw_scan_results = scanner::scan(&helpers::scan_config_from_global(&context))?;
+    let mut scan_results = raw_scan_results.clone();
+    scanner::exclude_dot_directory_results(&mut scan_results);
+    scanner::assign_disambiguation_indices(&mut scan_results);
 
-fn parse_selection(input: &str, max: usize) -> Option<usize> {
-    let index = input.trim().parse::<usize>().ok()?;
-    (1..=max).contains(&index).then_some(index - 1)
+    let mut inventory = inventory::build_inventory(&InventoryConfig {
+        agents: helpers::agent_targets_from_global(&context),
+        scan_results: raw_scan_results,
+    });
+    inventory::assign_disambiguation_indices(&mut inventory);
+
+    Ok(InitialLoad {
+        scan_results,
+        inventory,
+    })
 }
 
 #[cfg(test)]
@@ -1236,7 +424,9 @@ mod tests {
     use crate::domain::{
         AgentId, ConnectionKind, InventoryRow, Scope, SkillExposure, SkillId, SkillSource,
     };
+    use crate::plan::{ChangePlan, StagedChange};
     use crate::scanner::SourceKind;
+    use crate::tui::source_table::SourceTableRow;
 
     fn test_config(root: &std::path::Path) -> Config {
         let mut config = Config::default_config();
@@ -1281,6 +471,52 @@ mod tests {
             app.status_messages
                 .iter()
                 .all(|message| !message.contains(&launch_dir.display().to_string()))
+        );
+    }
+
+    #[test]
+    fn start_initial_load_shows_loading_skill_stats() {
+        let mut app = test_app();
+
+        app.start_initial_load();
+
+        assert!(app.initial_load_in_progress());
+        assert_eq!(app.loaded_skills_label(), "(loading)");
+        assert!(
+            app.status_messages
+                .iter()
+                .any(|message| message.contains("(loading) skills"))
+        );
+        assert!(
+            app.status_messages
+                .iter()
+                .any(|message| message.contains("Scan: loading"))
+        );
+    }
+
+    #[test]
+    fn apply_initial_load_replaces_loading_stats_with_loaded_data() {
+        let mut app = test_app();
+        app.start_initial_load();
+
+        app.apply_initial_load(InitialLoad {
+            scan_results: vec![scan_result("repo-a/one")],
+            inventory: vec![inventory_row("repo-a/one")],
+        });
+
+        assert!(!app.initial_load_in_progress());
+        assert_eq!(app.loaded_skills_label(), "1");
+        assert_eq!(app.scan_results.len(), 1);
+        assert_eq!(app.inventory.len(), 1);
+        assert!(
+            app.status_messages
+                .iter()
+                .any(|message| message.contains("1 skills"))
+        );
+        assert!(
+            app.status_messages
+                .iter()
+                .any(|message| message.contains("Scan: OK"))
         );
     }
 
@@ -1361,10 +597,12 @@ mod tests {
 
     #[test]
     fn parse_command_import_with_arg() {
-        assert_eq!(
-            parse_command("import repo-a/skill"),
-            TuiCommand::Import("repo-a/skill".to_string())
-        );
+        assert_eq!(parse_command("import repo-a/skill"), TuiCommand::Import);
+    }
+
+    #[test]
+    fn parse_command_remove_with_arg() {
+        assert_eq!(parse_command("remove repo-a/skill"), TuiCommand::Remove);
     }
 
     #[test]
@@ -1399,6 +637,14 @@ mod tests {
             parse_command("foobar"),
             TuiCommand::Unknown("foobar".to_string())
         );
+    }
+
+    #[test]
+    fn source_add_step_default_is_done() {
+        assert!(matches!(
+            SourceAddStep::default(),
+            SourceAddStep::Done { .. }
+        ));
     }
 
     #[test]
