@@ -69,6 +69,7 @@ pub fn render_inventory_table(
                 item,
                 skill_name,
                 display_path,
+                checked,
                 ..
             } = projected_row
             else {
@@ -92,8 +93,9 @@ pub fn render_inventory_table(
                     "-"
                 }
             };
+            let check = if *checked { "[x]" } else { "[ ]" };
             let table_row = Row::new(vec![
-                Cell::from(format!("    {skill_name}")),
+                Cell::from(format!("  {check} {skill_name}")),
                 Cell::from(display_path.clone()),
                 Cell::from(agents("claude")),
                 Cell::from(agents("codex")),
