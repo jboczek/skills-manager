@@ -209,14 +209,14 @@ impl App {
             TuiCommand::Import => {
                 self.import_step = ImportStep::default();
                 self.info_message = Some(
-                    "Use table shortcuts: run /scan, select a row, then press i. From /list, press i to create missing enabled-agent exposures."
+                    "Use table shortcuts: run /scan, select a row, then press i. From /list, press Space to check rows, then i to create missing enabled-agent exposures."
                         .to_string(),
                 );
             }
             TuiCommand::Remove => {
                 self.remove_step = RemoveStep::default();
                 self.info_message = Some(
-                    "Use table shortcuts: run /list, select an exposed row, then press x to remove it."
+                    "Use table shortcuts: run /list, press Space to check rows, then press x to remove exposed rows."
                         .to_string(),
                 );
             }

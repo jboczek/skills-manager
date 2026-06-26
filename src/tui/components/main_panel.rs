@@ -64,7 +64,7 @@ fn render_help(frame: &mut Frame, area: Rect) {
 }
 
 fn help_text() -> &'static str {
-    "Commands\n  /list                       Show current inventory\n  /scan                       Scan for available skills\n  /source_add <clone-url>     Add a source from an HTTPS or SSH clone URL\n  /config                     Show config\n  /help                       Show this help\n  /quit                       Exit\n\nTable actions\n  i                  Import selected skill child\n  x                  Remove selected list skill exposure\n  r                  Refresh current table\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
+    "Commands\n  /list                       Show current inventory\n  /scan                       Scan for available skills\n  /source_add <clone-url>     Add a source from an HTTPS or SSH clone URL\n  /config                     Show config\n  /help                       Show this help\n  /quit                       Exit\n\nTable actions\n  Space              Check or uncheck list skill rows\n  i                  Import checked or selected skill rows\n  x                  Remove checked or selected list skill rows\n  r                  Refresh current table\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
 }
 
 fn render_source_add(frame: &mut Frame, area: Rect, app: &App) {
@@ -257,8 +257,9 @@ mod tests {
 
         assert!(!text.contains("/import <skill>"));
         assert!(!text.contains("/remove <skill>"));
-        assert!(text.contains("Import selected skill child"));
-        assert!(text.contains("Remove selected list skill exposure"));
+        assert!(text.contains("Import checked or selected skill rows"));
+        assert!(text.contains("Remove checked or selected list skill rows"));
+        assert!(text.contains("Check or uncheck list skill rows"));
         assert!(text.contains("Collapse or expand source groups"));
     }
 
