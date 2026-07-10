@@ -4,27 +4,34 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::config::Config;
 use crate::domain::{ConnectionKind, InventoryRow};
-use crate::output::render_inventory;
 use crate::tui::app::{App, ImportStep, Mode, RemoveStep, SourceAddStep, removable_exposures};
 use crate::tui::components::{dialog, table};
 use crate::tui::theme::Theme;
 
 pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     match app.mode {
-        Mode::Home => render_text_panel(
-            frame,
-            area,
-            " Home ",
-            &format!(
-                "Welcome to Skills Manager.\n\nLoaded skills: {}\nEnabled agents: {}\n\nTry /list, /scan, /source_add, /config or /help. Use table shortcuts for import and remove actions.",
-                app.loaded_skills_label(),
-                app.config
-                    .agents
-                    .values()
-                    .filter(|agent| agent.enabled)
-                    .count()
-            ),
-        ),
+        Mode::Home => {
+            let last_operation = app
+                .error_message
+                .as_deref()
+                .or(app.info_message.as_deref())
+                .map(|message| format!("Last operation\n\n{message}\n\n"))
+                .unwrap_or_default();
+            render_text_panel(
+                frame,
+                area,
+                " Home ",
+                &format!(
+                    "{last_operation}Welcome to Skills Manager.\n\nLoaded skills: {}\nEnabled agents: {}\n\nTry /list, /scan, /source_add, /config or /help. Use table shortcuts for import and remove actions.",
+                    app.loaded_skills_label(),
+                    app.config
+                        .agents
+                        .values()
+                        .filter(|agent| agent.enabled)
+                        .count()
+                ),
+            );
+        }
         Mode::List => {
             if app.loading {
                 render_text_panel(frame, area, " Inventory ", "Loading...");
@@ -167,11 +174,7 @@ fn render_import(frame: &mut Frame, area: Rect, app: &App) {
             );
         }
         ImportStep::Done { message } => {
-            let body = format!(
-                "{message}\n\nCurrent inventory\n\n{}",
-                render_inventory(&app.inventory)
-            );
-            render_text_panel(frame, area, " Import ", &body);
+            render_text_panel(frame, area, " Import ", message);
         }
     }
 }
@@ -195,11 +198,7 @@ fn render_remove(frame: &mut Frame, area: Rect, app: &App) {
             );
         }
         RemoveStep::Done { message } => {
-            let body = format!(
-                "{message}\n\nCurrent inventory\n\n{}",
-                render_inventory(&app.inventory)
-            );
-            render_text_panel(frame, area, " Remove ", &body);
+            render_text_panel(frame, area, " Remove ", message);
         }
     }
 }

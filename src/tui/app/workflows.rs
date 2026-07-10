@@ -359,6 +359,8 @@ impl App {
                         self.import_step = ImportStep::Done { message };
                     }
                 } else if normalized == "n" || normalized.is_empty() {
+                    self.mode = Mode::Home;
+                    self.info_message = Some("Aborted.".to_string());
                     self.import_step = ImportStep::Done {
                         message: "Aborted.".to_string(),
                     };
@@ -377,6 +379,8 @@ impl App {
                     self.mode = Mode::Home;
                     self.import_step = ImportStep::Done { message };
                 } else {
+                    self.mode = Mode::Home;
+                    self.info_message = Some("Aborted.".to_string());
                     self.import_step = ImportStep::Done {
                         message: "Aborted.".to_string(),
                     };
@@ -418,9 +422,12 @@ impl App {
                         self.remove_step = RemoveStep::ConfirmPhysical { plan };
                     } else {
                         let message = self.apply_plan_and_refresh(&plan)?;
+                        self.mode = Mode::Home;
                         self.remove_step = RemoveStep::Done { message };
                     }
                 } else if normalized == "n" || normalized.is_empty() {
+                    self.mode = Mode::Home;
+                    self.info_message = Some("Aborted.".to_string());
                     self.remove_step = RemoveStep::Done {
                         message: "Aborted.".to_string(),
                     };
@@ -432,8 +439,11 @@ impl App {
             RemoveStep::ConfirmPhysical { plan } => {
                 if input.trim() == "yes" {
                     let message = self.apply_plan_and_refresh(&plan)?;
+                    self.mode = Mode::Home;
                     self.remove_step = RemoveStep::Done { message };
                 } else {
+                    self.mode = Mode::Home;
+                    self.info_message = Some("Aborted.".to_string());
                     self.remove_step = RemoveStep::Done {
                         message: "Aborted.".to_string(),
                     };
@@ -656,12 +666,20 @@ impl App {
 
         let result = plan_apply::apply_plan(plan);
         let had_failure = result.failed.is_some();
+        let applied = result
+            .applied
+            .iter()
+            .map(|change| change_summary(change, "✓"))
+            .collect::<Vec<_>>()
+            .join("\n");
         let message = match &result.failed {
-            Some((_, error)) => format!(
-                "Applied {} change(s). 1 change failed: {error}",
-                result.applied.len()
+            Some((failed, error)) => format!(
+                "Applied {} change(s).\n{}\n\n1 change failed:\n{}\n  Reason: {error}",
+                result.applied.len(),
+                applied,
+                change_summary(failed, "✗"),
             ),
-            None => format!("Applied {} change(s).", result.applied.len()),
+            None => format!("Applied {} change(s).\n{applied}", result.applied.len()),
         };
 
         if had_failure {
@@ -679,6 +697,7 @@ pub(crate) fn removable_exposures(row: &InventoryRow) -> Vec<SkillExposure> {
     if row.scope == Scope::ProjectLocal {
         return Vec::new();
     }
+    let mut seen_paths = HashSet::new();
     row.exposures
         .iter()
         .filter(|exposure| {
@@ -687,6 +706,36 @@ pub(crate) fn removable_exposures(row: &InventoryRow) -> Vec<SkillExposure> {
                 ConnectionKind::Symlink | ConnectionKind::PhysicalCopy
             )
         })
+        .filter(|exposure| seen_paths.insert(exposure.path.clone()))
         .cloned()
         .collect()
+}
+
+fn change_summary(change: &StagedChange, status: &str) -> String {
+    match change {
+        StagedChange::ExposeSkill {
+            skill_name,
+            target_path,
+            ..
+        } => format!(
+            "  {status} Exposed {skill_name} at {}",
+            target_path.display()
+        ),
+        StagedChange::DetachSkill {
+            skill_name,
+            target_path,
+            ..
+        } => format!(
+            "  {status} Removed {skill_name} from {}",
+            target_path.display()
+        ),
+        StagedChange::DeletePhysicalCopy {
+            skill_name,
+            target_path,
+            ..
+        } => format!(
+            "  {status} Deleted {skill_name} from {}",
+            target_path.display()
+        ),
+    }
 }
