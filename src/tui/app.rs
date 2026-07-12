@@ -325,7 +325,7 @@ impl App {
         self.mode = Mode::List;
         self.list_filter = ListFilter::Full;
         self.rebuild_list_rows();
-        self.list_table = SourceTable::new(self.list_table_items());
+        self.list_table = SourceTable::new(self.unified_list_table_items());
     }
 
     pub fn enter_scan_mode(&mut self) {
@@ -340,7 +340,7 @@ impl App {
         match self.mode {
             Mode::List => {
                 self.refresh_inventory()?;
-                let items = self.list_table_items();
+                let items = self.unified_list_table_items();
                 self.list_table.refresh(items, viewport_height);
                 self.info_message = Some(format!("Loaded {} skill row(s).", self.inventory.len()));
             }

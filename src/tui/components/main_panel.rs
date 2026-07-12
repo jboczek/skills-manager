@@ -36,7 +36,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             if app.loading {
                 render_text_panel(frame, area, " Inventory ", "Loading...");
             } else {
-                table::render_inventory_table(frame, area, &app.inventory, &app.list_table);
+                table::render_unified_inventory_table(frame, area, &app.list_rows, &app.list_table);
             }
         }
         Mode::Scan => {
