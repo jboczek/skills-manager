@@ -114,41 +114,53 @@ Create the first usable Rust CLI/TUI that can discover skills, show effective av
 
 - **Type:** UX
 - **Outcome:** Running `skills-manager` opens a full-screen terminal experience with a prompt, status feed, command hints, and complete V1 modes.
-- **Description:** Implement the TUI layout, home mode, prompt command parsing, help, status feed, list mode, scan/config modes, and complete guided import/remove flows backed by the safe planning module.
+- **Description:** Implement the TUI layout, home mode, prompt command parsing, help, status feed, unified list/config modes, and complete guided import/remove flows backed by the safe planning module.
 - **Why now:** The intended product is terminal-first and assistant-style; V1 is incomplete if the default experience is only direct CLI commands.
 - **PRD candidate:** Yes. PRD: [`docs/prds/v1/prd-007-assistant-style-tui-shell.md`](prds/v1/prd-007-assistant-style-tui-shell.md)
 - **Dependencies:** 004, 005, 006.
-- **Validation signal:** A user can launch the app, inspect status, run list/scan/config flows, complete import/remove with staged plan review and confirmation, and quit cleanly from the TUI.
+- **Validation signal:** A user can launch the app, inspect status, browse the unified list or config, complete import/remove with staged plan review and confirmation, and quit cleanly from the TUI.
 - **Status:** Done.
 - **Notes / risks:** Table navigation and row actions were completed by follow-up item 011.
 
 ### 011 - Assistant-style TUI table actions
 
 - **Type:** UX
-- **Outcome:** Users can discover TUI commands, navigate list and scan tables, and start import/remove actions from selected rows.
-- **Description:** Add slash command suggestions, natural list scrolling, scan-table navigation, table-driven import/remove shortcuts, active table refresh, and staged change review.
+- **Outcome:** Users can discover TUI commands, navigate source-grouped rows, and start import/remove actions from selected rows.
+- **Description:** Add slash command suggestions, natural list scrolling, table-driven import/remove shortcuts, active table refresh, and staged change review.
 - **Why now:** This follow-up completed the high-frequency interaction model before V1 was declared finished.
 - **PRD candidate:** Yes. PRD: [`docs/prds/v1/prd-007-v2-assistant-style-tui-table-actions.md`](prds/v1/prd-007-v2-assistant-style-tui-table-actions.md)
 - **Dependencies:** 006, 007.
-- **Validation signal:** A user can open slash suggestions, navigate list and scan rows, refresh active tables, and start import/remove from selected rows while still reviewing staged plans before applying changes.
+- **Validation signal:** A user can open slash suggestions, navigate list rows, refresh the active list, and start import/remove from selected rows while still reviewing staged plans before applying changes.
 - **Status:** Done.
 - **Notes / risks:** Fast actions retain the same staged-plan safety guarantees as CLI and guided TUI flows.
 
 ### 007 v3 - Source-grouped TUI tables
 
 - **Type:** UX
-- **Outcome:** Users can browse large list and scan results as compact, privacy-safe source groups instead of flat skill tables.
-- **Description:** Group list and scan rows by source, collapse every group by default, add Left/Right tree navigation, widen the first column for skill names, show repository-relative or bounded path context without exposing user-specific absolute paths, and include global and project-local `.agents/skills` inventory targets.
+- **Outcome:** Users can browse large TUI result sets as compact, privacy-safe source groups instead of flat skill tables.
+- **Description:** Group TUI rows by source, collapse every group by default, add Left/Right tree navigation, widen the first column for skill names, show repository-relative or bounded path context without exposing user-specific absolute paths, and include global and project-local `.agents/skills` inventory targets.
 - **Why now:** Table actions made individual rows usable, but large repositories still dominate the initial view and duplicate or unknown source labels remain hard to distinguish.
 - **PRD candidate:** Yes. PRD: [`docs/prds/v1/prd-007-v3-source-grouped-tui-tables.md`](prds/v1/prd-007-v3-source-grouped-tui-tables.md)
 - **Dependencies:** 004, 007, 011.
-- **Validation signal:** List and scan open as collapsed source overviews, expand and collapse consistently with arrow keys, distinguish duplicate sources with safe path context, retain skill-level actions, and show `~/.agents/skills` entries as global Codex/Copilot availability.
+- **Validation signal:** The unified list opens as a collapsed source overview, expands and collapses consistently with arrow keys, distinguishes duplicate sources with safe path context, retains skill-level actions, and shows `~/.agents/skills` entries as global Codex/Copilot availability.
 - **Status:** Done.
 - **Notes / risks:** Group identity and fallback path shortening must remain stable without leaking home-directory prefixes. Legacy `.agents` config values must resolve to the standard `.agents/skills` layout without manual migration.
 
+### 007 v4 - Unified TUI list view
+
+- **Type:** UX
+- **Outcome:** Users browse exposures and available discoveries in one filterable TUI table.
+- **Description:** Make `/list` the sole TUI browser, add Full, Only exposed, and Only discovered not applied views, and keep discovery rows typed so they can be imported but never removed or batch-selected.
+- **Why now:** Separate scan and list views forced users to reconcile two representations of the same skill ecosystem.
+- **PRD candidate:** Yes. PRD: [`docs/prds/v1/done/prd-007-v4-unified-list-view.md`](prds/v1/done/prd-007-v4-unified-list-view.md)
+- **Dependencies:** 004, 007, 011.
+- **Validation signal:** `/list` de-duplicates discovered skills against real canonical exposures, Tab cycles the three views, discovery rows use the seven existing columns, and refresh retains matching selection and expansion.
+- **Status:** Done.
+- **Notes / risks:** Standalone `skills-manager list` and `skills-manager scan` remain separate CLI contracts; only the interactive TUI is unified.
+
 ### Version Validation
 
-V1 works locally if a user can initialize default source and target paths, scan discovered skills, view consolidated availability across Codex, Claude, and Copilot, import selected skills through explicit plans, remove exposures safely, and use the default TUI without needing to understand internal directory topology.
+V1 works locally if a user can initialize default source and target paths, scan discovered skills, browse exposures and discoveries together in the default TUI, import selected skills through explicit plans, remove exposures safely, and use the default experience without needing to understand internal directory topology.
 
 ### Key Risks / Assumptions
 
@@ -285,6 +297,7 @@ V3 works if Skills Manager becomes the trusted local place to curate, audit, and
 | 009 | Git URL import into managed source directory | V2 | [`docs/prds/v2/prd-009-git-url-import-into-managed-source-directory.md`](prds/v2/prd-009-git-url-import-into-managed-source-directory.md) | Medium | Done | 003, 006, 008 |
 | 010 | Manual install migration | V2 | [`docs/prds/v2/prd-010-manual-install-migration.md`](prds/v2/prd-010-manual-install-migration.md) | Medium | Planned | 004, 006, 008 |
 | 011 | Assistant-style TUI table actions | V1 | [`docs/prds/v1/prd-007-v2-assistant-style-tui-table-actions.md`](prds/v1/prd-007-v2-assistant-style-tui-table-actions.md) | Medium | Done | 006, 007 |
+| 007 v4 | Unified TUI list view | V1 | [`docs/prds/v1/done/prd-007-v4-unified-list-view.md`](prds/v1/done/prd-007-v4-unified-list-view.md) | Medium | Done | 004, 007, 011 |
 | 012 | Context budget visibility | V3 | `docs/prds/012-context-budget-visibility.md` | Low | Parking lot | 004, 007 |
 | 013 | Shareable setup profiles | V3 | `docs/prds/013-shareable-setup-profiles.md` | Low | Parking lot | 008, 009, 010 |
 | 014 | Repository health and update awareness | V3 | `docs/prds/014-repository-health-and-update-awareness.md` | Low | Parking lot | 009 |
@@ -299,6 +312,7 @@ V3 works if Skills Manager becomes the trusted local place to curate, audit, and
 
 ## Change Log
 
+- 2026-07-12: Completed PRD-007 v4: unified the TUI list and source discovery views, added three filter states, preserved safe import/remove boundaries, and removed interactive `/scan`.
 - 2026-06-13: Completed PRD-009 managed Git source import with preview, temporary clone validation, strict origin-aware reuse, CLI/TUI selection, and staged exposure delegation.
 - 2026-06-12: Added and linked the complete V2 PRD set for global execution, managed Git source import, and conservative manual-install migration.
 - 2026-06-12: Reframed V2 around globally launched, current-directory-independent operation; removed arbitrary project targeting, moved completed TUI actions into V1, and aligned V1 statuses.

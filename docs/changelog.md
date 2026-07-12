@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-12
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-07-12 20:44 | Completed PRD-007 v4: unified the interactive list and discovery views, added filter cycling and safe discovery imports, and removed interactive `/scan`. | `README.md`, `features/assistant-style-tui-shell.md`, `features/inventory-and-exposure-resolution.md`, `prds/v1/done/prd-007-v4-unified-list-view.md`, `roadmap.md` |
+
 ## 2026-06-21
 
 | Time | Change | Docs |
