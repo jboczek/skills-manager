@@ -5,6 +5,22 @@ pub mod layout;
 pub mod source_table;
 pub mod theme;
 
+#[cfg(test)]
+mod mod_tests;
+
+fn configure_mouse_capture<W: std::io::Write>(
+    output: &mut W,
+    enabled: bool,
+) -> std::io::Result<()> {
+    use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
+
+    if enabled {
+        crossterm::execute!(output, EnableMouseCapture)
+    } else {
+        crossterm::execute!(output, DisableMouseCapture)
+    }
+}
+
 pub fn run() -> anyhow::Result<()> {
     use crossterm::{
         execute,
@@ -29,10 +45,15 @@ pub fn run() -> anyhow::Result<()> {
     struct TerminalCleanup {
         raw_mode_enabled: bool,
         alternate_screen_enabled: bool,
+        mouse_capture_enabled: bool,
     }
 
     impl Drop for TerminalCleanup {
         fn drop(&mut self) {
+            if self.mouse_capture_enabled {
+                let mut stdout = io::stdout();
+                let _ = configure_mouse_capture(&mut stdout, false);
+            }
             if self.raw_mode_enabled {
                 let _ = disable_raw_mode();
             }
@@ -47,6 +68,11 @@ pub fn run() -> anyhow::Result<()> {
         terminal: &mut ratatui::Terminal<B>,
         cleanup: &mut TerminalCleanup,
     ) -> anyhow::Result<()> {
+        if cleanup.mouse_capture_enabled {
+            let mut stdout = io::stdout();
+            configure_mouse_capture(&mut stdout, false)?;
+            cleanup.mouse_capture_enabled = false;
+        }
         if cleanup.raw_mode_enabled {
             disable_raw_mode()?;
             cleanup.raw_mode_enabled = false;
@@ -66,11 +92,14 @@ pub fn run() -> anyhow::Result<()> {
     let mut cleanup = TerminalCleanup {
         raw_mode_enabled: true,
         alternate_screen_enabled: false,
+        mouse_capture_enabled: false,
     };
 
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
     cleanup.alternate_screen_enabled = true;
+    cleanup.mouse_capture_enabled = true;
+    configure_mouse_capture(&mut stdout, true)?;
 
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;

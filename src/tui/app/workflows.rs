@@ -107,27 +107,38 @@ impl App {
         self.error_message = None;
         self.info_message = None;
 
-        let Some(row) = self.selected_inventory_row() else {
+        let rows = self.actionable_inventory_rows();
+        if rows.is_empty() {
             self.info_message = Some(self.selection_required_message(&self.list_table));
             return Ok(());
-        };
+        }
+        if rows.len() == 1 {
+            self.start_import_for_inventory_row(rows.into_iter().next().unwrap());
+        } else {
+            self.start_import_for_inventory_rows(rows);
+        }
+
+        Ok(())
+    }
+
+    fn start_import_for_inventory_row(&mut self, row: InventoryRow) {
         if row.scope == Scope::ProjectLocal {
             self.info_message =
                 Some("Project-local exposures are read-only and cannot be imported.".to_string());
-            return Ok(());
+            return;
         }
 
         let target_agents = self.missing_enabled_agent_targets(&row);
         if target_agents.is_empty() {
             self.info_message =
                 Some("Selected skill already has all enabled-agent exposures.".to_string());
-            return Ok(());
+            return;
         }
 
         let skill_id = display_inventory_row(&row);
         if let Some(selected) = self.scan_result_for_inventory_row(&row).cloned() {
             self.start_import_for_scan_result(selected, target_agents);
-            return Ok(());
+            return;
         }
         let matches = helpers::find_scan_results_by_id(&skill_id, &self.scan_results);
         match matches.len() {
@@ -145,22 +156,86 @@ impl App {
                 };
             }
         }
+    }
 
-        Ok(())
+    fn start_import_for_inventory_rows(&mut self, rows: Vec<InventoryRow>) {
+        if rows.iter().any(|row| row.scope == Scope::ProjectLocal) {
+            self.info_message =
+                Some("Project-local exposures are read-only and cannot be imported.".to_string());
+            return;
+        }
+
+        let mut changes = Vec::new();
+        let mut first_selected = None;
+        for row in rows {
+            let target_agents = self.missing_enabled_agent_targets(&row);
+            if target_agents.is_empty() {
+                continue;
+            }
+            let Some(selected) = self.scan_result_for_import_row(&row) else {
+                continue;
+            };
+            first_selected.get_or_insert_with(|| selected.clone());
+            changes.extend(self.build_import_plan(&selected, &target_agents).changes);
+        }
+
+        self.mode = Mode::Import;
+        let plan = ChangePlan::new(changes);
+        if plan.is_empty() {
+            self.import_step = ImportStep::Done {
+                message: "Nothing to do.".to_string(),
+            };
+            self.info_message = Some("Nothing to do.".to_string());
+        } else if let Some(selected) = first_selected {
+            self.import_step = ImportStep::ConfirmPlan {
+                plan,
+                selected: Box::new(selected),
+                target_agents: Vec::new(),
+            };
+        }
+    }
+
+    fn scan_result_for_import_row(&self, row: &InventoryRow) -> Option<ScanResult> {
+        if let Some(selected) = self.scan_result_for_inventory_row(row) {
+            return Some(selected.clone());
+        }
+        let skill_id = display_inventory_row(row);
+        let matches = helpers::find_scan_results_by_id(&skill_id, &self.scan_results);
+        (matches.len() == 1).then(|| matches[0].clone())
+    }
+
+    fn actionable_inventory_rows(&self) -> Vec<InventoryRow> {
+        let checked = self.checked_inventory_rows();
+        if checked.is_empty() {
+            self.selected_inventory_row().into_iter().collect()
+        } else {
+            checked
+        }
     }
 
     pub fn start_remove_from_selected_list_row(&mut self) -> anyhow::Result<()> {
         self.error_message = None;
         self.info_message = None;
 
-        let Some(selected) = self.selected_inventory_row() else {
+        let rows = self.actionable_inventory_rows();
+        if rows.is_empty() {
             self.info_message = Some(self.selection_required_message(&self.list_table));
             return Ok(());
-        };
+        }
+        if rows.len() == 1 {
+            self.start_remove_for_inventory_row(rows.into_iter().next().unwrap());
+        } else {
+            self.start_remove_for_inventory_rows(rows);
+        }
+
+        Ok(())
+    }
+
+    fn start_remove_for_inventory_row(&mut self, selected: InventoryRow) {
         if selected.scope == Scope::ProjectLocal {
             self.info_message =
                 Some("Project-local exposures are read-only and cannot be removed.".to_string());
-            return Ok(());
+            return;
         }
 
         let removable_exposures = removable_exposures(&selected);
@@ -185,8 +260,40 @@ impl App {
                 };
             }
         }
+    }
 
-        Ok(())
+    fn start_remove_for_inventory_rows(&mut self, rows: Vec<InventoryRow>) {
+        if rows.iter().any(|row| row.scope == Scope::ProjectLocal) {
+            self.info_message =
+                Some("Project-local exposures are read-only and cannot be removed.".to_string());
+            return;
+        }
+
+        let Some(first) = rows.first().cloned() else {
+            return;
+        };
+        let changes = rows
+            .iter()
+            .flat_map(|row| {
+                removable_exposures(row)
+                    .iter()
+                    .flat_map(|exposure| self.build_remove_plan_for_exposure(row, exposure).changes)
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        self.mode = Mode::Remove;
+        let plan = ChangePlan::new(changes);
+        if plan.is_empty() {
+            self.remove_step = RemoveStep::Done {
+                message: "Selected rows have no removable exposures.".to_string(),
+            };
+            self.info_message = Some("Selected rows have no removable exposures.".to_string());
+        } else {
+            self.remove_step = RemoveStep::ConfirmPlan {
+                plan,
+                selected: Box::new(first),
+            };
+        }
     }
 
     /// Handle import flow step progression.
@@ -252,6 +359,8 @@ impl App {
                         self.import_step = ImportStep::Done { message };
                     }
                 } else if normalized == "n" || normalized.is_empty() {
+                    self.mode = Mode::Home;
+                    self.info_message = Some("Aborted.".to_string());
                     self.import_step = ImportStep::Done {
                         message: "Aborted.".to_string(),
                     };
@@ -270,6 +379,8 @@ impl App {
                     self.mode = Mode::Home;
                     self.import_step = ImportStep::Done { message };
                 } else {
+                    self.mode = Mode::Home;
+                    self.info_message = Some("Aborted.".to_string());
                     self.import_step = ImportStep::Done {
                         message: "Aborted.".to_string(),
                     };
@@ -311,9 +422,12 @@ impl App {
                         self.remove_step = RemoveStep::ConfirmPhysical { plan };
                     } else {
                         let message = self.apply_plan_and_refresh(&plan)?;
+                        self.mode = Mode::Home;
                         self.remove_step = RemoveStep::Done { message };
                     }
                 } else if normalized == "n" || normalized.is_empty() {
+                    self.mode = Mode::Home;
+                    self.info_message = Some("Aborted.".to_string());
                     self.remove_step = RemoveStep::Done {
                         message: "Aborted.".to_string(),
                     };
@@ -325,8 +439,11 @@ impl App {
             RemoveStep::ConfirmPhysical { plan } => {
                 if input.trim() == "yes" {
                     let message = self.apply_plan_and_refresh(&plan)?;
+                    self.mode = Mode::Home;
                     self.remove_step = RemoveStep::Done { message };
                 } else {
+                    self.mode = Mode::Home;
+                    self.info_message = Some("Aborted.".to_string());
                     self.remove_step = RemoveStep::Done {
                         message: "Aborted.".to_string(),
                     };
@@ -549,12 +666,20 @@ impl App {
 
         let result = plan_apply::apply_plan(plan);
         let had_failure = result.failed.is_some();
+        let applied = result
+            .applied
+            .iter()
+            .map(|change| change_summary(change, "✓"))
+            .collect::<Vec<_>>()
+            .join("\n");
         let message = match &result.failed {
-            Some((_, error)) => format!(
-                "Applied {} change(s). 1 change failed: {error}",
-                result.applied.len()
+            Some((failed, error)) => format!(
+                "Applied {} change(s).\n{}\n\n1 change failed:\n{}\n  Reason: {error}",
+                result.applied.len(),
+                applied,
+                change_summary(failed, "✗"),
             ),
-            None => format!("Applied {} change(s).", result.applied.len()),
+            None => format!("Applied {} change(s).\n{applied}", result.applied.len()),
         };
 
         if had_failure {
@@ -572,6 +697,7 @@ pub(crate) fn removable_exposures(row: &InventoryRow) -> Vec<SkillExposure> {
     if row.scope == Scope::ProjectLocal {
         return Vec::new();
     }
+    let mut seen_paths = HashSet::new();
     row.exposures
         .iter()
         .filter(|exposure| {
@@ -580,6 +706,36 @@ pub(crate) fn removable_exposures(row: &InventoryRow) -> Vec<SkillExposure> {
                 ConnectionKind::Symlink | ConnectionKind::PhysicalCopy
             )
         })
+        .filter(|exposure| seen_paths.insert(exposure.path.clone()))
         .cloned()
         .collect()
+}
+
+fn change_summary(change: &StagedChange, status: &str) -> String {
+    match change {
+        StagedChange::ExposeSkill {
+            skill_name,
+            target_path,
+            ..
+        } => format!(
+            "  {status} Exposed {skill_name} at {}",
+            target_path.display()
+        ),
+        StagedChange::DetachSkill {
+            skill_name,
+            target_path,
+            ..
+        } => format!(
+            "  {status} Removed {skill_name} from {}",
+            target_path.display()
+        ),
+        StagedChange::DeletePhysicalCopy {
+            skill_name,
+            target_path,
+            ..
+        } => format!(
+            "  {status} Deleted {skill_name} from {}",
+            target_path.display()
+        ),
+    }
 }

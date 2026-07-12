@@ -209,14 +209,14 @@ impl App {
             TuiCommand::Import => {
                 self.import_step = ImportStep::default();
                 self.info_message = Some(
-                    "Use table shortcuts: run /scan, select a row, then press i. From /list, press i to create missing enabled-agent exposures."
+                    "Use table shortcuts: run /scan, select a row, then press i. From /list, press Space to check rows, then i to create missing enabled-agent exposures."
                         .to_string(),
                 );
             }
             TuiCommand::Remove => {
                 self.remove_step = RemoveStep::default();
                 self.info_message = Some(
-                    "Use table shortcuts: run /list, select an exposed row, then press x to remove it."
+                    "Use table shortcuts: run /list, press Space to check rows, then press x to remove exposed rows."
                         .to_string(),
                 );
             }
@@ -1195,7 +1195,7 @@ mod tests {
                 skill_name: "repo-a/skill".to_string(),
                 agent_id: AgentId("Claude".to_string()),
                 source_path: source,
-                target_path: target,
+                target_path: target.clone(),
             }]),
             selected: Box::new(scan_result("repo-a/skill")),
             target_agents: vec![],
@@ -1205,7 +1205,11 @@ mod tests {
 
         assert_eq!(app.mode, Mode::Home);
         assert!(matches!(app.import_step, ImportStep::Done { .. }));
-        assert_eq!(app.info_message.as_deref(), Some("Applied 1 change(s)."));
+        let expected_message = format!(
+            "Applied 1 change(s).\n  ✓ Exposed repo-a/skill at {}",
+            target.display()
+        );
+        assert_eq!(app.info_message.as_deref(), Some(expected_message.as_str()));
     }
 
     #[test]

@@ -91,6 +91,9 @@ fn handle_key_with_table_height(
         {
             app.toggle_agent_selection();
         }
+        KeyCode::Char(' ') if app.input.is_empty() && app.mode == Mode::List => {
+            app.list_table.toggle_selected_check();
+        }
         KeyCode::Up if app.mode == Mode::List => {
             app.list_table.move_up(table_height);
         }
@@ -432,6 +435,46 @@ mod tests {
     }
 
     #[test]
+    fn space_in_list_toggles_checked_skill_rows() {
+        let mut app = test_app();
+        app.inventory = vec![inventory_row("one"), inventory_row("two")];
+        app.enter_list_mode();
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Char(' ')), 3).expect("key handled");
+        assert!(app.list_table.checked_items().is_empty());
+        assert_eq!(app.input, "");
+
+        app.list_table.move_right(3);
+        app.list_table.move_right(3);
+        handle_key_with_table_height(&mut app, key(KeyCode::Char(' ')), 3).expect("key handled");
+
+        assert_eq!(app.list_table.checked_items(), vec![0]);
+        assert_eq!(app.input, "");
+    }
+
+    #[test]
+    fn i_in_list_uses_checked_rows_for_batch_import() {
+        let mut app = test_app();
+        point_config_to_missing_paths(&mut app);
+        enable_only(&mut app, AGENT_ID_CLAUDE);
+        app.inventory = vec![inventory_row("one"), inventory_row("two")];
+        app.scan_results = vec![scan_result("repo-a/one"), scan_result("repo-a/two")];
+        app.enter_list_mode();
+        app.list_table.move_right(3);
+        app.list_table.move_right(3);
+        handle_key_with_table_height(&mut app, key(KeyCode::Char(' ')), 3).expect("key handled");
+        app.list_table.move_down(3);
+        handle_key_with_table_height(&mut app, key(KeyCode::Char(' ')), 3).expect("key handled");
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('i')), 3).expect("key handled");
+
+        match app.import_step {
+            ImportStep::ConfirmPlan { plan, .. } => assert_eq!(plan.changes.len(), 2),
+            _ => panic!("expected batch import plan preview"),
+        }
+    }
+
+    #[test]
     fn x_in_list_starts_remove_plan_for_single_exposure() {
         let mut app = test_app();
         app.mode = Mode::List;
@@ -444,6 +487,25 @@ mod tests {
 
         assert_eq!(app.mode, Mode::Remove);
         assert!(matches!(app.remove_step, RemoveStep::ConfirmPlan { .. }));
+    }
+
+    #[test]
+    fn x_in_list_uses_checked_rows_for_batch_remove() {
+        let mut app = test_app();
+        app.inventory = vec![inventory_row("one"), inventory_row("two")];
+        app.enter_list_mode();
+        app.list_table.move_right(3);
+        app.list_table.move_right(3);
+        handle_key_with_table_height(&mut app, key(KeyCode::Char(' ')), 3).expect("key handled");
+        app.list_table.move_down(3);
+        handle_key_with_table_height(&mut app, key(KeyCode::Char(' ')), 3).expect("key handled");
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('x')), 3).expect("key handled");
+
+        match app.remove_step {
+            RemoveStep::ConfirmPlan { plan, .. } => assert_eq!(plan.changes.len(), 2),
+            _ => panic!("expected batch remove plan preview"),
+        }
     }
 
     #[test]

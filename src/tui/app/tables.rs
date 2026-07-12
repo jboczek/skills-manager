@@ -22,6 +22,14 @@ impl App {
         }
     }
 
+    pub(crate) fn checked_inventory_rows(&self) -> Vec<InventoryRow> {
+        self.list_table
+            .checked_items()
+            .into_iter()
+            .filter_map(|item| self.inventory.get(item).cloned())
+            .collect()
+    }
+
     pub(super) fn selection_required_message(&self, table: &SourceTable) -> String {
         if matches!(table.selected_row(), Some(SourceTableRow::Group { .. })) {
             "Select a skill inside the group.".to_string()

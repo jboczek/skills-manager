@@ -49,6 +49,7 @@ pub enum SourceTableRow {
         skill_name: String,
         display_path: String,
         source_path: PathBuf,
+        checked: bool,
     },
 }
 
@@ -56,6 +57,7 @@ pub enum SourceTableRow {
 pub struct SourceTable {
     groups: Vec<SourceGroup>,
     expanded: HashSet<GroupKey>,
+    checked: HashSet<ItemKey>,
     selected: Option<usize>,
     viewport_offset: usize,
 }
@@ -65,6 +67,7 @@ impl Default for SourceTable {
         Self {
             groups: Vec::new(),
             expanded: HashSet::new(),
+            checked: HashSet::new(),
             selected: None,
             viewport_offset: 0,
         }
@@ -78,6 +81,7 @@ impl SourceTable {
             selected: (!groups.is_empty()).then_some(0),
             groups,
             expanded: HashSet::new(),
+            checked: HashSet::new(),
             viewport_offset: 0,
         }
     }
@@ -110,12 +114,17 @@ impl SourceTable {
                 expanded,
             });
             if expanded {
-                rows.extend(group.items.iter().map(|item| SourceTableRow::Item {
-                    group_key: group.key.clone(),
-                    item: item.item,
-                    skill_name: item.skill_name.clone(),
-                    display_path: item.display_path.clone(),
-                    source_path: item.skill_path.clone(),
+                rows.extend(group.items.iter().map(|item| {
+                    SourceTableRow::Item {
+                        group_key: group.key.clone(),
+                        item: item.item,
+                        skill_name: item.skill_name.clone(),
+                        display_path: item.display_path.clone(),
+                        source_path: item.skill_path.clone(),
+                        checked: self
+                            .checked
+                            .contains(&ItemKey::new(&group.key, &item.skill_path)),
+                    }
                 }));
             }
         }
@@ -125,6 +134,34 @@ impl SourceTable {
     pub fn selected_row(&self) -> Option<SourceTableRow> {
         self.selected
             .and_then(|selected| self.visible_rows().get(selected).cloned())
+    }
+
+    pub fn checked_items(&self) -> Vec<usize> {
+        self.groups
+            .iter()
+            .flat_map(|group| {
+                group.items.iter().filter_map(|item| {
+                    self.checked
+                        .contains(&ItemKey::new(&group.key, &item.skill_path))
+                        .then_some(item.item)
+                })
+            })
+            .collect()
+    }
+
+    pub fn toggle_selected_check(&mut self) {
+        let Some(SourceTableRow::Item {
+            group_key,
+            source_path,
+            ..
+        }) = self.selected_row()
+        else {
+            return;
+        };
+        let key = ItemKey::new(&group_key, &source_path);
+        if !self.checked.insert(key.clone()) {
+            self.checked.remove(&key);
+        }
     }
 
     pub fn move_up(&mut self, viewport_height: usize) {
@@ -219,7 +256,9 @@ impl SourceTable {
             .iter()
             .map(|group| group.key.clone())
             .collect::<HashSet<_>>();
+        let surviving_items = item_keys(&groups);
         self.expanded.retain(|key| surviving_keys.contains(key));
+        self.checked.retain(|key| surviving_items.contains(key));
         self.groups = groups;
 
         let rows = self.visible_rows();
@@ -242,10 +281,37 @@ impl SourceTable {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ItemKey {
+    group_key: GroupKey,
+    source_path: PathBuf,
+}
+
+impl ItemKey {
+    fn new(group_key: &GroupKey, source_path: &Path) -> Self {
+        Self {
+            group_key: group_key.clone(),
+            source_path: source_path.to_path_buf(),
+        }
+    }
+}
+
 #[derive(Debug)]
 enum SelectionKey {
     Group(GroupKey),
     Item(GroupKey, PathBuf),
+}
+
+fn item_keys(groups: &[SourceGroup]) -> HashSet<ItemKey> {
+    groups
+        .iter()
+        .flat_map(|group| {
+            group
+                .items
+                .iter()
+                .map(|item| ItemKey::new(&group.key, &item.skill_path))
+        })
+        .collect()
 }
 
 fn find_selection(rows: &[SourceTableRow], selection: &SelectionKey) -> Option<usize> {
@@ -593,6 +659,34 @@ mod tests {
                 .iter()
                 .all(|group| !group.context.contains("alice") && !group.context.contains("bob"))
         );
+    }
+
+    #[test]
+    fn toggles_checked_item_rows_and_ignores_group_rows() {
+        let mut table = SourceTable::new(vec![
+            item(1, "one", "/Users/alice/.codex/skills/one", None, None, None),
+            item(2, "two", "/Users/alice/.codex/skills/two", None, None, None),
+        ]);
+
+        table.toggle_selected_check();
+        assert!(table.checked_items().is_empty());
+
+        table.move_right(10);
+        table.move_right(10);
+        table.toggle_selected_check();
+
+        assert_eq!(table.checked_items(), vec![1]);
+        assert!(matches!(
+            table.visible_rows().get(1),
+            Some(SourceTableRow::Item { checked: true, .. })
+        ));
+
+        table.move_down(10);
+        table.toggle_selected_check();
+        assert_eq!(table.checked_items(), vec![1, 2]);
+
+        table.toggle_selected_check();
+        assert_eq!(table.checked_items(), vec![1]);
     }
 
     #[test]

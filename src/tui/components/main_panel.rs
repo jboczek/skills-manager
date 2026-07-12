@@ -4,27 +4,34 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::config::Config;
 use crate::domain::{ConnectionKind, InventoryRow};
-use crate::output::render_inventory;
 use crate::tui::app::{App, ImportStep, Mode, RemoveStep, SourceAddStep, removable_exposures};
 use crate::tui::components::{dialog, table};
 use crate::tui::theme::Theme;
 
 pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     match app.mode {
-        Mode::Home => render_text_panel(
-            frame,
-            area,
-            " Home ",
-            &format!(
-                "Welcome to Skills Manager.\n\nLoaded skills: {}\nEnabled agents: {}\n\nTry /list, /scan, /source_add, /config or /help. Use table shortcuts for import and remove actions.",
-                app.loaded_skills_label(),
-                app.config
-                    .agents
-                    .values()
-                    .filter(|agent| agent.enabled)
-                    .count()
-            ),
-        ),
+        Mode::Home => {
+            let last_operation = app
+                .error_message
+                .as_deref()
+                .or(app.info_message.as_deref())
+                .map(|message| format!("Last operation\n\n{message}\n\n"))
+                .unwrap_or_default();
+            render_text_panel(
+                frame,
+                area,
+                " Home ",
+                &format!(
+                    "{last_operation}Welcome to Skills Manager.\n\nLoaded skills: {}\nEnabled agents: {}\n\nTry /list, /scan, /source_add, /config or /help. Use table shortcuts for import and remove actions.",
+                    app.loaded_skills_label(),
+                    app.config
+                        .agents
+                        .values()
+                        .filter(|agent| agent.enabled)
+                        .count()
+                ),
+            );
+        }
         Mode::List => {
             if app.loading {
                 render_text_panel(frame, area, " Inventory ", "Loading...");
@@ -64,7 +71,7 @@ fn render_help(frame: &mut Frame, area: Rect) {
 }
 
 fn help_text() -> &'static str {
-    "Commands\n  /list                       Show current inventory\n  /scan                       Scan for available skills\n  /source_add <clone-url>     Add a source from an HTTPS or SSH clone URL\n  /config                     Show config\n  /help                       Show this help\n  /quit                       Exit\n\nTable actions\n  i                  Import selected skill child\n  x                  Remove selected list skill exposure\n  r                  Refresh current table\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
+    "Commands\n  /list                       Show current inventory\n  /scan                       Scan for available skills\n  /source_add <clone-url>     Add a source from an HTTPS or SSH clone URL\n  /config                     Show config\n  /help                       Show this help\n  /quit                       Exit\n\nTable actions\n  Space              Check or uncheck list skill rows\n  i                  Import checked or selected skill rows\n  x                  Remove checked or selected list skill rows\n  r                  Refresh current table\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
 }
 
 fn render_source_add(frame: &mut Frame, area: Rect, app: &App) {
@@ -167,11 +174,7 @@ fn render_import(frame: &mut Frame, area: Rect, app: &App) {
             );
         }
         ImportStep::Done { message } => {
-            let body = format!(
-                "{message}\n\nCurrent inventory\n\n{}",
-                render_inventory(&app.inventory)
-            );
-            render_text_panel(frame, area, " Import ", &body);
+            render_text_panel(frame, area, " Import ", message);
         }
     }
 }
@@ -195,11 +198,7 @@ fn render_remove(frame: &mut Frame, area: Rect, app: &App) {
             );
         }
         RemoveStep::Done { message } => {
-            let body = format!(
-                "{message}\n\nCurrent inventory\n\n{}",
-                render_inventory(&app.inventory)
-            );
-            render_text_panel(frame, area, " Remove ", &body);
+            render_text_panel(frame, area, " Remove ", message);
         }
     }
 }
@@ -257,8 +256,9 @@ mod tests {
 
         assert!(!text.contains("/import <skill>"));
         assert!(!text.contains("/remove <skill>"));
-        assert!(text.contains("Import selected skill child"));
-        assert!(text.contains("Remove selected list skill exposure"));
+        assert!(text.contains("Import checked or selected skill rows"));
+        assert!(text.contains("Remove checked or selected list skill rows"));
+        assert!(text.contains("Check or uncheck list skill rows"));
         assert!(text.contains("Collapse or expand source groups"));
     }
 
