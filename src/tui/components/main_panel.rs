@@ -32,7 +32,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
                 ),
             );
         }
-        Mode::List | Mode::Scan => {
+        Mode::List => {
             if app.loading {
                 render_text_panel(frame, area, " Inventory ", "Loading...");
             } else {

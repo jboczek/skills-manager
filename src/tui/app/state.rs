@@ -90,7 +90,6 @@ pub enum Mode {
     #[default]
     Home,
     List,
-    Scan,
     SourceAdd,
     Config,
     Help,
