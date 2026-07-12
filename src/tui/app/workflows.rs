@@ -107,6 +107,11 @@ impl App {
         self.error_message = None;
         self.info_message = None;
 
+        if let Some(selected) = self.selected_discovery_row() {
+            self.start_import_for_scan_result(selected, self.enabled_agent_targets());
+            return Ok(());
+        }
+
         let rows = self.actionable_inventory_rows();
         if rows.is_empty() {
             self.info_message = Some(self.selection_required_message(&self.list_table));

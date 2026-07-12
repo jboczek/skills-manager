@@ -26,6 +26,16 @@ impl App {
         }
     }
 
+    pub(super) fn selected_discovery_row(&self) -> Option<ScanResult> {
+        match self.list_table.selected_row()? {
+            SourceTableRow::Item { item, .. } => match self.list_rows.get(item)? {
+                UnifiedListRow::Exposed(_) => None,
+                UnifiedListRow::Discovered(result) => Some(result.clone()),
+            },
+            SourceTableRow::Group { .. } => None,
+        }
+    }
+
     pub(crate) fn checked_inventory_rows(&self) -> Vec<InventoryRow> {
         self.list_table
             .checked_items()
