@@ -17,14 +17,10 @@ pub struct CommandSuggestion {
     pub description: &'static str,
 }
 
-pub(crate) const COMMAND_SUGGESTIONS: [CommandSuggestion; 6] = [
+pub(crate) const COMMAND_SUGGESTIONS: [CommandSuggestion; 5] = [
     CommandSuggestion {
         label: "/list",
         description: "Show exposed skills and availability",
-    },
-    CommandSuggestion {
-        label: "/scan",
-        description: "Discover skills from configured sources",
     },
     CommandSuggestion {
         label: "/source_add",
@@ -45,7 +41,7 @@ pub(crate) const COMMAND_SUGGESTIONS: [CommandSuggestion; 6] = [
 ];
 
 /// Parse a command string typed in the prompt.
-/// Accepts "list", "/list", "scan", "/scan", "source_add <git-url>", etc.
+/// Accepts "list", "/list", "source_add <git-url>", etc.
 pub fn parse_command(input: &str) -> TuiCommand {
     let trimmed = input.trim();
     let normalized = trimmed.strip_prefix('/').unwrap_or(trimmed);
@@ -57,7 +53,6 @@ pub fn parse_command(input: &str) -> TuiCommand {
 
     match command {
         "list" => TuiCommand::List,
-        "scan" => TuiCommand::Scan,
         "source_add" => TuiCommand::SourceAdd(argument),
         "import" => TuiCommand::Import,
         "remove" => TuiCommand::Remove,

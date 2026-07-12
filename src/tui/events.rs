@@ -675,7 +675,7 @@ mod tests {
 
         assert_eq!(
             app.selected_command_suggestion().map(|item| item.label),
-            Some("/scan")
+            Some("/source_add")
         );
 
         handle_key(&mut app, key(KeyCode::Up)).expect("key handled");
@@ -692,11 +692,12 @@ mod tests {
         app.input = "/".to_string();
         app.open_command_menu();
         app.move_command_suggestion_down();
+        app.move_command_suggestion_down();
 
         let should_quit = handle_key(&mut app, key(KeyCode::Enter)).expect("key handled");
 
         assert!(!should_quit);
-        assert_eq!(app.mode, Mode::Scan);
+        assert_eq!(app.mode, Mode::Config);
         assert_eq!(app.input, "");
         assert!(!app.command_menu_open());
     }

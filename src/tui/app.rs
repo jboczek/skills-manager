@@ -643,6 +643,14 @@ mod tests {
     }
 
     #[test]
+    fn parse_command_scan_is_unknown_in_the_tui() {
+        assert_eq!(
+            parse_command("/scan"),
+            TuiCommand::Unknown("/scan".to_string())
+        );
+    }
+
+    #[test]
     fn parse_command_import_with_arg() {
         assert_eq!(parse_command("import repo-a/skill"), TuiCommand::Import);
     }
@@ -1136,7 +1144,7 @@ mod tests {
 
         assert_eq!(
             labels,
-            vec!["/list", "/scan", "/source_add", "/config", "/help", "/quit"]
+            vec!["/list", "/source_add", "/config", "/help", "/quit"]
         );
         assert!(
             app.filtered_command_suggestions()
@@ -1160,7 +1168,7 @@ mod tests {
     }
 
     #[test]
-    fn command_suggestions_filter_by_command_text() {
+    fn command_suggestions_do_not_offer_scan() {
         let mut app = test_app();
         app.input = "/sc".to_string();
         app.open_command_menu();
@@ -1171,7 +1179,7 @@ mod tests {
             .map(|suggestion| suggestion.label)
             .collect::<Vec<_>>();
 
-        assert_eq!(labels, vec!["/scan"]);
+        assert!(labels.is_empty());
     }
 
     #[test]
@@ -1203,7 +1211,7 @@ mod tests {
 
         assert_eq!(
             app.selected_command_suggestion().map(|item| item.label),
-            Some("/scan")
+            Some("/source_add")
         );
 
         app.move_command_suggestion_up();
