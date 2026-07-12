@@ -13,6 +13,14 @@ pub enum ListFilter {
 }
 
 impl ListFilter {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Full => "Full",
+            Self::OnlyExposed => "Only exposed",
+            Self::OnlyDiscovered => "Only discovered not applied",
+        }
+    }
+
     pub fn next(self) -> Self {
         match self {
             Self::Full => Self::OnlyExposed,
