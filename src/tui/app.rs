@@ -8,6 +8,7 @@ use crate::inventory::{self, InventoryConfig};
 use crate::scanner::{self, ScanResult};
 use crate::source;
 use crate::tui::source_table::SourceTable;
+use crate::tui::unified_list::{ListFilter, UnifiedListRow, project_rows};
 
 mod command;
 mod state;
@@ -24,6 +25,8 @@ pub struct App {
     pub mode: Mode,
     pub input: String,
     pub inventory: Vec<InventoryRow>,
+    pub list_rows: Vec<UnifiedListRow>,
+    pub list_filter: ListFilter,
     pub scan_results: Vec<ScanResult>,
     pub status_messages: Vec<String>,
     pub list_table: SourceTable,
@@ -55,6 +58,8 @@ impl App {
             mode: Mode::Home,
             input: String::new(),
             inventory: Vec::new(),
+            list_rows: Vec::new(),
+            list_filter: ListFilter::Full,
             scan_results: Vec::new(),
             status_messages: Vec::new(),
             list_table: SourceTable::default(),
@@ -132,7 +137,17 @@ impl App {
 
     /// Refresh inventory from filesystem.
     pub fn refresh_inventory(&mut self) -> anyhow::Result<()> {
-        self.inventory = helpers::fresh_global_inventory(&self.global_context)?;
+        let raw_scan_results =
+            scanner::scan(&helpers::scan_config_from_global(&self.global_context))?;
+        self.scan_results = raw_scan_results.clone();
+        scanner::exclude_dot_directory_results(&mut self.scan_results);
+        scanner::assign_disambiguation_indices(&mut self.scan_results);
+        self.inventory = inventory::build_inventory(&InventoryConfig {
+            agents: helpers::agent_targets_from_global(&self.global_context),
+            scan_results: raw_scan_results,
+        });
+        inventory::assign_disambiguation_indices(&mut self.inventory);
+        self.rebuild_list_rows();
         self.rebuild_status_messages();
         Ok(())
     }
@@ -308,6 +323,8 @@ impl App {
 
     pub fn enter_list_mode(&mut self) {
         self.mode = Mode::List;
+        self.list_filter = ListFilter::Full;
+        self.rebuild_list_rows();
         self.list_table = SourceTable::new(self.list_table_items());
     }
 
@@ -355,6 +372,10 @@ impl App {
         Ok(())
     }
 
+    fn rebuild_list_rows(&mut self) {
+        self.list_rows = project_rows(&self.inventory, &self.scan_results, self.list_filter);
+    }
+
     fn rebuild_status_messages(&mut self) {
         let scan_status = if self.initial_loading {
             "loading"
@@ -386,6 +407,7 @@ impl App {
         self.initial_load = None;
         self.scan_results = load.scan_results;
         self.inventory = load.inventory;
+        self.rebuild_list_rows();
         self.rebuild_status_messages();
     }
 
@@ -427,6 +449,7 @@ mod tests {
     use crate::plan::{ChangePlan, StagedChange};
     use crate::scanner::SourceKind;
     use crate::tui::source_table::SourceTableRow;
+    use crate::tui::unified_list::{ListFilter, UnifiedListRow};
 
     fn test_config(root: &std::path::Path) -> Config {
         let mut config = Config::default_config();
@@ -518,6 +541,23 @@ mod tests {
                 .iter()
                 .any(|message| message.contains("Scan: OK"))
         );
+    }
+
+    #[test]
+    fn entering_list_mode_projects_full_rows_without_repeating_exposed_sources() {
+        let mut app = test_app();
+        let exposed = scan_result("repo-a/exposed");
+        let mut inventory = inventory_row("repo-a/exposed");
+        inventory.exposures[0].path = exposed.skill_path.clone();
+        app.inventory = vec![inventory];
+        app.scan_results = vec![exposed, scan_result("repo-a/discovered")];
+
+        app.enter_list_mode();
+
+        assert_eq!(app.list_filter, ListFilter::Full);
+        assert_eq!(app.list_rows.len(), 2);
+        assert!(matches!(app.list_rows[0], UnifiedListRow::Exposed(_)));
+        assert!(matches!(app.list_rows[1], UnifiedListRow::Discovered(_)));
     }
 
     fn scan_result(skill_id: &str) -> ScanResult {

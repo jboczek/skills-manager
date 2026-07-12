@@ -6,6 +6,7 @@ use crate::domain::{ConnectionKind, InventoryRow, Scope};
 use crate::scanner::{ScanResult, SourceKind};
 use crate::tui::source_table::{SourceTable, SourceTableRow};
 use crate::tui::theme::Theme;
+use crate::tui::unified_list::UnifiedListRow;
 
 const LIST_SKILL_COLUMN_WIDTH: u16 = 57;
 const LIST_SCOPE_COLUMN_WIDTH: u16 = 13;
@@ -16,6 +17,20 @@ pub fn render_inventory_table(
     frame: &mut Frame,
     area: Rect,
     rows: &[InventoryRow],
+    source_table: &SourceTable,
+) {
+    let rows = rows
+        .iter()
+        .cloned()
+        .map(UnifiedListRow::Exposed)
+        .collect::<Vec<_>>();
+    render_unified_inventory_table(frame, area, &rows, source_table);
+}
+
+pub fn render_unified_inventory_table(
+    frame: &mut Frame,
+    area: Rect,
+    rows: &[UnifiedListRow],
     source_table: &SourceTable,
 ) {
     if rows.is_empty() {
@@ -75,38 +90,50 @@ pub fn render_inventory_table(
             else {
                 return None;
             };
-            let row = rows.get(*item)?;
-            let connections = row
-                .exposures
-                .iter()
-                .map(|exposure| connection_label(exposure.connection))
-                .collect::<Vec<_>>()
-                .join(",");
-            let agents = |agent_id: &str| {
-                if row
-                    .exposures
-                    .iter()
-                    .any(|exposure| exposure.agent_id.0 == agent_id)
-                {
-                    "✓"
-                } else {
-                    "-"
+            let table_row = match rows.get(*item)? {
+                UnifiedListRow::Exposed(row) => {
+                    let connections = row
+                        .exposures
+                        .iter()
+                        .map(|exposure| connection_label(exposure.connection))
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    let agents = |agent_id: &str| {
+                        if row
+                            .exposures
+                            .iter()
+                            .any(|exposure| exposure.agent_id.0 == agent_id)
+                        {
+                            "✓"
+                        } else {
+                            "-"
+                        }
+                    };
+                    let check = if *checked { "[x]" } else { "[ ]" };
+                    Row::new(vec![
+                        Cell::from(format!("  {check} {skill_name}")),
+                        Cell::from(display_path.clone()),
+                        Cell::from(agents("claude")),
+                        Cell::from(agents("codex")),
+                        Cell::from(agents("copilot")),
+                        Cell::from(scope_label(row.scope)),
+                        Cell::from(if connections.is_empty() {
+                            "-".to_string()
+                        } else {
+                            connections
+                        }),
+                    ])
                 }
+                UnifiedListRow::Discovered(_) => Row::new(vec![
+                    Cell::from(format!("    {skill_name}")),
+                    Cell::from(display_path.clone()),
+                    Cell::from("-"),
+                    Cell::from("-"),
+                    Cell::from("-"),
+                    Cell::from("-"),
+                    Cell::from("not exposed"),
+                ]),
             };
-            let check = if *checked { "[x]" } else { "[ ]" };
-            let table_row = Row::new(vec![
-                Cell::from(format!("  {check} {skill_name}")),
-                Cell::from(display_path.clone()),
-                Cell::from(agents("claude")),
-                Cell::from(agents("codex")),
-                Cell::from(agents("copilot")),
-                Cell::from(scope_label(row.scope)),
-                Cell::from(if connections.is_empty() {
-                    "-".to_string()
-                } else {
-                    connections
-                }),
-            ]);
             Some(if selected {
                 table_row.style(Theme::selected())
             } else {
@@ -310,6 +337,7 @@ mod tests {
     use super::*;
     use crate::domain::{AgentId, SkillExposure, SkillId, SkillSource};
     use crate::tui::source_table::SourceGroupItem;
+    use crate::tui::unified_list::UnifiedListRow;
 
     fn rendered_lines(terminal: &Terminal<TestBackend>) -> Vec<String> {
         let buffer = terminal.backend().buffer();
@@ -428,5 +456,49 @@ mod tests {
 
         let output = rendered_lines(&terminal).join("\n");
         assert!(output.contains("project-local"), "{output}");
+    }
+
+    #[test]
+    fn inventory_table_renders_all_headers_and_discovery_only_values() {
+        let skill_path = PathBuf::from("/workspace/repository/discovered");
+        let rows = vec![UnifiedListRow::Discovered(ScanResult {
+            skill_id: "repository/discovered".to_string(),
+            skill_path: skill_path.clone(),
+            skill_relative_path: Some(PathBuf::from("discovered")),
+            repo_name: Some("repository".to_string()),
+            repo_path: Some(PathBuf::from("/workspace/repository")),
+            remote_url: None,
+            source_kind: SourceKind::CentralDir,
+            disambiguation_index: None,
+        })];
+        let mut source_table = SourceTable::new(vec![SourceGroupItem {
+            item: 0,
+            skill_name: "discovered".to_string(),
+            skill_path,
+            repo_name: Some("repository".to_string()),
+            repo_path: Some(PathBuf::from("/workspace/repository")),
+            relative_path: Some(PathBuf::from("discovered")),
+        }]);
+        source_table.move_right(10);
+        let backend = TestBackend::new(140, 6);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| render_unified_inventory_table(frame, frame.area(), &rows, &source_table))
+            .unwrap();
+
+        let output = rendered_lines(&terminal).join("\n");
+        for header in [
+            "SKILL",
+            "SOURCE",
+            "CLAUDE",
+            "CODEX",
+            "COPILOT",
+            "SCOPE",
+            "CONNECTION",
+        ] {
+            assert!(output.contains(header), "{output}");
+        }
+        assert!(output.contains("not exposed"), "{output}");
     }
 }
