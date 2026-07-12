@@ -343,6 +343,7 @@ mod tests {
         assert_eq!(app.list_table.visible_rows().len(), 1);
     }
 
+    #[test]
     fn group_rows_do_not_start_import_or_remove_actions() {
         let mut app = test_app();
         app.inventory = vec![inventory_row("one")];
@@ -506,6 +507,7 @@ mod tests {
         assert!(matches!(app.remove_step, RemoveStep::SelectExposure { .. }));
     }
 
+    #[test]
     fn list_import_shortcut_stages_plan_when_missing_target_is_unambiguous() {
         let mut app = test_app();
         enable_only(&mut app, AGENT_ID_CLAUDE);
@@ -541,6 +543,7 @@ mod tests {
         }
     }
 
+    #[test]
     fn r_in_list_refreshes_and_clears_stale_selection() {
         let mut app = test_app();
         point_config_to_missing_paths(&mut app);

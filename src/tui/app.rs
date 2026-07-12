@@ -327,23 +327,19 @@ impl App {
         self.error_message = None;
         self.info_message = None;
 
-        match self.mode {
-            Mode::List => {
-                self.refresh_inventory()?;
-                let items = self.unified_list_table_items();
-                self.list_table.refresh(items, viewport_height);
-                self.info_message = Some(format!("Loaded {} skill row(s).", self.inventory.len()));
-            }
-            _ => {}
+        if self.mode == Mode::List {
+            self.refresh_inventory()?;
+            let items = self.unified_list_table_items();
+            self.list_table.refresh(items, viewport_height);
+            self.info_message = Some(format!("Loaded {} skill row(s).", self.inventory.len()));
         }
 
         Ok(())
     }
 
     pub fn sync_active_table(&mut self, viewport_height: usize) {
-        match self.mode {
-            Mode::List => self.list_table.sync(viewport_height),
-            _ => {}
+        if self.mode == Mode::List {
+            self.list_table.sync(viewport_height);
         }
     }
 

@@ -3,7 +3,6 @@ use ratatui::layout::{Constraint, Rect};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table};
 
 use crate::domain::{ConnectionKind, InventoryRow, Scope};
-use crate::scanner::{ScanResult, SourceKind};
 use crate::tui::source_table::{SourceTable, SourceTableRow};
 use crate::tui::theme::Theme;
 use crate::tui::unified_list::UnifiedListRow;
@@ -238,6 +237,7 @@ mod tests {
 
     use super::*;
     use crate::domain::{AgentId, SkillExposure, SkillId, SkillSource};
+    use crate::scanner::{ScanResult, SourceKind};
     use crate::tui::source_table::SourceGroupItem;
     use crate::tui::unified_list::UnifiedListRow;
 
