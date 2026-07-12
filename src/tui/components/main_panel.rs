@@ -214,7 +214,7 @@ fn render_text_panel(frame: &mut Frame, area: Rect, title: &str, body: &str) {
 }
 
 fn removable_exposure_lines(row: &InventoryRow) -> String {
-    removable_exposures(row)
+    let mut lines = removable_exposures(row)
         .iter()
         .enumerate()
         .map(|(index, exposure)| {
@@ -226,8 +226,9 @@ fn removable_exposure_lines(row: &InventoryRow) -> String {
                 connection_label(exposure.connection)
             )
         })
-        .collect::<Vec<_>>()
-        .join("\n")
+        .collect::<Vec<_>>();
+    lines.push("all. Remove from all agents".to_string());
+    lines.join("\n")
 }
 
 fn connection_label(connection: ConnectionKind) -> &'static str {
@@ -242,6 +243,7 @@ fn connection_label(connection: ConnectionKind) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::{AgentId, SkillExposure, SkillId, SkillSource};
 
     #[test]
     fn help_points_to_table_actions_instead_of_standalone_mutation_commands() {
@@ -263,5 +265,36 @@ mod tests {
 
         assert!(text.contains("/source_add <clone-url>"));
         assert!(text.contains("HTTPS or SSH clone URL"));
+    }
+
+    #[test]
+    fn remove_picker_offers_an_all_agents_choice() {
+        let row = InventoryRow {
+            skill_id: SkillId {
+                namespace: "repo-a".to_string(),
+                name: "skill".to_string(),
+            },
+            source: SkillSource {
+                repo_name: None,
+                repo_path: None,
+                remote_url: None,
+            },
+            scope: crate::domain::Scope::Global,
+            exposures: vec![
+                SkillExposure {
+                    agent_id: AgentId("claude".to_string()),
+                    path: "/agents/claude/skill".into(),
+                    connection: ConnectionKind::Symlink,
+                },
+                SkillExposure {
+                    agent_id: AgentId("codex".to_string()),
+                    path: "/agents/codex/skill".into(),
+                    connection: ConnectionKind::Symlink,
+                },
+            ],
+            disambiguation_index: None,
+        };
+
+        assert!(removable_exposure_lines(&row).contains("all. Remove from all agents"));
     }
 }

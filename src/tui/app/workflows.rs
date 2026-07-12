@@ -391,18 +391,32 @@ impl App {
         match self.remove_step.clone() {
             RemoveStep::SelectExposure { selected } => {
                 let removable_exposures = removable_exposures(&selected);
-                match parse_selection(input, removable_exposures.len()) {
-                    Some(index) => {
-                        let plan = self
-                            .build_remove_plan_for_exposure(&selected, &removable_exposures[index]);
-                        self.remove_step = RemoveStep::ConfirmPlan { plan, selected };
-                    }
-                    None => {
-                        self.error_message = Some(format!(
-                            "Enter a number between 1 and {}",
-                            removable_exposures.len()
-                        ));
-                        self.remove_step = RemoveStep::SelectExposure { selected };
+                if input.trim().eq_ignore_ascii_case("all") {
+                    let changes = removable_exposures
+                        .iter()
+                        .flat_map(|exposure| {
+                            self.build_remove_plan_for_exposure(&selected, exposure)
+                                .changes
+                        })
+                        .collect();
+                    let plan = ChangePlan::new(changes);
+                    self.remove_step = RemoveStep::ConfirmPlan { plan, selected };
+                } else {
+                    match parse_selection(input, removable_exposures.len()) {
+                        Some(index) => {
+                            let plan = self.build_remove_plan_for_exposure(
+                                &selected,
+                                &removable_exposures[index],
+                            );
+                            self.remove_step = RemoveStep::ConfirmPlan { plan, selected };
+                        }
+                        None => {
+                            self.error_message = Some(format!(
+                                "Enter a number between 1 and {}",
+                                removable_exposures.len()
+                            ));
+                            self.remove_step = RemoveStep::SelectExposure { selected };
+                        }
                     }
                 }
             }
@@ -475,7 +489,9 @@ impl App {
     /// Return a short one-line hint for the current remove step.
     pub fn remove_step_hint(&self) -> &'static str {
         match self.remove_step {
-            RemoveStep::SelectExposure { .. } => "Enter exposure number to remove:",
+            RemoveStep::SelectExposure { .. } => {
+                "Enter exposure number or 'all' to remove from every agent:"
+            }
             RemoveStep::ConfirmPlan { .. } => "Apply this plan? [y/N]:",
             RemoveStep::ConfirmPhysical { .. } => "Type 'yes' to confirm permanent deletion:",
             RemoveStep::Done { .. } => "Press Enter to return to home.",

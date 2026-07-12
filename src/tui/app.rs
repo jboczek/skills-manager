@@ -787,6 +787,46 @@ mod tests {
     }
 
     #[test]
+    fn remove_all_creates_a_plan_for_every_removable_exposure() {
+        let mut app = test_app();
+        let mut row = inventory_row("repo-a/skill");
+        row.exposures.push(SkillExposure {
+            agent_id: AgentId("codex".to_string()),
+            path: PathBuf::from("/agents/codex/skill"),
+            connection: ConnectionKind::PhysicalCopy,
+        });
+        app.inventory = vec![row];
+        app.enter_list_mode();
+        app.list_table.move_right(5);
+        app.list_table.move_right(5);
+
+        app.start_remove_from_selected_list_row()
+            .expect("remove action");
+        app.advance_remove("all").expect("all selection succeeds");
+
+        let RemoveStep::ConfirmPlan { plan, .. } = &app.remove_step else {
+            panic!("expected a remove plan after choosing all");
+        };
+        let target_paths = plan
+            .changes
+            .iter()
+            .map(|change| match change {
+                StagedChange::DetachSkill { target_path, .. }
+                | StagedChange::DeletePhysicalCopy { target_path, .. } => target_path.clone(),
+                _ => panic!("expected removal changes"),
+            })
+            .collect::<Vec<_>>();
+        assert!(plan.has_physical_deletes());
+        assert_eq!(
+            target_paths,
+            vec![
+                PathBuf::from("/agents/claude/skill"),
+                PathBuf::from("/agents/codex/skill"),
+            ]
+        );
+    }
+
+    #[test]
     fn list_groups_global_rows_by_source_repository_with_privacy_safe_paths() {
         let mut app = test_app();
         let repo_path = PathBuf::from("/Users/alice/pgit/repo-a");
