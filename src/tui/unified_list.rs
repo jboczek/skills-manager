@@ -78,10 +78,7 @@ mod tests {
     use crate::scanner::{ScanResult, SourceKind};
 
     fn inventory_row(skill_id: &str, exposure_path: PathBuf) -> InventoryRow {
-        let (namespace, name) = skill_id
-            .split_once('/')
-            .map(|(namespace, name)| (namespace, name))
-            .unwrap_or(("", skill_id));
+        let (namespace, name) = skill_id.split_once('/').unwrap_or(("", skill_id));
         InventoryRow {
             skill_id: SkillId {
                 namespace: namespace.to_string(),
