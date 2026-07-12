@@ -152,7 +152,7 @@ impl App {
         Ok(())
     }
 
-    /// Execute a deferred load (set by handle_command for list/scan) after a loading frame renders.
+    /// Execute a deferred list load after a loading frame renders.
     pub fn execute_pending_load(&mut self) -> anyhow::Result<()> {
         let Some(load) = self.pending_load.take() else {
             return Ok(());
@@ -163,11 +163,6 @@ impl App {
                 self.refresh_inventory()?;
                 self.enter_list_mode();
                 self.info_message = Some(format!("Loaded {} skill row(s).", self.inventory.len()));
-            }
-            PendingLoad::Scan => {
-                self.reload_scan_results()?;
-                self.enter_scan_mode();
-                self.info_message = Some(format!("Found {} skill(s).", self.scan_results.len()));
             }
         }
         Ok(())
@@ -203,9 +198,8 @@ impl App {
                 self.pending_load = Some(PendingLoad::List);
             }
             TuiCommand::Scan => {
-                self.mode = Mode::Scan;
-                self.loading = true;
-                self.pending_load = Some(PendingLoad::Scan);
+                self.error_message =
+                    Some("Unknown command: 'scan'. Type /help for available commands.".to_string());
             }
             TuiCommand::SourceAdd(url) => {
                 if url.is_empty() {
@@ -335,27 +329,16 @@ impl App {
             .refresh(self.unified_list_table_items(), viewport_height);
     }
 
-    pub fn enter_scan_mode(&mut self) {
-        self.mode = Mode::Scan;
-        self.scan_table = SourceTable::new(self.scan_table_items());
-    }
-
     pub fn refresh_active_table(&mut self, viewport_height: usize) -> anyhow::Result<()> {
         self.error_message = None;
         self.info_message = None;
 
         match self.mode {
-            Mode::List => {
+            Mode::List | Mode::Scan => {
                 self.refresh_inventory()?;
                 let items = self.unified_list_table_items();
                 self.list_table.refresh(items, viewport_height);
                 self.info_message = Some(format!("Loaded {} skill row(s).", self.inventory.len()));
-            }
-            Mode::Scan => {
-                self.reload_scan_results()?;
-                let items = self.scan_table_items();
-                self.scan_table.refresh(items, viewport_height);
-                self.info_message = Some(format!("Found {} skill(s).", self.scan_results.len()));
             }
             _ => {}
         }
@@ -365,8 +348,7 @@ impl App {
 
     pub fn sync_active_table(&mut self, viewport_height: usize) {
         match self.mode {
-            Mode::List => self.list_table.sync(viewport_height),
-            Mode::Scan => self.scan_table.sync(viewport_height),
+            Mode::List | Mode::Scan => self.list_table.sync(viewport_height),
             _ => {}
         }
     }
@@ -725,19 +707,6 @@ mod tests {
     }
 
     #[test]
-    fn enter_scan_mode_selects_first_result_when_results_exist() {
-        let mut app = test_app();
-        app.scan_results = vec![scan_result("repo-a/one"), scan_result("repo-a/two")];
-
-        app.enter_scan_mode();
-
-        assert_eq!(app.mode, Mode::Scan);
-        assert_eq!(app.scan_table.selected_index(), Some(0));
-        assert_eq!(app.scan_table.viewport_offset(), 0);
-        assert_eq!(app.scan_table.visible_rows().len(), 1);
-    }
-
-    #[test]
     fn list_groups_rows_by_global_and_project_exposure_context() {
         let mut app = test_app();
         let mut global = inventory_row("skills/review");
@@ -828,7 +797,7 @@ mod tests {
     }
 
     #[test]
-    fn list_and_scan_group_global_rows_by_source_repository() {
+    fn list_groups_global_rows_by_source_repository_with_privacy_safe_paths() {
         let mut app = test_app();
         let repo_path = PathBuf::from("/Users/alice/pgit/repo-a");
         let skill_path = repo_path.join(".agents/skills/one");
@@ -850,25 +819,14 @@ mod tests {
         app.inventory = vec![row];
 
         app.enter_list_mode();
-        let list_key = app.list_table.groups()[0].key.clone();
         app.list_table.move_right(4);
         let list_path = match &app.list_table.visible_rows()[1] {
             SourceTableRow::Item { display_path, .. } => display_path.clone(),
             _ => panic!("expected list child row"),
         };
 
-        app.enter_scan_mode();
-        let scan_key = app.scan_table.groups()[0].key.clone();
-        app.scan_table.move_right(4);
-        let scan_path = match &app.scan_table.visible_rows()[1] {
-            SourceTableRow::Item { display_path, .. } => display_path.clone(),
-            _ => panic!("expected scan child row"),
-        };
-
-        assert_eq!(list_key, scan_key);
         assert_eq!(list_path, ".agents/skills/one");
-        assert_eq!(scan_path, list_path);
-        assert!(!scan_path.contains("alice"));
+        assert!(!list_path.contains("alice"));
     }
 
     #[test]

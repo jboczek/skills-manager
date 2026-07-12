@@ -102,7 +102,6 @@ pub enum Mode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PendingLoad {
     List,
-    Scan,
 }
 
 #[derive(Debug, Clone)]

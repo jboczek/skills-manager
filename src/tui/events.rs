@@ -111,26 +111,11 @@ fn handle_key_with_table_height(
         KeyCode::Right if app.mode == Mode::List => {
             app.list_table.move_right(table_height);
         }
-        KeyCode::Up if app.mode == Mode::Scan => {
-            app.scan_table.move_up(table_height);
-        }
-        KeyCode::Down if app.mode == Mode::Scan => {
-            app.scan_table.move_down(table_height);
-        }
-        KeyCode::Left if app.mode == Mode::Scan => {
-            app.scan_table.move_left(table_height);
-        }
-        KeyCode::Right if app.mode == Mode::Scan => {
-            app.scan_table.move_right(table_height);
-        }
         KeyCode::Char('?') if app.input.is_empty() => {
             app.mode = Mode::Help;
         }
         KeyCode::Char('q') if app.input.is_empty() => {
             return Ok(true);
-        }
-        KeyCode::Char('i') if app.input.is_empty() && app.mode == Mode::Scan => {
-            app.start_import_from_selected_scan_row()?;
         }
         KeyCode::Char('i') if app.input.is_empty() && app.mode == Mode::List => {
             app.start_import_from_selected_list_row()?;
@@ -138,9 +123,7 @@ fn handle_key_with_table_height(
         KeyCode::Char('x') if app.input.is_empty() && app.mode == Mode::List => {
             app.start_remove_from_selected_list_row()?;
         }
-        KeyCode::Char('r')
-            if app.input.is_empty() && matches!(app.mode, Mode::List | Mode::Scan) =>
-        {
+        KeyCode::Char('r') if app.input.is_empty() && app.mode == Mode::List => {
             app.refresh_active_table(table_height)?;
         }
         KeyCode::Char('/') if app.input.is_empty() => {
@@ -356,29 +339,6 @@ mod tests {
         assert_eq!(app.list_table.visible_rows().len(), 1);
     }
 
-    #[test]
-    fn scan_down_uses_table_navigation() {
-        let mut app = test_app();
-        app.mode = Mode::Scan;
-        app.scan_results = vec![
-            scan_result("repo-a/one"),
-            scan_result("repo-a/two"),
-            scan_result("repo-a/three"),
-            scan_result("repo-a/four"),
-        ];
-        app.enter_scan_mode();
-
-        handle_key_with_table_height(&mut app, key(KeyCode::Right), 3).expect("key handled");
-        handle_key_with_table_height(&mut app, key(KeyCode::Right), 3).expect("key handled");
-        handle_key_with_table_height(&mut app, key(KeyCode::Down), 3).expect("key handled");
-        handle_key_with_table_height(&mut app, key(KeyCode::Down), 3).expect("key handled");
-        handle_key_with_table_height(&mut app, key(KeyCode::Down), 3).expect("key handled");
-
-        assert_eq!(app.scan_table.selected_index(), Some(4));
-        assert_eq!(app.scan_table.viewport_offset(), 2);
-    }
-
-    #[test]
     fn group_rows_do_not_start_import_or_remove_actions() {
         let mut app = test_app();
         app.inventory = vec![inventory_row("one")];
@@ -399,29 +359,6 @@ mod tests {
             app.info_message.as_deref(),
             Some("Select a skill inside the group.")
         );
-
-        app.enter_scan_mode();
-        handle_key_with_table_height(&mut app, key(KeyCode::Char('i')), 3).expect("key handled");
-        assert_eq!(app.mode, Mode::Scan);
-        assert_eq!(
-            app.info_message.as_deref(),
-            Some("Select a skill inside the group.")
-        );
-    }
-
-    #[test]
-    fn i_in_scan_starts_import_for_selected_result() {
-        let mut app = test_app();
-        app.mode = Mode::Scan;
-        app.scan_results = vec![scan_result("repo-a/one")];
-        app.enter_scan_mode();
-        app.scan_table.move_right(3);
-        app.scan_table.move_right(3);
-
-        handle_key_with_table_height(&mut app, key(KeyCode::Char('i')), 3).expect("key handled");
-
-        assert_eq!(app.mode, Mode::Import);
-        assert!(matches!(app.import_step, ImportStep::SelectAgents { .. }));
     }
 
     #[test]
@@ -565,25 +502,6 @@ mod tests {
         assert!(matches!(app.remove_step, RemoveStep::SelectExposure { .. }));
     }
 
-    #[test]
-    fn scan_import_shortcut_stages_plan_when_target_is_unambiguous() {
-        let mut app = test_app();
-        enable_only(&mut app, AGENT_ID_CODEX);
-        app.mode = Mode::Scan;
-        app.scan_results = vec![scan_result("repo-a/one")];
-        app.enter_scan_mode();
-        app.scan_table.move_right(3);
-        app.scan_table.move_right(3);
-
-        handle_key_with_table_height(&mut app, key(KeyCode::Char('i')), 3).expect("key handled");
-
-        match app.import_step {
-            ImportStep::ConfirmPlan { plan, .. } => assert!(!plan.is_empty()),
-            _ => panic!("expected import plan preview"),
-        }
-    }
-
-    #[test]
     fn list_import_shortcut_stages_plan_when_missing_target_is_unambiguous() {
         let mut app = test_app();
         enable_only(&mut app, AGENT_ID_CLAUDE);
@@ -619,25 +537,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn r_in_scan_refreshes_and_clears_stale_selection() {
-        let mut app = test_app();
-        point_config_to_missing_paths(&mut app);
-        app.mode = Mode::Scan;
-        app.scan_results = vec![scan_result("repo-a/one")];
-        app.enter_scan_mode();
-        app.scan_table.move_right(3);
-        app.scan_table.move_right(3);
-
-        handle_key_with_table_height(&mut app, key(KeyCode::Char('r')), 3).expect("key handled");
-
-        assert_eq!(app.mode, Mode::Scan);
-        assert!(app.scan_results.is_empty());
-        assert_eq!(app.scan_table.selected_index(), None);
-        assert_eq!(app.scan_table.viewport_offset(), 0);
-    }
-
-    #[test]
     fn r_in_list_refreshes_and_clears_stale_selection() {
         let mut app = test_app();
         point_config_to_missing_paths(&mut app);
