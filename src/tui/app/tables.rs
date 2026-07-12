@@ -9,13 +9,6 @@ use crate::tui::source_table::{SourceGroupItem, SourceTable, SourceTableRow};
 use crate::tui::unified_list::UnifiedListRow;
 
 impl App {
-    pub(super) fn selected_scan_result(&self) -> Option<ScanResult> {
-        match self.scan_table.selected_row()? {
-            SourceTableRow::Item { item, .. } => self.scan_results.get(item).cloned(),
-            SourceTableRow::Group { .. } => None,
-        }
-    }
-
     pub(crate) fn selected_inventory_row(&self) -> Option<InventoryRow> {
         match self.list_table.selected_row()? {
             SourceTableRow::Item { item, .. } => match self.list_rows.get(item)? {
@@ -53,21 +46,6 @@ impl App {
         } else {
             "No skill row selected.".to_string()
         }
-    }
-
-    pub(super) fn scan_table_items(&self) -> Vec<SourceGroupItem> {
-        self.scan_results
-            .iter()
-            .enumerate()
-            .map(|(index, result)| SourceGroupItem {
-                item: index,
-                skill_name: scan_skill_label(result),
-                skill_path: result.skill_path.clone(),
-                repo_name: result.repo_name.clone(),
-                repo_path: result.repo_path.clone(),
-                relative_path: result.skill_relative_path.clone(),
-            })
-            .collect()
     }
 
     pub(super) fn unified_list_table_items(&self) -> Vec<SourceGroupItem> {

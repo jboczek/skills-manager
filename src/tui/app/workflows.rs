@@ -89,20 +89,6 @@ impl App {
         Ok(())
     }
 
-    pub fn start_import_from_selected_scan_row(&mut self) -> anyhow::Result<()> {
-        self.error_message = None;
-        self.info_message = None;
-
-        let Some(selected) = self.selected_scan_result() else {
-            self.info_message = Some(self.selection_required_message(&self.scan_table));
-            return Ok(());
-        };
-
-        let target_agents = self.enabled_agent_targets();
-        self.start_import_for_scan_result(selected, target_agents);
-        Ok(())
-    }
-
     pub fn start_import_from_selected_list_row(&mut self) -> anyhow::Result<()> {
         self.error_message = None;
         self.info_message = None;
