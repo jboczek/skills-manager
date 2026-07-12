@@ -1195,7 +1195,7 @@ mod tests {
                 skill_name: "repo-a/skill".to_string(),
                 agent_id: AgentId("Claude".to_string()),
                 source_path: source,
-                target_path: target,
+                target_path: target.clone(),
             }]),
             selected: Box::new(scan_result("repo-a/skill")),
             target_agents: vec![],
@@ -1205,7 +1205,11 @@ mod tests {
 
         assert_eq!(app.mode, Mode::Home);
         assert!(matches!(app.import_step, ImportStep::Done { .. }));
-        assert_eq!(app.info_message.as_deref(), Some("Applied 1 change(s)."));
+        let expected_message = format!(
+            "Applied 1 change(s).\n  ✓ Exposed repo-a/skill at {}",
+            target.display()
+        );
+        assert_eq!(app.info_message.as_deref(), Some(expected_message.as_str()));
     }
 
     #[test]
