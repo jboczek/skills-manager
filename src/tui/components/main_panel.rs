@@ -22,7 +22,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
                 area,
                 " Home ",
                 &format!(
-                    "{last_operation}Welcome to Skills Manager.\n\nLoaded skills: {}\nEnabled agents: {}\n\nTry /list, /scan, /source_add, /config or /help. Use table shortcuts for import and remove actions.",
+                    "{last_operation}Welcome to Skills Manager.\n\nLoaded skills: {}\nEnabled agents: {}\n\nTry /list, /source_add, /config or /help. Use table shortcuts for import and remove actions.",
                     app.loaded_skills_label(),
                     app.config
                         .agents
@@ -71,7 +71,7 @@ fn render_help(frame: &mut Frame, area: Rect) {
 }
 
 fn help_text() -> &'static str {
-    "Commands\n  /list                       Show current inventory\n  /scan                       Scan for available skills\n  /source_add <clone-url>     Add a source from an HTTPS or SSH clone URL\n  /config                     Show config\n  /help                       Show this help\n  /quit                       Exit\n\nTable actions\n  Space              Check or uncheck list skill rows\n  i                  Import checked or selected skill rows\n  x                  Remove checked or selected list skill rows\n  r                  Refresh current table\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
+    "Commands\n  /list                       Browse exposed and discovered skills\n  /source_add <clone-url>     Add a source from an HTTPS or SSH clone URL\n  /config                     Show config\n  /help                       Show this help\n  /quit                       Exit\n\nTable actions\n  Tab                Cycle Full, exposed, and discovery-only views\n  Space              Check or uncheck exposed skill rows\n  i                  Import a selected discovery skill or checked exposed rows\n  x                  Remove checked or selected exposed skill rows\n  r                  Refresh the current list view\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
 }
 
 fn render_source_add(frame: &mut Frame, area: Rect, app: &App) {
@@ -256,9 +256,11 @@ mod tests {
 
         assert!(!text.contains("/import <skill>"));
         assert!(!text.contains("/remove <skill>"));
-        assert!(text.contains("Import checked or selected skill rows"));
-        assert!(text.contains("Remove checked or selected list skill rows"));
-        assert!(text.contains("Check or uncheck list skill rows"));
+        assert!(!text.contains("/scan"));
+        assert!(text.contains("Import a selected discovery skill or checked exposed rows"));
+        assert!(text.contains("Remove checked or selected exposed skill rows"));
+        assert!(text.contains("Check or uncheck exposed skill rows"));
+        assert!(text.contains("Cycle Full, exposed, and discovery-only views"));
         assert!(text.contains("Collapse or expand source groups"));
     }
 

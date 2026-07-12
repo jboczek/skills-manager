@@ -224,7 +224,7 @@ impl App {
             TuiCommand::Import => {
                 self.import_step = ImportStep::default();
                 self.info_message = Some(
-                    "Use table shortcuts: run /scan, select a row, then press i. From /list, press Space to check rows, then i to create missing enabled-agent exposures."
+                    "Use table shortcuts: run /list, select a discovery row and press i, or press Space then i on exposed rows to create missing enabled-agent exposures."
                         .to_string(),
                 );
             }
