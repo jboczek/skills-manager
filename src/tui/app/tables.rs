@@ -54,7 +54,7 @@ impl App {
             .enumerate()
             .map(|(index, row)| match row {
                 UnifiedListRow::Exposed(row) => inventory_table_item(index, row),
-                UnifiedListRow::Discovered(result) => scan_table_item(index, result),
+                UnifiedListRow::Discovered(result) => discovery_table_item(index, result),
             })
             .collect()
     }
@@ -127,7 +127,7 @@ fn inventory_table_item(index: usize, row: &InventoryRow) -> SourceGroupItem {
     }
 }
 
-fn scan_table_item(index: usize, result: &ScanResult) -> SourceGroupItem {
+fn discovery_table_item(index: usize, result: &ScanResult) -> SourceGroupItem {
     SourceGroupItem {
         item: index,
         skill_name: scan_skill_label(result),
