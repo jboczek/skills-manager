@@ -73,6 +73,9 @@ fn handle_key_with_table_height(
                 app.normalize_command_suggestion_selection();
             }
         }
+        KeyCode::Tab if app.input.is_empty() && app.mode == Mode::List => {
+            app.cycle_list_filter(table_height);
+        }
         KeyCode::Up
             if app.mode == Mode::Import
                 && matches!(app.import_step, ImportStep::SelectAgents { .. }) =>
@@ -206,6 +209,7 @@ mod tests {
         AgentId, ConnectionKind, InventoryRow, Scope, SkillExposure, SkillId, SkillSource,
     };
     use crate::scanner::{ScanResult, SourceKind};
+    use crate::tui::unified_list::ListFilter;
 
     fn test_app() -> App {
         App::new(Config::default_config()).expect("default config resolves")
@@ -675,6 +679,54 @@ mod tests {
 
         assert_eq!(app.input, "/source_add ");
         assert!(app.command_menu_open());
+    }
+
+    #[test]
+    fn tab_cycles_the_list_filter_only_when_the_prompt_is_empty() {
+        let mut app = test_app();
+        let exposed = scan_result("repo-a/exposed");
+        let mut inventory = inventory_row("exposed");
+        inventory.exposures[0].path = exposed.skill_path.clone();
+        app.inventory = vec![inventory];
+        app.scan_results = vec![exposed, scan_result("repo-a/discovered")];
+        app.enter_list_mode();
+
+        handle_key(&mut app, key(KeyCode::Tab)).expect("key handled");
+        assert_eq!(app.list_filter, ListFilter::OnlyExposed);
+        assert_eq!(app.list_rows.len(), 1);
+
+        handle_key(&mut app, key(KeyCode::Tab)).expect("key handled");
+        assert_eq!(app.list_filter, ListFilter::OnlyDiscovered);
+        assert_eq!(app.list_rows.len(), 1);
+
+        handle_key(&mut app, key(KeyCode::Tab)).expect("key handled");
+        assert_eq!(app.list_filter, ListFilter::Full);
+        assert_eq!(app.list_rows.len(), 2);
+    }
+
+    #[test]
+    fn tab_completes_the_command_menu_instead_of_changing_the_list_filter() {
+        let mut app = test_app();
+        app.mode = Mode::List;
+        app.input = "/sou".to_string();
+        app.open_command_menu();
+
+        handle_key(&mut app, key(KeyCode::Tab)).expect("key handled");
+
+        assert_eq!(app.input, "/source_add ");
+        assert_eq!(app.list_filter, ListFilter::Full);
+    }
+
+    #[test]
+    fn refresh_preserves_the_active_list_filter() {
+        let mut app = test_app();
+        point_config_to_missing_paths(&mut app);
+        app.mode = Mode::List;
+        app.list_filter = ListFilter::OnlyDiscovered;
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('r')), 3).expect("key handled");
+
+        assert_eq!(app.list_filter, ListFilter::OnlyDiscovered);
     }
 
     #[test]

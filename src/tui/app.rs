@@ -328,6 +328,13 @@ impl App {
         self.list_table = SourceTable::new(self.unified_list_table_items());
     }
 
+    pub fn cycle_list_filter(&mut self, viewport_height: usize) {
+        self.list_filter = self.list_filter.next();
+        self.rebuild_list_rows();
+        self.list_table
+            .refresh(self.unified_list_table_items(), viewport_height);
+    }
+
     pub fn enter_scan_mode(&mut self) {
         self.mode = Mode::Scan;
         self.scan_table = SourceTable::new(self.scan_table_items());
