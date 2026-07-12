@@ -10,12 +10,11 @@ Run without subcommands to open the full-screen assistant-style terminal UI:
 skills-manager
 ```
 
-The TUI shows a header, status feed, main content area, sticky prompt, and footer hints. List and scan open as collapsed source-group overviews, with privacy-safe repository-relative or shortened child paths and extra width for skill names. Press `/` from an empty prompt to open command suggestions, or type plain commands such as `list` and `help`.
+The TUI shows a header, status feed, main content area, sticky prompt, and footer hints. `/list` is the sole skill browser: it opens a collapsed, privacy-safe source-group view that combines real exposures with discovered-but-unexposed skills in the existing seven columns. Press `/` from an empty prompt to open command suggestions, or type plain commands such as `list` and `help`.
 
 Core prompt commands:
 
-- `/list`: refresh and show current inventory.
-- `/scan`: scan configured source roots.
+- `/list`: refresh and show the Full unified view.
 - `/source add <git-url>`: add or reuse a managed Git source, then optionally expose one discovered skill.
 - `/config`: show the config path and current TOML.
 - `/help`: show commands and key hints.
@@ -31,11 +30,12 @@ Key behavior:
 - `Up` / `Down` move through command suggestions or currently visible source/skill rows.
 - `Right` expands a source group, then moves from an expanded group to its first skill.
 - `Left` moves from a skill to its source group, then collapses the group.
-- `i` imports the selected scan skill, or imports missing enabled-agent exposures from a selected global list skill.
+- `Tab` cycles Full, Only exposed, and Only discovered not applied while the prompt is empty.
+- `i` imports a selected discovered skill, or imports missing enabled-agent exposures from a selected global list skill.
 - `x` removes a selected global list skill exposure or prompts for which exposure to remove.
-- `r` refreshes the active list or scan table.
+- `r` refreshes the current list while retaining the active view and matching selection/group expansion.
 
-Import and remove actions run only from expanded skill rows; group rows never imply a bulk action. Typed `/import` and `/remove` commands guide users to these shortcuts instead of starting standalone prompt workflows. Table shortcuts use the same staged plan behavior as the CLI, show the plan before applying, rescan after apply, and require exact `yes` confirmation before deleting physical copies.
+Import and remove actions run only from expanded skill rows; group rows never imply a bulk action. Discovery-only rows show `-` for agents and scope and `not exposed` for connection; they can be imported with `i`, but cannot be checked or removed. Typed `/import` and `/remove` commands guide users to these shortcuts instead of starting standalone prompt workflows. Table shortcuts use the same staged plan behavior as the CLI, show the plan before applying, rescan after apply, and require exact `yes` confirmation before deleting physical copies.
 
 List groups represent repositories. Global rows are grouped by source repository, while project-local rows are grouped by their containing project. Scope remains visible per row. Project-local rows are read-only, so `i` and `x` report that they cannot mutate those rows.
 

@@ -1,6 +1,6 @@
 # Assistant-style TUI Shell
 
-The assistant-style TUI shell is the default interactive Skills Manager experience. Running `skills-manager` without a subcommand opens a full-screen terminal interface for inspecting inventory, scanning source roots, importing skills, removing exposures, viewing config, and reading help.
+The assistant-style TUI shell is the default interactive Skills Manager experience. Running `skills-manager` without a subcommand opens a full-screen terminal interface for browsing unified skill state, importing skills, removing exposures, viewing config, and reading help.
 
 ## Launch
 
@@ -31,8 +31,6 @@ Supported prompt commands:
 ```text
 list
 /list
-scan
-/scan
 config
 /config
 help
@@ -44,15 +42,15 @@ q
 
 Unknown commands keep the user in the shell and show an error message with a help hint.
 
-The slash suggestion menu lists `/list`, `/scan`, `/config`, `/help`, and `/quit`. Import and remove are table actions in the TUI. If a user types `/import` or `/remove`, the TUI guides them to the row shortcuts instead of starting standalone prompt workflows.
+The slash suggestion menu lists `/list`, `/source_add`, `/config`, `/help`, and `/quit`. Import and remove are table actions in the TUI. If a user types `/import` or `/remove`, the TUI guides them to the row shortcuts instead of starting standalone prompt workflows.
 
 ## Modes
 
 Home mode shows loaded skill and enabled-agent counts with suggested commands.
 
-List mode refreshes inventory from the shared configured context and opens with one collapsed group per repository. Global rows are grouped by source repository; project-local rows are grouped by their containing project. Expanding a group reveals skill children whose source column uses the resolved source path, shortened to a privacy-safe suffix when needed. Project physical skills show paths such as `.agents/skills/adx-intake`; project symlinks show their resolved source. Child rows retain the Claude, Codex, Copilot, scope, and connection details. Duplicate display identities keep numbered labels such as `(1)` and `(2)`. The first column reserves 30 cells for source and skill labels.
+List mode is the sole TUI browser. `/list` refreshes one source catalog and its exposure inventory, then opens Full with one collapsed group per repository. Full contains every real global or project-local inventory row plus each discovered source skill with no real exposure. A discovered source is de-duplicated only by canonical source identity; exposure scope and agent availability are never inferred from its path.
 
-Scan mode runs the shared scanner and groups the complete source catalog by source repository. Its first column reserves 35 cells for source and skill labels. Global list rows and scan rows use the same source-repository identity; project-local list rows use their containing project identity.
+Global exposure rows are grouped by source repository; project-local rows are grouped by their containing project. Expanding a group reveals privacy-safe source paths. A discovery-only row retains the same grouping and seven-column layout, but renders `-` for Claude, Codex, Copilot, and scope, and `not exposed` for connection. Tab cycles Full, Only exposed, and Only discovered not applied. The existing list column sizes and duplicate labels remain unchanged.
 
 Repository-backed groups use the canonical repository root as identity. Repositories with the same folder name remain separate and receive distinguishing safe path context. Unresolved sources use their privacy-safe source container as identity, so unrelated `unknown` rows are not merged. Display labels omit standard home-directory prefixes and user names.
 
@@ -76,14 +74,15 @@ The implemented V1 key behavior is:
 - `Right`: expand a collapsed source group, or select the first child of an expanded group
 - `Left`: select a skill's parent source group, or collapse an expanded group
 - `/`: open slash command suggestions from an empty prompt
-- `i`: import the selected scan skill, or import missing enabled-agent exposures from a selected global list skill
+- `Tab`: cycle Full, Only exposed, and Only discovered not applied when the prompt is empty and the command menu is closed
+- `i`: import the selected discovery skill, or import missing enabled-agent exposures from a selected global list skill
 - `x`: remove a selected global list skill exposure, or choose which exposure to remove when a row has multiple
-- `r`: refresh the active list or scan table
+- `r`: refresh the active list while retaining its filter and matching selection/group expansion
 - `Ctrl-C`: quit
 
 All source groups start collapsed. Refresh preserves expansion for source identities that still exist, and resize events keep the selected visible row within the viewport. Pressing `i` or `x` on a group row asks the user to select a skill inside the group.
 
-Tab, panel switching, and multi-cell exposure toggling are reserved for future modes with multiple active sections or editable table columns.
+Space checks only exposed rows for existing batch actions. Discovery-only rows cannot be checked or removed; `i` sends them through the existing staged import flow.
 
 ## Safety
 
@@ -95,10 +94,12 @@ Removals detach symlinks without deleting source skills. Physical-copy removals 
 
 Project-local list rows are read-only. Import and remove shortcuts report the restriction without entering a mutation flow or building a change plan.
 
+Discovery-only rows are also protected from removal and batch selection. They expose no implied availability or scope; importing one still uses the normal plan preview and confirmation flow.
+
 After a plan is applied, the TUI refreshes inventory and renders the resulting state.
 
 The TUI resolves and validates the same global context as the CLI before scanning, inventory construction, or plan creation.
 
 ## Boundaries
 
-This shell does not include advanced table cell toggling, space-to-stage exposure edits, rich config editing, remote Git imports, arbitrary project targeting, or stable machine-readable output.
+This shell does not include arbitrary table-cell editing, rich config editing, remote Git imports, arbitrary project targeting, or stable machine-readable output.
