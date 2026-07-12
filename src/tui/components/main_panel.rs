@@ -32,18 +32,11 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
                 ),
             );
         }
-        Mode::List => {
+        Mode::List | Mode::Scan => {
             if app.loading {
                 render_text_panel(frame, area, " Inventory ", "Loading...");
             } else {
                 table::render_unified_inventory_table(frame, area, &app.list_rows, &app.list_table);
-            }
-        }
-        Mode::Scan => {
-            if app.loading {
-                render_text_panel(frame, area, " Scan ", "Loading...");
-            } else {
-                table::render_scan_table(frame, area, &app.scan_results, &app.scan_table);
             }
         }
         Mode::SourceAdd => render_source_add(frame, area, app),
