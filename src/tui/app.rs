@@ -195,10 +195,6 @@ impl App {
                 self.loading = true;
                 self.pending_load = Some(PendingLoad::List);
             }
-            TuiCommand::Scan => {
-                self.error_message =
-                    Some("Unknown command: 'scan'. Type /help for available commands.".to_string());
-            }
             TuiCommand::SourceAdd(url) => {
                 if url.is_empty() {
                     self.error_message =
@@ -332,7 +328,7 @@ impl App {
         self.info_message = None;
 
         match self.mode {
-            Mode::List | Mode::Scan => {
+            Mode::List => {
                 self.refresh_inventory()?;
                 let items = self.unified_list_table_items();
                 self.list_table.refresh(items, viewport_height);
@@ -346,7 +342,7 @@ impl App {
 
     pub fn sync_active_table(&mut self, viewport_height: usize) {
         match self.mode {
-            Mode::List | Mode::Scan => self.list_table.sync(viewport_height),
+            Mode::List => self.list_table.sync(viewport_height),
             _ => {}
         }
     }

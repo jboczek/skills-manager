@@ -1,7 +1,6 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TuiCommand {
     List,
-    Scan,
     SourceAdd(String),
     Import,
     Remove,
