@@ -185,7 +185,10 @@ pub(crate) fn table_height_for_main(main_height: u16) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use tempfile::tempdir;
 
     use super::*;
     use crate::config::Config;
@@ -194,6 +197,7 @@ mod tests {
         AgentId, ConnectionKind, InventoryRow, Scope, SkillExposure, SkillId, SkillSource,
     };
     use crate::scanner::{ScanResult, SourceKind};
+    use crate::tui::source_table::SourceTableRow;
     use crate::tui::unified_list::ListFilter;
 
     fn test_app() -> App {
@@ -659,6 +663,46 @@ mod tests {
         handle_key_with_table_height(&mut app, key(KeyCode::Char('r')), 3).expect("key handled");
 
         assert_eq!(app.list_filter, ListFilter::OnlyDiscovered);
+    }
+
+    #[test]
+    fn refresh_preserves_an_expanded_selected_list_skill() {
+        let temp = tempdir().unwrap();
+        let skill = temp.path().join("skills/discovered");
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(skill.join("SKILL.md"), "# Discovered").unwrap();
+        let mut config = Config::default_config();
+        config.skills.central_dir = temp.path().join("skills").to_string_lossy().into_owned();
+        config.skills.scan_parent_dirs.clear();
+        for agent in config.agents.values_mut() {
+            agent.global_dir = temp
+                .path()
+                .join(format!("{}-global", agent.display_name.to_lowercase()))
+                .to_string_lossy()
+                .into_owned();
+            agent.project_dir = None;
+            agent.shared_target_ids.clear();
+        }
+        config.shared_targets.clear();
+        let mut app = App::new(config).unwrap();
+
+        app.refresh_inventory().unwrap();
+        app.enter_list_mode();
+        app.list_table.move_right(3);
+        app.list_table.move_right(3);
+        assert!(matches!(
+            app.list_table.selected_row(),
+            Some(SourceTableRow::Item { .. })
+        ));
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('r')), 3).expect("key handled");
+
+        assert_eq!(app.list_filter, ListFilter::Full);
+        assert!(matches!(
+            app.list_table.selected_row(),
+            Some(SourceTableRow::Item { .. })
+        ));
+        assert_eq!(app.list_table.visible_rows().len(), 2);
     }
 
     #[test]
