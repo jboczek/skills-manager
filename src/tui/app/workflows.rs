@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 
 use super::tables::{display_inventory_row, parse_selection};
@@ -296,12 +296,7 @@ impl App {
                     };
                     return Ok(());
                 }
-                let plan = ChangePlan::new(
-                    selected
-                        .iter()
-                        .flat_map(|skill| self.build_import_plan(skill, &target_agents).changes)
-                        .collect(),
-                );
+                let plan = self.build_import_plan(&selected, &target_agents);
                 if plan.is_empty() {
                     self.import_step = ImportStep::Done {
                         message: "Nothing to do.".to_string(),
@@ -507,43 +502,33 @@ impl App {
 
     fn build_import_plan(
         &self,
-        selected: &ScanResult,
+        selected: &[ScanResult],
         target_agents: &[AgentTarget],
     ) -> ChangePlan {
-        let existing_paths = self
+        let mut reserved_paths = self
             .inventory
             .iter()
             .flat_map(|row| row.exposures.iter().map(|exposure| exposure.path.clone()))
             .collect::<HashSet<_>>();
-        let skill_name = selected
-            .skill_path
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| {
-                selected
-                    .skill_id
-                    .rsplit('/')
-                    .next()
-                    .unwrap_or(&selected.skill_id)
-                    .to_string()
-            });
+        let mut changes = Vec::new();
 
-        let changes = target_agents
-            .iter()
-            .filter_map(|agent| {
-                let global_dir = agent.global_dir.as_ref()?;
-                let target_path = global_dir.join(&skill_name);
-                if existing_paths.contains(&target_path) || target_path.exists() {
-                    return None;
+        for (selected, target_name) in selected.iter().zip(import_target_names(selected)) {
+            for agent in target_agents {
+                let Some(global_dir) = agent.global_dir.as_ref() else {
+                    continue;
+                };
+                let target_path = global_dir.join(&target_name);
+                if target_path.exists() || !reserved_paths.insert(target_path.clone()) {
+                    continue;
                 }
-                Some(StagedChange::ExposeSkill {
+                changes.push(StagedChange::ExposeSkill {
                     skill_name: selected.skill_id.clone(),
                     agent_id: AgentId(agent.display_name.clone()),
                     source_path: selected.skill_path.clone(),
                     target_path,
-                })
-            })
-            .collect();
+                });
+            }
+        }
 
         ChangePlan::new(changes)
     }
@@ -592,12 +577,7 @@ impl App {
         }
 
         if target_agents.len() == 1 {
-            let plan = ChangePlan::new(
-                selected
-                    .iter()
-                    .flat_map(|skill| self.build_import_plan(skill, &target_agents).changes)
-                    .collect(),
-            );
+            let plan = self.build_import_plan(&selected, &target_agents);
             self.import_step = if plan.is_empty() {
                 self.info_message = Some("Nothing to do.".to_string());
                 ImportStep::Done {
@@ -693,6 +673,77 @@ impl App {
         self.refresh_inventory()?;
         Ok(message)
     }
+}
+
+fn import_target_names(selected: &[ScanResult]) -> Vec<String> {
+    let base_names = selected
+        .iter()
+        .map(|skill| {
+            skill
+                .skill_path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| {
+                    skill
+                        .skill_id
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or(&skill.skill_id)
+                        .to_string()
+                })
+        })
+        .collect::<Vec<_>>();
+    let mut name_counts = HashMap::new();
+    for name in &base_names {
+        *name_counts.entry(name.clone()).or_insert(0usize) += 1;
+    }
+
+    let mut reserved_names = HashSet::new();
+    selected
+        .iter()
+        .zip(base_names)
+        .map(|(skill, base_name)| {
+            let mut target_name = if name_counts[&base_name] > 1 {
+                let source_name = skill
+                    .skill_id
+                    .rsplit_once('/')
+                    .map(|(source, _)| source)
+                    .unwrap_or(&skill.skill_id)
+                    .chars()
+                    .map(|character| {
+                        if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                            character
+                        } else {
+                            '-'
+                        }
+                    })
+                    .collect::<String>();
+                format!("{}--{base_name}", source_name.trim_matches('-'))
+            } else {
+                base_name
+            };
+            if !reserved_names.insert(target_name.clone()) {
+                let hash = stable_hash(&format!(
+                    "{}:{}",
+                    skill.skill_id,
+                    skill.skill_path.display()
+                ));
+                target_name = format!("{target_name}--{:06x}", hash & 0x00ff_ffff);
+                let mut duplicate_index = 2;
+                while !reserved_names.insert(target_name.clone()) {
+                    target_name = format!("{target_name}-{duplicate_index}");
+                    duplicate_index += 1;
+                }
+            }
+            target_name
+        })
+        .collect()
+}
+
+fn stable_hash(input: &str) -> u64 {
+    input.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3)
+    })
 }
 
 pub(crate) fn removable_exposures(row: &InventoryRow) -> Vec<SkillExposure> {

@@ -469,6 +469,52 @@ mod tests {
     }
 
     #[test]
+    fn batch_import_qualifies_same_named_discoveries() {
+        let mut app = test_app();
+        point_config_to_missing_paths(&mut app);
+        enable_only(&mut app, AGENT_ID_CLAUDE);
+        app.scan_results = vec![
+            ScanResult {
+                skill_id: "repo-a/review".to_string(),
+                skill_path: "/sources/repo-a/review".into(),
+                skill_relative_path: Some("repo-a/review".into()),
+                repo_name: Some("shared".to_string()),
+                repo_path: Some("/sources".into()),
+                remote_url: None,
+                source_kind: SourceKind::CentralDir,
+                disambiguation_index: None,
+            },
+            ScanResult {
+                skill_id: "repo-b/review".to_string(),
+                skill_path: "/sources/repo-b/review".into(),
+                skill_relative_path: Some("repo-b/review".into()),
+                repo_name: Some("shared".to_string()),
+                repo_path: Some("/sources".into()),
+                remote_url: None,
+                source_kind: SourceKind::CentralDir,
+                disambiguation_index: None,
+            },
+        ];
+        app.enter_list_mode();
+        app.list_table.move_right(3);
+        app.list_table.move_right(3);
+        handle_key_with_table_height(&mut app, key(KeyCode::Char(' ')), 3).expect("key handled");
+        app.list_table.move_down(3);
+        handle_key_with_table_height(&mut app, key(KeyCode::Char(' ')), 3).expect("key handled");
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('i')), 3).expect("key handled");
+
+        match &app.import_step {
+            ImportStep::ConfirmPlan { plan, .. } => {
+                assert_eq!(plan.changes.len(), 2);
+                assert!(plan.render().contains("repo-a--review"));
+                assert!(plan.render().contains("repo-b--review"));
+            }
+            _ => panic!("expected collision-safe batch import plan"),
+        }
+    }
+
+    #[test]
     fn i_in_list_uses_checked_rows_for_batch_import() {
         let mut app = test_app();
         point_config_to_missing_paths(&mut app);
