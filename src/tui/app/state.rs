@@ -35,13 +35,13 @@ pub enum ImportStep {
         matches: Vec<ScanResult>,
     },
     SelectAgents {
-        selected: Box<ScanResult>,
+        selected: Vec<ScanResult>,
         agents: Vec<AgentSelectionItem>,
         focused: usize,
     },
     ConfirmPlan {
         plan: ChangePlan,
-        selected: Box<ScanResult>,
+        selected: Vec<ScanResult>,
         target_agents: Vec<AgentTarget>,
     },
     ConfirmPhysical {

@@ -64,7 +64,7 @@ fn render_help(frame: &mut Frame, area: Rect) {
 }
 
 fn help_text() -> &'static str {
-    "Commands\n  /list                       Browse exposed and discovered skills\n  /source_add <clone-url>     Add a source from an HTTPS or SSH clone URL\n  /config                     Show config\n  /help                       Show this help\n  /quit                       Exit\n\nTable actions\n  Tab                Cycle Full, exposed, and discovery-only views\n  Space              Check or uncheck exposed skill rows\n  i                  Import a selected discovery skill or checked exposed rows\n  x                  Remove checked or selected exposed skill rows\n  r                  Refresh the current list view\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
+    "Commands\n  /list                       Browse exposed and discovered skills\n  /source_add <clone-url>     Add a source from an HTTPS or SSH clone URL\n  /config                     Show config\n  /help                       Show this help\n  /quit                       Exit\n\nTable actions\n  Tab                Cycle Full, exposed, and discovery-only views\n  Space              Check or uncheck skill rows\n  i                  Import a selected skill or checked skills\n  x                  Remove checked or selected exposed skill rows\n  r                  Refresh the current list view\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
 }
 
 fn render_source_add(frame: &mut Frame, area: Rect, app: &App) {
@@ -146,11 +146,14 @@ fn render_import(frame: &mut Frame, area: Rect, app: &App) {
                 })
                 .collect::<Vec<_>>()
                 .join("\n");
+            let selected_skills = selected
+                .iter()
+                .map(|skill| format!("  {} ({})", skill.skill_id, skill.skill_path.display()))
+                .collect::<Vec<_>>()
+                .join("\n");
             let body = format!(
-                "Selected skill\n  id: {}\n  path: {}\n\nSelect agents to import to:\n{}",
-                selected.skill_id,
-                selected.skill_path.display(),
-                agent_lines,
+                "Selected skills\n{}\n\nSelect agents to import to:\n{}",
+                selected_skills, agent_lines,
             );
             render_text_panel(frame, area, " Import ", &body);
         }
@@ -252,9 +255,9 @@ mod tests {
         assert!(!text.contains("/import <skill>"));
         assert!(!text.contains("/remove <skill>"));
         assert!(!text.contains("/scan"));
-        assert!(text.contains("Import a selected discovery skill or checked exposed rows"));
+        assert!(text.contains("Import a selected skill or checked skills"));
         assert!(text.contains("Remove checked or selected exposed skill rows"));
-        assert!(text.contains("Check or uncheck exposed skill rows"));
+        assert!(text.contains("Check or uncheck skill rows"));
         assert!(text.contains("Cycle Full, exposed, and discovery-only views"));
         assert!(text.contains("Collapse or expand source groups"));
     }

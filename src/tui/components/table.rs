@@ -122,15 +122,18 @@ pub fn render_unified_inventory_table(
                         }),
                     ])
                 }
-                UnifiedListRow::Discovered(_) => Row::new(vec![
-                    Cell::from(format!("    {skill_name}")),
-                    Cell::from(display_path.clone()),
-                    Cell::from("-"),
-                    Cell::from("-"),
-                    Cell::from("-"),
-                    Cell::from("-"),
-                    Cell::from("not exposed"),
-                ]),
+                UnifiedListRow::Discovered(_) => {
+                    let check = if *checked { "[x]" } else { "[ ]" };
+                    Row::new(vec![
+                        Cell::from(format!("  {check} {skill_name}")),
+                        Cell::from(display_path.clone()),
+                        Cell::from("-"),
+                        Cell::from("-"),
+                        Cell::from("-"),
+                        Cell::from("-"),
+                        Cell::from("not exposed"),
+                    ])
+                }
             };
             Some(if selected {
                 table_row.style(Theme::selected())
@@ -359,5 +362,6 @@ mod tests {
             assert!(output.contains(header), "{output}");
         }
         assert!(output.contains("not exposed"), "{output}");
+        assert!(output.contains("[ ] discovered"), "{output}");
     }
 }

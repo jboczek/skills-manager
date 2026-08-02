@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 
 use super::tables::{display_inventory_row, parse_selection};
@@ -93,6 +93,22 @@ impl App {
         self.error_message = None;
         self.info_message = None;
 
+        let checked_inventory = self.checked_inventory_rows();
+        if checked_inventory
+            .iter()
+            .any(|row| row.scope == Scope::ProjectLocal)
+        {
+            self.info_message =
+                Some("Project-local exposures are read-only and cannot be imported.".to_string());
+            return Ok(());
+        }
+
+        let checked = self.checked_import_scan_results();
+        if !checked.is_empty() {
+            self.start_import_for_scan_results(checked, self.enabled_agent_targets());
+            return Ok(());
+        }
+
         if let Some(selected) = self.selected_discovery_row() {
             self.start_import_for_scan_result(selected, self.enabled_agent_targets());
             return Ok(());
@@ -103,11 +119,7 @@ impl App {
             self.info_message = Some(self.selection_required_message(&self.list_table));
             return Ok(());
         }
-        if rows.len() == 1 {
-            self.start_import_for_inventory_row(rows.into_iter().next().unwrap());
-        } else {
-            self.start_import_for_inventory_rows(rows);
-        }
+        self.start_import_for_inventory_row(rows.into_iter().next().unwrap());
 
         Ok(())
     }
@@ -147,52 +159,6 @@ impl App {
                 };
             }
         }
-    }
-
-    fn start_import_for_inventory_rows(&mut self, rows: Vec<InventoryRow>) {
-        if rows.iter().any(|row| row.scope == Scope::ProjectLocal) {
-            self.info_message =
-                Some("Project-local exposures are read-only and cannot be imported.".to_string());
-            return;
-        }
-
-        let mut changes = Vec::new();
-        let mut first_selected = None;
-        for row in rows {
-            let target_agents = self.missing_enabled_agent_targets(&row);
-            if target_agents.is_empty() {
-                continue;
-            }
-            let Some(selected) = self.scan_result_for_import_row(&row) else {
-                continue;
-            };
-            first_selected.get_or_insert_with(|| selected.clone());
-            changes.extend(self.build_import_plan(&selected, &target_agents).changes);
-        }
-
-        self.mode = Mode::Import;
-        let plan = ChangePlan::new(changes);
-        if plan.is_empty() {
-            self.import_step = ImportStep::Done {
-                message: "Nothing to do.".to_string(),
-            };
-            self.info_message = Some("Nothing to do.".to_string());
-        } else if let Some(selected) = first_selected {
-            self.import_step = ImportStep::ConfirmPlan {
-                plan,
-                selected: Box::new(selected),
-                target_agents: Vec::new(),
-            };
-        }
-    }
-
-    fn scan_result_for_import_row(&self, row: &InventoryRow) -> Option<ScanResult> {
-        if let Some(selected) = self.scan_result_for_inventory_row(row) {
-            return Some(selected.clone());
-        }
-        let skill_id = display_inventory_row(row);
-        let matches = helpers::find_scan_results_by_id(&skill_id, &self.scan_results);
-        (matches.len() == 1).then(|| matches[0].clone())
     }
 
     fn actionable_inventory_rows(&self) -> Vec<InventoryRow> {
@@ -536,43 +502,33 @@ impl App {
 
     fn build_import_plan(
         &self,
-        selected: &ScanResult,
+        selected: &[ScanResult],
         target_agents: &[AgentTarget],
     ) -> ChangePlan {
-        let existing_paths = self
+        let mut reserved_paths = self
             .inventory
             .iter()
             .flat_map(|row| row.exposures.iter().map(|exposure| exposure.path.clone()))
             .collect::<HashSet<_>>();
-        let skill_name = selected
-            .skill_path
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| {
-                selected
-                    .skill_id
-                    .rsplit('/')
-                    .next()
-                    .unwrap_or(&selected.skill_id)
-                    .to_string()
-            });
+        let mut changes = Vec::new();
 
-        let changes = target_agents
-            .iter()
-            .filter_map(|agent| {
-                let global_dir = agent.global_dir.as_ref()?;
-                let target_path = global_dir.join(&skill_name);
-                if existing_paths.contains(&target_path) || target_path.exists() {
-                    return None;
+        for (selected, target_name) in selected.iter().zip(import_target_names(selected)) {
+            for agent in target_agents {
+                let Some(global_dir) = agent.global_dir.as_ref() else {
+                    continue;
+                };
+                let target_path = global_dir.join(&target_name);
+                if target_path.exists() || !reserved_paths.insert(target_path.clone()) {
+                    continue;
                 }
-                Some(StagedChange::ExposeSkill {
+                changes.push(StagedChange::ExposeSkill {
                     skill_name: selected.skill_id.clone(),
                     agent_id: AgentId(agent.display_name.clone()),
                     source_path: selected.skill_path.clone(),
                     target_path,
-                })
-            })
-            .collect();
+                });
+            }
+        }
 
         ChangePlan::new(changes)
     }
@@ -602,6 +558,14 @@ impl App {
         selected: ScanResult,
         target_agents: Vec<AgentTarget>,
     ) {
+        self.start_import_for_scan_results(vec![selected], target_agents);
+    }
+
+    fn start_import_for_scan_results(
+        &mut self,
+        selected: Vec<ScanResult>,
+        target_agents: Vec<AgentTarget>,
+    ) {
         self.mode = Mode::Import;
 
         if target_agents.is_empty() {
@@ -622,7 +586,7 @@ impl App {
             } else {
                 ImportStep::ConfirmPlan {
                     plan,
-                    selected: Box::new(selected),
+                    selected,
                     target_agents,
                 }
             };
@@ -630,7 +594,7 @@ impl App {
         }
 
         self.import_step = ImportStep::SelectAgents {
-            selected: Box::new(selected),
+            selected,
             agents: target_agents
                 .into_iter()
                 .map(|target| AgentSelectionItem {
@@ -709,6 +673,77 @@ impl App {
         self.refresh_inventory()?;
         Ok(message)
     }
+}
+
+fn import_target_names(selected: &[ScanResult]) -> Vec<String> {
+    let base_names = selected
+        .iter()
+        .map(|skill| {
+            skill
+                .skill_path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| {
+                    skill
+                        .skill_id
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or(&skill.skill_id)
+                        .to_string()
+                })
+        })
+        .collect::<Vec<_>>();
+    let mut name_counts = HashMap::new();
+    for name in &base_names {
+        *name_counts.entry(name.clone()).or_insert(0usize) += 1;
+    }
+
+    let mut reserved_names = HashSet::new();
+    selected
+        .iter()
+        .zip(base_names)
+        .map(|(skill, base_name)| {
+            let mut target_name = if name_counts[&base_name] > 1 {
+                let source_name = skill
+                    .skill_id
+                    .rsplit_once('/')
+                    .map(|(source, _)| source)
+                    .unwrap_or(&skill.skill_id)
+                    .chars()
+                    .map(|character| {
+                        if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                            character
+                        } else {
+                            '-'
+                        }
+                    })
+                    .collect::<String>();
+                format!("{}--{base_name}", source_name.trim_matches('-'))
+            } else {
+                base_name
+            };
+            if !reserved_names.insert(target_name.clone()) {
+                let hash = stable_hash(&format!(
+                    "{}:{}",
+                    skill.skill_id,
+                    skill.skill_path.display()
+                ));
+                target_name = format!("{target_name}--{:06x}", hash & 0x00ff_ffff);
+                let mut duplicate_index = 2;
+                while !reserved_names.insert(target_name.clone()) {
+                    target_name = format!("{target_name}-{duplicate_index}");
+                    duplicate_index += 1;
+                }
+            }
+            target_name
+        })
+        .collect()
+}
+
+fn stable_hash(input: &str) -> u64 {
+    input.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3)
+    })
 }
 
 pub(crate) fn removable_exposures(row: &InventoryRow) -> Vec<SkillExposure> {

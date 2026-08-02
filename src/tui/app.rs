@@ -212,7 +212,7 @@ impl App {
             TuiCommand::Import => {
                 self.import_step = ImportStep::default();
                 self.info_message = Some(
-                    "Use table shortcuts: run /list, select a discovery row and press i, or press Space then i on exposed rows to create missing enabled-agent exposures."
+                    "Use table shortcuts: run /list, select a discovery row and press i, or press Space then i to import checked skills to selected agents."
                         .to_string(),
                 );
             }
@@ -1070,7 +1070,7 @@ mod tests {
         let ImportStep::SelectAgents { selected, .. } = &app.import_step else {
             panic!("expected selected skill to enter import flow");
         };
-        assert_eq!(selected.skill_id, "remote-skills/docs");
+        assert_eq!(selected[0].skill_id, "remote-skills/docs");
     }
 
     #[test]
@@ -1273,7 +1273,7 @@ mod tests {
                 source_path: source,
                 target_path: target.clone(),
             }]),
-            selected: Box::new(scan_result("repo-a/skill")),
+            selected: vec![scan_result("repo-a/skill")],
             target_agents: vec![],
         };
 
@@ -1292,7 +1292,7 @@ mod tests {
     fn move_agent_selection_up_decrements_focus() {
         let mut app = test_app();
         app.import_step = ImportStep::SelectAgents {
-            selected: Box::new(scan_result("repo-a/skill")),
+            selected: vec![scan_result("repo-a/skill")],
             agents: vec![
                 AgentSelectionItem {
                     target: crate::inventory::AgentTarget {
@@ -1330,7 +1330,7 @@ mod tests {
     fn move_agent_selection_down_increments_focus() {
         let mut app = test_app();
         app.import_step = ImportStep::SelectAgents {
-            selected: Box::new(scan_result("repo-a/skill")),
+            selected: vec![scan_result("repo-a/skill")],
             agents: vec![
                 AgentSelectionItem {
                     target: crate::inventory::AgentTarget {
@@ -1368,7 +1368,7 @@ mod tests {
     fn toggle_agent_selection_flips_checked() {
         let mut app = test_app();
         app.import_step = ImportStep::SelectAgents {
-            selected: Box::new(scan_result("repo-a/skill")),
+            selected: vec![scan_result("repo-a/skill")],
             agents: vec![AgentSelectionItem {
                 target: crate::inventory::AgentTarget {
                     agent_id: "claude".to_string(),
@@ -1403,7 +1403,7 @@ mod tests {
 
         let app = App {
             import_step: ImportStep::SelectAgents {
-                selected: Box::new(scan_result("repo-a/skill")),
+                selected: vec![scan_result("repo-a/skill")],
                 agents: vec![],
                 focused: 0,
             },
@@ -1414,7 +1414,7 @@ mod tests {
         let app = App {
             import_step: ImportStep::ConfirmPlan {
                 plan: ChangePlan::new(vec![]),
-                selected: Box::new(scan_result("repo-a/skill")),
+                selected: vec![scan_result("repo-a/skill")],
                 target_agents: vec![],
             },
             ..test_app()
