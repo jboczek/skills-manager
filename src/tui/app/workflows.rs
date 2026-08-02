@@ -210,7 +210,14 @@ impl App {
 
         let rows = self.actionable_inventory_rows();
         if rows.is_empty() {
-            self.info_message = Some(self.selection_required_message(&self.list_table));
+            if self.selected_discovery_row().is_some() {
+                let message = "Discovery-only skills have no exposures to remove.".to_string();
+                self.mode = Mode::Home;
+                self.info_message = Some(message.clone());
+                self.remove_step = RemoveStep::Done { message };
+            } else {
+                self.info_message = Some(self.selection_required_message(&self.list_table));
+            }
             return Ok(());
         }
         if rows.len() == 1 {
@@ -263,11 +270,13 @@ impl App {
         let Some(first) = rows.first().cloned() else {
             return;
         };
+        let mut target_paths = HashSet::new();
         let changes = rows
             .iter()
             .flat_map(|row| {
                 removable_exposures(row)
                     .iter()
+                    .filter(|exposure| target_paths.insert(exposure.path.clone()))
                     .flat_map(|exposure| self.build_remove_plan_for_exposure(row, exposure).changes)
                     .collect::<Vec<_>>()
             })
@@ -392,8 +401,10 @@ impl App {
             RemoveStep::SelectExposure { selected } => {
                 let removable_exposures = removable_exposures(&selected);
                 if input.trim().eq_ignore_ascii_case("all") {
+                    let mut target_paths = HashSet::new();
                     let changes = removable_exposures
                         .iter()
+                        .filter(|exposure| target_paths.insert(exposure.path.clone()))
                         .flat_map(|exposure| {
                             self.build_remove_plan_for_exposure(&selected, exposure)
                                 .changes

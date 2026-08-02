@@ -160,7 +160,7 @@ impl App {
             PendingLoad::List => {
                 self.refresh_inventory()?;
                 self.enter_list_mode();
-                self.info_message = Some(format!("Loaded {} skill row(s).", self.inventory.len()));
+                self.info_message = Some(self.list_summary_message());
             }
         }
         Ok(())
@@ -331,7 +331,7 @@ impl App {
             self.refresh_inventory()?;
             let items = self.unified_list_table_items();
             self.list_table.refresh(items, viewport_height);
-            self.info_message = Some(format!("Loaded {} skill row(s).", self.inventory.len()));
+            self.info_message = Some(self.list_summary_message());
         }
 
         Ok(())
@@ -353,6 +353,19 @@ impl App {
 
     fn rebuild_list_rows(&mut self) {
         self.list_rows = project_rows(&self.inventory, &self.scan_results, self.list_filter);
+    }
+
+    fn list_summary_message(&self) -> String {
+        let discovered = project_rows(
+            &self.inventory,
+            &self.scan_results,
+            ListFilter::OnlyDiscovered,
+        )
+        .len();
+        format!(
+            "Imported: {} · Discovered not imported: {discovered}",
+            self.inventory.len()
+        )
     }
 
     fn rebuild_status_messages(&mut self) {
@@ -787,12 +800,17 @@ mod tests {
     }
 
     #[test]
-    fn remove_all_creates_a_plan_for_every_removable_exposure() {
+    fn remove_all_creates_one_change_per_unique_target_path() {
         let mut app = test_app();
         let mut row = inventory_row("repo-a/skill");
         row.exposures.push(SkillExposure {
             agent_id: AgentId("codex".to_string()),
-            path: PathBuf::from("/agents/codex/skill"),
+            path: PathBuf::from("/agents/claude/skill"),
+            connection: ConnectionKind::Symlink,
+        });
+        row.exposures.push(SkillExposure {
+            agent_id: AgentId("copilot".to_string()),
+            path: PathBuf::from("/agents/copilot/skill"),
             connection: ConnectionKind::PhysicalCopy,
         });
         app.inventory = vec![row];
@@ -821,8 +839,23 @@ mod tests {
             target_paths,
             vec![
                 PathBuf::from("/agents/claude/skill"),
-                PathBuf::from("/agents/codex/skill"),
+                PathBuf::from("/agents/copilot/skill"),
             ]
+        );
+    }
+
+    #[test]
+    fn list_summary_reports_imported_and_discovered_rows_separately() {
+        let mut app = test_app();
+        let exposed = scan_result("repo-a/exposed");
+        let mut imported = inventory_row("repo-a/exposed");
+        imported.exposures[0].path = exposed.skill_path.clone();
+        app.inventory = vec![imported];
+        app.scan_results = vec![exposed, scan_result("repo-a/discovered")];
+
+        assert_eq!(
+            app.list_summary_message(),
+            "Imported: 1 · Discovered not imported: 1"
         );
     }
 

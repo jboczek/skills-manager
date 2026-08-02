@@ -426,7 +426,11 @@ mod tests {
         assert!(app.list_table.checked_items().is_empty());
 
         handle_key_with_table_height(&mut app, key(KeyCode::Char('x')), 3).expect("key handled");
-        assert_eq!(app.mode, Mode::List);
+        assert_eq!(app.mode, Mode::Home);
+        assert_eq!(
+            app.info_message.as_deref(),
+            Some("Discovery-only skills have no exposures to remove.")
+        );
         assert!(matches!(app.remove_step, RemoveStep::Done { .. }));
     }
 
@@ -470,7 +474,13 @@ mod tests {
     #[test]
     fn x_in_list_uses_checked_rows_for_batch_remove() {
         let mut app = test_app();
-        app.inventory = vec![inventory_row("one"), inventory_row("two")];
+        let mut one = inventory_row("one");
+        one.exposures.push(SkillExposure {
+            agent_id: AgentId("copilot".to_string()),
+            path: one.exposures[0].path.clone(),
+            connection: ConnectionKind::Symlink,
+        });
+        app.inventory = vec![one, inventory_row("two")];
         app.enter_list_mode();
         app.list_table.move_right(3);
         app.list_table.move_right(3);
