@@ -19,7 +19,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
 
     frame.render_widget(
         Paragraph::new(vec![
-            Line::styled(app.prompt_label.clone(), Theme::muted()),
+            prompt_title(app),
             Line::styled(
                 format!("{prompt_prefix}{}{cursor}", app.input),
                 Theme::default_style(),
@@ -27,6 +27,15 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         ]),
         area,
     );
+}
+
+fn prompt_title(app: &App) -> Line<'static> {
+    let mut spans = vec![Span::styled(app.prompt_label.clone(), Theme::muted())];
+    if app.mode == Mode::List {
+        spans.push(Span::styled(" · ", Theme::muted()));
+        spans.push(Span::styled(app.list_filter.label(), Theme::header()));
+    }
+    Line::from(spans)
 }
 
 fn render_command_menu(frame: &mut Frame, prompt_area: Rect, app: &App) {
@@ -90,4 +99,36 @@ fn menu_block() -> Block<'static> {
         .title(" Commands ")
         .title_style(Theme::header())
         .style(Theme::default_style())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use crate::tui::unified_list::ListFilter;
+
+    #[test]
+    fn list_filter_labels_are_human_readable() {
+        assert_eq!(ListFilter::Full.label(), "Full");
+        assert_eq!(ListFilter::OnlyExposed.label(), "Only exposed");
+        assert_eq!(
+            ListFilter::OnlyDiscovered.label(),
+            "Only discovered not applied"
+        );
+    }
+
+    #[test]
+    fn list_prompt_shows_the_active_filter_in_the_accent_color() {
+        let mut app = App::new(Config::default_config()).unwrap();
+        app.mode = Mode::List;
+        app.list_filter = ListFilter::OnlyExposed;
+
+        let title = prompt_title(&app);
+
+        assert_eq!(title.spans.len(), 3);
+        assert_eq!(title.spans[0].content.as_ref(), "Skills");
+        assert_eq!(title.spans[1].content.as_ref(), " · ");
+        assert_eq!(title.spans[2].content.as_ref(), "Only exposed");
+        assert_eq!(title.spans[2].style.fg, Some(Theme::ACCENT));
+    }
 }

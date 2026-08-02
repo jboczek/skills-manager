@@ -4,6 +4,7 @@ pub mod events;
 pub mod layout;
 pub mod source_table;
 pub mod theme;
+pub mod unified_list;
 
 #[cfg(test)]
 mod mod_tests;

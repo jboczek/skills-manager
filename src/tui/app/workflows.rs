@@ -89,23 +89,14 @@ impl App {
         Ok(())
     }
 
-    pub fn start_import_from_selected_scan_row(&mut self) -> anyhow::Result<()> {
-        self.error_message = None;
-        self.info_message = None;
-
-        let Some(selected) = self.selected_scan_result() else {
-            self.info_message = Some(self.selection_required_message(&self.scan_table));
-            return Ok(());
-        };
-
-        let target_agents = self.enabled_agent_targets();
-        self.start_import_for_scan_result(selected, target_agents);
-        Ok(())
-    }
-
     pub fn start_import_from_selected_list_row(&mut self) -> anyhow::Result<()> {
         self.error_message = None;
         self.info_message = None;
+
+        if let Some(selected) = self.selected_discovery_row() {
+            self.start_import_for_scan_result(selected, self.enabled_agent_targets());
+            return Ok(());
+        }
 
         let rows = self.actionable_inventory_rows();
         if rows.is_empty() {
@@ -219,7 +210,14 @@ impl App {
 
         let rows = self.actionable_inventory_rows();
         if rows.is_empty() {
-            self.info_message = Some(self.selection_required_message(&self.list_table));
+            if self.selected_discovery_row().is_some() {
+                let message = "Discovery-only skills have no exposures to remove.".to_string();
+                self.mode = Mode::Home;
+                self.info_message = Some(message.clone());
+                self.remove_step = RemoveStep::Done { message };
+            } else {
+                self.info_message = Some(self.selection_required_message(&self.list_table));
+            }
             return Ok(());
         }
         if rows.len() == 1 {
@@ -272,11 +270,13 @@ impl App {
         let Some(first) = rows.first().cloned() else {
             return;
         };
+        let mut target_paths = HashSet::new();
         let changes = rows
             .iter()
             .flat_map(|row| {
                 removable_exposures(row)
                     .iter()
+                    .filter(|exposure| target_paths.insert(exposure.path.clone()))
                     .flat_map(|exposure| self.build_remove_plan_for_exposure(row, exposure).changes)
                     .collect::<Vec<_>>()
             })
@@ -400,18 +400,34 @@ impl App {
         match self.remove_step.clone() {
             RemoveStep::SelectExposure { selected } => {
                 let removable_exposures = removable_exposures(&selected);
-                match parse_selection(input, removable_exposures.len()) {
-                    Some(index) => {
-                        let plan = self
-                            .build_remove_plan_for_exposure(&selected, &removable_exposures[index]);
-                        self.remove_step = RemoveStep::ConfirmPlan { plan, selected };
-                    }
-                    None => {
-                        self.error_message = Some(format!(
-                            "Enter a number between 1 and {}",
-                            removable_exposures.len()
-                        ));
-                        self.remove_step = RemoveStep::SelectExposure { selected };
+                if input.trim().eq_ignore_ascii_case("all") {
+                    let mut target_paths = HashSet::new();
+                    let changes = removable_exposures
+                        .iter()
+                        .filter(|exposure| target_paths.insert(exposure.path.clone()))
+                        .flat_map(|exposure| {
+                            self.build_remove_plan_for_exposure(&selected, exposure)
+                                .changes
+                        })
+                        .collect();
+                    let plan = ChangePlan::new(changes);
+                    self.remove_step = RemoveStep::ConfirmPlan { plan, selected };
+                } else {
+                    match parse_selection(input, removable_exposures.len()) {
+                        Some(index) => {
+                            let plan = self.build_remove_plan_for_exposure(
+                                &selected,
+                                &removable_exposures[index],
+                            );
+                            self.remove_step = RemoveStep::ConfirmPlan { plan, selected };
+                        }
+                        None => {
+                            self.error_message = Some(format!(
+                                "Enter a number between 1 and {}",
+                                removable_exposures.len()
+                            ));
+                            self.remove_step = RemoveStep::SelectExposure { selected };
+                        }
                     }
                 }
             }
@@ -484,7 +500,9 @@ impl App {
     /// Return a short one-line hint for the current remove step.
     pub fn remove_step_hint(&self) -> &'static str {
         match self.remove_step {
-            RemoveStep::SelectExposure { .. } => "Enter exposure number to remove:",
+            RemoveStep::SelectExposure { .. } => {
+                "Enter exposure number or 'all' to remove from every agent:"
+            }
             RemoveStep::ConfirmPlan { .. } => "Apply this plan? [y/N]:",
             RemoveStep::ConfirmPhysical { .. } => "Type 'yes' to confirm permanent deletion:",
             RemoveStep::Done { .. } => "Press Enter to return to home.",

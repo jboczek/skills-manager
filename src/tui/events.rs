@@ -73,6 +73,9 @@ fn handle_key_with_table_height(
                 app.normalize_command_suggestion_selection();
             }
         }
+        KeyCode::Tab if app.input.is_empty() && app.mode == Mode::List => {
+            app.cycle_list_filter(table_height);
+        }
         KeyCode::Up
             if app.mode == Mode::Import
                 && matches!(app.import_step, ImportStep::SelectAgents { .. }) =>
@@ -92,7 +95,9 @@ fn handle_key_with_table_height(
             app.toggle_agent_selection();
         }
         KeyCode::Char(' ') if app.input.is_empty() && app.mode == Mode::List => {
-            app.list_table.toggle_selected_check();
+            if app.selected_inventory_row().is_some() {
+                app.list_table.toggle_selected_check();
+            }
         }
         KeyCode::Up if app.mode == Mode::List => {
             app.list_table.move_up(table_height);
@@ -106,26 +111,11 @@ fn handle_key_with_table_height(
         KeyCode::Right if app.mode == Mode::List => {
             app.list_table.move_right(table_height);
         }
-        KeyCode::Up if app.mode == Mode::Scan => {
-            app.scan_table.move_up(table_height);
-        }
-        KeyCode::Down if app.mode == Mode::Scan => {
-            app.scan_table.move_down(table_height);
-        }
-        KeyCode::Left if app.mode == Mode::Scan => {
-            app.scan_table.move_left(table_height);
-        }
-        KeyCode::Right if app.mode == Mode::Scan => {
-            app.scan_table.move_right(table_height);
-        }
         KeyCode::Char('?') if app.input.is_empty() => {
             app.mode = Mode::Help;
         }
         KeyCode::Char('q') if app.input.is_empty() => {
             return Ok(true);
-        }
-        KeyCode::Char('i') if app.input.is_empty() && app.mode == Mode::Scan => {
-            app.start_import_from_selected_scan_row()?;
         }
         KeyCode::Char('i') if app.input.is_empty() && app.mode == Mode::List => {
             app.start_import_from_selected_list_row()?;
@@ -133,9 +123,7 @@ fn handle_key_with_table_height(
         KeyCode::Char('x') if app.input.is_empty() && app.mode == Mode::List => {
             app.start_remove_from_selected_list_row()?;
         }
-        KeyCode::Char('r')
-            if app.input.is_empty() && matches!(app.mode, Mode::List | Mode::Scan) =>
-        {
+        KeyCode::Char('r') if app.input.is_empty() && app.mode == Mode::List => {
             app.refresh_active_table(table_height)?;
         }
         KeyCode::Char('/') if app.input.is_empty() => {
@@ -197,7 +185,10 @@ pub(crate) fn table_height_for_main(main_height: u16) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use tempfile::tempdir;
 
     use super::*;
     use crate::config::Config;
@@ -206,6 +197,8 @@ mod tests {
         AgentId, ConnectionKind, InventoryRow, Scope, SkillExposure, SkillId, SkillSource,
     };
     use crate::scanner::{ScanResult, SourceKind};
+    use crate::tui::source_table::SourceTableRow;
+    use crate::tui::unified_list::ListFilter;
 
     fn test_app() -> App {
         App::new(Config::default_config()).expect("default config resolves")
@@ -351,28 +344,6 @@ mod tests {
     }
 
     #[test]
-    fn scan_down_uses_table_navigation() {
-        let mut app = test_app();
-        app.mode = Mode::Scan;
-        app.scan_results = vec![
-            scan_result("repo-a/one"),
-            scan_result("repo-a/two"),
-            scan_result("repo-a/three"),
-            scan_result("repo-a/four"),
-        ];
-        app.enter_scan_mode();
-
-        handle_key_with_table_height(&mut app, key(KeyCode::Right), 3).expect("key handled");
-        handle_key_with_table_height(&mut app, key(KeyCode::Right), 3).expect("key handled");
-        handle_key_with_table_height(&mut app, key(KeyCode::Down), 3).expect("key handled");
-        handle_key_with_table_height(&mut app, key(KeyCode::Down), 3).expect("key handled");
-        handle_key_with_table_height(&mut app, key(KeyCode::Down), 3).expect("key handled");
-
-        assert_eq!(app.scan_table.selected_index(), Some(4));
-        assert_eq!(app.scan_table.viewport_offset(), 2);
-    }
-
-    #[test]
     fn group_rows_do_not_start_import_or_remove_actions() {
         let mut app = test_app();
         app.inventory = vec![inventory_row("one")];
@@ -393,29 +364,6 @@ mod tests {
             app.info_message.as_deref(),
             Some("Select a skill inside the group.")
         );
-
-        app.enter_scan_mode();
-        handle_key_with_table_height(&mut app, key(KeyCode::Char('i')), 3).expect("key handled");
-        assert_eq!(app.mode, Mode::Scan);
-        assert_eq!(
-            app.info_message.as_deref(),
-            Some("Select a skill inside the group.")
-        );
-    }
-
-    #[test]
-    fn i_in_scan_starts_import_for_selected_result() {
-        let mut app = test_app();
-        app.mode = Mode::Scan;
-        app.scan_results = vec![scan_result("repo-a/one")];
-        app.enter_scan_mode();
-        app.scan_table.move_right(3);
-        app.scan_table.move_right(3);
-
-        handle_key_with_table_height(&mut app, key(KeyCode::Char('i')), 3).expect("key handled");
-
-        assert_eq!(app.mode, Mode::Import);
-        assert!(matches!(app.import_step, ImportStep::SelectAgents { .. }));
     }
 
     #[test]
@@ -424,6 +372,20 @@ mod tests {
         app.mode = Mode::List;
         app.inventory = vec![inventory_row("one")];
         app.scan_results = vec![scan_result("repo-a/one")];
+        app.enter_list_mode();
+        app.list_table.move_right(3);
+        app.list_table.move_right(3);
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('i')), 3).expect("key handled");
+
+        assert_eq!(app.mode, Mode::Import);
+        assert!(matches!(app.import_step, ImportStep::SelectAgents { .. }));
+    }
+
+    #[test]
+    fn i_in_list_imports_a_selected_discovery_only_row() {
+        let mut app = test_app();
+        app.scan_results = vec![scan_result("repo-a/discovered")];
         app.enter_list_mode();
         app.list_table.move_right(3);
         app.list_table.move_right(3);
@@ -450,6 +412,26 @@ mod tests {
 
         assert_eq!(app.list_table.checked_items(), vec![0]);
         assert_eq!(app.input, "");
+    }
+
+    #[test]
+    fn discovery_only_rows_cannot_be_checked_or_removed() {
+        let mut app = test_app();
+        app.scan_results = vec![scan_result("repo-a/discovered")];
+        app.enter_list_mode();
+        app.list_table.move_right(3);
+        app.list_table.move_right(3);
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Char(' ')), 3).expect("key handled");
+        assert!(app.list_table.checked_items().is_empty());
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('x')), 3).expect("key handled");
+        assert_eq!(app.mode, Mode::Home);
+        assert_eq!(
+            app.info_message.as_deref(),
+            Some("Discovery-only skills have no exposures to remove.")
+        );
+        assert!(matches!(app.remove_step, RemoveStep::Done { .. }));
     }
 
     #[test]
@@ -492,7 +474,13 @@ mod tests {
     #[test]
     fn x_in_list_uses_checked_rows_for_batch_remove() {
         let mut app = test_app();
-        app.inventory = vec![inventory_row("one"), inventory_row("two")];
+        let mut one = inventory_row("one");
+        one.exposures.push(SkillExposure {
+            agent_id: AgentId("copilot".to_string()),
+            path: one.exposures[0].path.clone(),
+            connection: ConnectionKind::Symlink,
+        });
+        app.inventory = vec![one, inventory_row("two")];
         app.enter_list_mode();
         app.list_table.move_right(3);
         app.list_table.move_right(3);
@@ -530,24 +518,6 @@ mod tests {
     }
 
     #[test]
-    fn scan_import_shortcut_stages_plan_when_target_is_unambiguous() {
-        let mut app = test_app();
-        enable_only(&mut app, AGENT_ID_CODEX);
-        app.mode = Mode::Scan;
-        app.scan_results = vec![scan_result("repo-a/one")];
-        app.enter_scan_mode();
-        app.scan_table.move_right(3);
-        app.scan_table.move_right(3);
-
-        handle_key_with_table_height(&mut app, key(KeyCode::Char('i')), 3).expect("key handled");
-
-        match app.import_step {
-            ImportStep::ConfirmPlan { plan, .. } => assert!(!plan.is_empty()),
-            _ => panic!("expected import plan preview"),
-        }
-    }
-
-    #[test]
     fn list_import_shortcut_stages_plan_when_missing_target_is_unambiguous() {
         let mut app = test_app();
         enable_only(&mut app, AGENT_ID_CLAUDE);
@@ -581,24 +551,6 @@ mod tests {
             RemoveStep::ConfirmPlan { plan, .. } => assert!(!plan.is_empty()),
             _ => panic!("expected remove plan preview"),
         }
-    }
-
-    #[test]
-    fn r_in_scan_refreshes_and_clears_stale_selection() {
-        let mut app = test_app();
-        point_config_to_missing_paths(&mut app);
-        app.mode = Mode::Scan;
-        app.scan_results = vec![scan_result("repo-a/one")];
-        app.enter_scan_mode();
-        app.scan_table.move_right(3);
-        app.scan_table.move_right(3);
-
-        handle_key_with_table_height(&mut app, key(KeyCode::Char('r')), 3).expect("key handled");
-
-        assert_eq!(app.mode, Mode::Scan);
-        assert!(app.scan_results.is_empty());
-        assert_eq!(app.scan_table.selected_index(), None);
-        assert_eq!(app.scan_table.viewport_offset(), 0);
     }
 
     #[test]
@@ -639,7 +591,7 @@ mod tests {
 
         assert_eq!(
             app.selected_command_suggestion().map(|item| item.label),
-            Some("/scan")
+            Some("/source_add")
         );
 
         handle_key(&mut app, key(KeyCode::Up)).expect("key handled");
@@ -656,11 +608,12 @@ mod tests {
         app.input = "/".to_string();
         app.open_command_menu();
         app.move_command_suggestion_down();
+        app.move_command_suggestion_down();
 
         let should_quit = handle_key(&mut app, key(KeyCode::Enter)).expect("key handled");
 
         assert!(!should_quit);
-        assert_eq!(app.mode, Mode::Scan);
+        assert_eq!(app.mode, Mode::Config);
         assert_eq!(app.input, "");
         assert!(!app.command_menu_open());
     }
@@ -675,6 +628,94 @@ mod tests {
 
         assert_eq!(app.input, "/source_add ");
         assert!(app.command_menu_open());
+    }
+
+    #[test]
+    fn tab_cycles_the_list_filter_only_when_the_prompt_is_empty() {
+        let mut app = test_app();
+        let exposed = scan_result("repo-a/exposed");
+        let mut inventory = inventory_row("exposed");
+        inventory.exposures[0].path = exposed.skill_path.clone();
+        app.inventory = vec![inventory];
+        app.scan_results = vec![exposed, scan_result("repo-a/discovered")];
+        app.enter_list_mode();
+
+        handle_key(&mut app, key(KeyCode::Tab)).expect("key handled");
+        assert_eq!(app.list_filter, ListFilter::OnlyExposed);
+        assert_eq!(app.list_rows.len(), 1);
+
+        handle_key(&mut app, key(KeyCode::Tab)).expect("key handled");
+        assert_eq!(app.list_filter, ListFilter::OnlyDiscovered);
+        assert_eq!(app.list_rows.len(), 1);
+
+        handle_key(&mut app, key(KeyCode::Tab)).expect("key handled");
+        assert_eq!(app.list_filter, ListFilter::Full);
+        assert_eq!(app.list_rows.len(), 2);
+    }
+
+    #[test]
+    fn tab_completes_the_command_menu_instead_of_changing_the_list_filter() {
+        let mut app = test_app();
+        app.mode = Mode::List;
+        app.input = "/sou".to_string();
+        app.open_command_menu();
+
+        handle_key(&mut app, key(KeyCode::Tab)).expect("key handled");
+
+        assert_eq!(app.input, "/source_add ");
+        assert_eq!(app.list_filter, ListFilter::Full);
+    }
+
+    #[test]
+    fn refresh_preserves_the_active_list_filter() {
+        let mut app = test_app();
+        point_config_to_missing_paths(&mut app);
+        app.mode = Mode::List;
+        app.list_filter = ListFilter::OnlyDiscovered;
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('r')), 3).expect("key handled");
+
+        assert_eq!(app.list_filter, ListFilter::OnlyDiscovered);
+    }
+
+    #[test]
+    fn refresh_preserves_an_expanded_selected_list_skill() {
+        let temp = tempdir().unwrap();
+        let skill = temp.path().join("skills/discovered");
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(skill.join("SKILL.md"), "# Discovered").unwrap();
+        let mut config = Config::default_config();
+        config.skills.central_dir = temp.path().join("skills").to_string_lossy().into_owned();
+        config.skills.scan_parent_dirs.clear();
+        for agent in config.agents.values_mut() {
+            agent.global_dir = temp
+                .path()
+                .join(format!("{}-global", agent.display_name.to_lowercase()))
+                .to_string_lossy()
+                .into_owned();
+            agent.project_dir = None;
+            agent.shared_target_ids.clear();
+        }
+        config.shared_targets.clear();
+        let mut app = App::new(config).unwrap();
+
+        app.refresh_inventory().unwrap();
+        app.enter_list_mode();
+        app.list_table.move_right(3);
+        app.list_table.move_right(3);
+        assert!(matches!(
+            app.list_table.selected_row(),
+            Some(SourceTableRow::Item { .. })
+        ));
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('r')), 3).expect("key handled");
+
+        assert_eq!(app.list_filter, ListFilter::Full);
+        assert!(matches!(
+            app.list_table.selected_row(),
+            Some(SourceTableRow::Item { .. })
+        ));
+        assert_eq!(app.list_table.visible_rows().len(), 2);
     }
 
     #[test]

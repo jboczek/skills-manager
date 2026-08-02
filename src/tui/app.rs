@@ -8,6 +8,7 @@ use crate::inventory::{self, InventoryConfig};
 use crate::scanner::{self, ScanResult};
 use crate::source;
 use crate::tui::source_table::SourceTable;
+use crate::tui::unified_list::{ListFilter, UnifiedListRow, project_rows};
 
 mod command;
 mod state;
@@ -24,10 +25,11 @@ pub struct App {
     pub mode: Mode,
     pub input: String,
     pub inventory: Vec<InventoryRow>,
+    pub list_rows: Vec<UnifiedListRow>,
+    pub list_filter: ListFilter,
     pub scan_results: Vec<ScanResult>,
     pub status_messages: Vec<String>,
     pub list_table: SourceTable,
-    pub scan_table: SourceTable,
     pub config: Config,
     pub global_context: GlobalContext,
     pub prompt_label: String,
@@ -55,10 +57,11 @@ impl App {
             mode: Mode::Home,
             input: String::new(),
             inventory: Vec::new(),
+            list_rows: Vec::new(),
+            list_filter: ListFilter::Full,
             scan_results: Vec::new(),
             status_messages: Vec::new(),
             list_table: SourceTable::default(),
-            scan_table: SourceTable::default(),
             config,
             global_context,
             prompt_label: "Skills".to_string(),
@@ -132,12 +135,22 @@ impl App {
 
     /// Refresh inventory from filesystem.
     pub fn refresh_inventory(&mut self) -> anyhow::Result<()> {
-        self.inventory = helpers::fresh_global_inventory(&self.global_context)?;
+        let raw_scan_results =
+            scanner::scan(&helpers::scan_config_from_global(&self.global_context))?;
+        self.scan_results = raw_scan_results.clone();
+        scanner::exclude_dot_directory_results(&mut self.scan_results);
+        scanner::assign_disambiguation_indices(&mut self.scan_results);
+        self.inventory = inventory::build_inventory(&InventoryConfig {
+            agents: helpers::agent_targets_from_global(&self.global_context),
+            scan_results: raw_scan_results,
+        });
+        inventory::assign_disambiguation_indices(&mut self.inventory);
+        self.rebuild_list_rows();
         self.rebuild_status_messages();
         Ok(())
     }
 
-    /// Execute a deferred load (set by handle_command for list/scan) after a loading frame renders.
+    /// Execute a deferred list load after a loading frame renders.
     pub fn execute_pending_load(&mut self) -> anyhow::Result<()> {
         let Some(load) = self.pending_load.take() else {
             return Ok(());
@@ -147,12 +160,7 @@ impl App {
             PendingLoad::List => {
                 self.refresh_inventory()?;
                 self.enter_list_mode();
-                self.info_message = Some(format!("Loaded {} skill row(s).", self.inventory.len()));
-            }
-            PendingLoad::Scan => {
-                self.reload_scan_results()?;
-                self.enter_scan_mode();
-                self.info_message = Some(format!("Found {} skill(s).", self.scan_results.len()));
+                self.info_message = Some(self.list_summary_message());
             }
         }
         Ok(())
@@ -187,11 +195,6 @@ impl App {
                 self.loading = true;
                 self.pending_load = Some(PendingLoad::List);
             }
-            TuiCommand::Scan => {
-                self.mode = Mode::Scan;
-                self.loading = true;
-                self.pending_load = Some(PendingLoad::Scan);
-            }
             TuiCommand::SourceAdd(url) => {
                 if url.is_empty() {
                     self.error_message =
@@ -209,7 +212,7 @@ impl App {
             TuiCommand::Import => {
                 self.import_step = ImportStep::default();
                 self.info_message = Some(
-                    "Use table shortcuts: run /scan, select a row, then press i. From /list, press Space to check rows, then i to create missing enabled-agent exposures."
+                    "Use table shortcuts: run /list, select a discovery row and press i, or press Space then i on exposed rows to create missing enabled-agent exposures."
                         .to_string(),
                 );
             }
@@ -308,42 +311,35 @@ impl App {
 
     pub fn enter_list_mode(&mut self) {
         self.mode = Mode::List;
-        self.list_table = SourceTable::new(self.list_table_items());
+        self.list_filter = ListFilter::Full;
+        self.rebuild_list_rows();
+        self.list_table = SourceTable::new(self.unified_list_table_items());
     }
 
-    pub fn enter_scan_mode(&mut self) {
-        self.mode = Mode::Scan;
-        self.scan_table = SourceTable::new(self.scan_table_items());
+    pub fn cycle_list_filter(&mut self, viewport_height: usize) {
+        self.list_filter = self.list_filter.next();
+        self.rebuild_list_rows();
+        self.list_table
+            .refresh(self.unified_list_table_items(), viewport_height);
     }
 
     pub fn refresh_active_table(&mut self, viewport_height: usize) -> anyhow::Result<()> {
         self.error_message = None;
         self.info_message = None;
 
-        match self.mode {
-            Mode::List => {
-                self.refresh_inventory()?;
-                let items = self.list_table_items();
-                self.list_table.refresh(items, viewport_height);
-                self.info_message = Some(format!("Loaded {} skill row(s).", self.inventory.len()));
-            }
-            Mode::Scan => {
-                self.reload_scan_results()?;
-                let items = self.scan_table_items();
-                self.scan_table.refresh(items, viewport_height);
-                self.info_message = Some(format!("Found {} skill(s).", self.scan_results.len()));
-            }
-            _ => {}
+        if self.mode == Mode::List {
+            self.refresh_inventory()?;
+            let items = self.unified_list_table_items();
+            self.list_table.refresh(items, viewport_height);
+            self.info_message = Some(self.list_summary_message());
         }
 
         Ok(())
     }
 
     pub fn sync_active_table(&mut self, viewport_height: usize) {
-        match self.mode {
-            Mode::List => self.list_table.sync(viewport_height),
-            Mode::Scan => self.scan_table.sync(viewport_height),
-            _ => {}
+        if self.mode == Mode::List {
+            self.list_table.sync(viewport_height);
         }
     }
 
@@ -353,6 +349,23 @@ impl App {
         scanner::assign_disambiguation_indices(&mut self.scan_results);
         self.rebuild_status_messages();
         Ok(())
+    }
+
+    fn rebuild_list_rows(&mut self) {
+        self.list_rows = project_rows(&self.inventory, &self.scan_results, self.list_filter);
+    }
+
+    fn list_summary_message(&self) -> String {
+        let discovered = project_rows(
+            &self.inventory,
+            &self.scan_results,
+            ListFilter::OnlyDiscovered,
+        )
+        .len();
+        format!(
+            "Imported: {} · Discovered not imported: {discovered}",
+            self.inventory.len()
+        )
     }
 
     fn rebuild_status_messages(&mut self) {
@@ -386,6 +399,7 @@ impl App {
         self.initial_load = None;
         self.scan_results = load.scan_results;
         self.inventory = load.inventory;
+        self.rebuild_list_rows();
         self.rebuild_status_messages();
     }
 
@@ -427,6 +441,7 @@ mod tests {
     use crate::plan::{ChangePlan, StagedChange};
     use crate::scanner::SourceKind;
     use crate::tui::source_table::SourceTableRow;
+    use crate::tui::unified_list::{ListFilter, UnifiedListRow};
 
     fn test_config(root: &std::path::Path) -> Config {
         let mut config = Config::default_config();
@@ -520,6 +535,23 @@ mod tests {
         );
     }
 
+    #[test]
+    fn entering_list_mode_projects_full_rows_without_repeating_exposed_sources() {
+        let mut app = test_app();
+        let exposed = scan_result("repo-a/exposed");
+        let mut inventory = inventory_row("repo-a/exposed");
+        inventory.exposures[0].path = exposed.skill_path.clone();
+        app.inventory = vec![inventory];
+        app.scan_results = vec![exposed, scan_result("repo-a/discovered")];
+
+        app.enter_list_mode();
+
+        assert_eq!(app.list_filter, ListFilter::Full);
+        assert_eq!(app.list_rows.len(), 2);
+        assert!(matches!(app.list_rows[0], UnifiedListRow::Exposed(_)));
+        assert!(matches!(app.list_rows[1], UnifiedListRow::Discovered(_)));
+    }
+
     fn scan_result(skill_id: &str) -> ScanResult {
         ScanResult {
             skill_id: skill_id.to_string(),
@@ -596,6 +628,14 @@ mod tests {
     }
 
     #[test]
+    fn parse_command_scan_is_unknown_in_the_tui() {
+        assert_eq!(
+            parse_command("/scan"),
+            TuiCommand::Unknown("/scan".to_string())
+        );
+    }
+
+    #[test]
     fn parse_command_import_with_arg() {
         assert_eq!(parse_command("import repo-a/skill"), TuiCommand::Import);
     }
@@ -667,19 +707,6 @@ mod tests {
         assert_eq!(app.list_table.selected_index(), Some(0));
         assert_eq!(app.list_table.viewport_offset(), 0);
         assert_eq!(app.list_table.visible_rows().len(), 1);
-    }
-
-    #[test]
-    fn enter_scan_mode_selects_first_result_when_results_exist() {
-        let mut app = test_app();
-        app.scan_results = vec![scan_result("repo-a/one"), scan_result("repo-a/two")];
-
-        app.enter_scan_mode();
-
-        assert_eq!(app.mode, Mode::Scan);
-        assert_eq!(app.scan_table.selected_index(), Some(0));
-        assert_eq!(app.scan_table.viewport_offset(), 0);
-        assert_eq!(app.scan_table.visible_rows().len(), 1);
     }
 
     #[test]
@@ -773,7 +800,67 @@ mod tests {
     }
 
     #[test]
-    fn list_and_scan_group_global_rows_by_source_repository() {
+    fn remove_all_creates_one_change_per_unique_target_path() {
+        let mut app = test_app();
+        let mut row = inventory_row("repo-a/skill");
+        row.exposures.push(SkillExposure {
+            agent_id: AgentId("codex".to_string()),
+            path: PathBuf::from("/agents/claude/skill"),
+            connection: ConnectionKind::Symlink,
+        });
+        row.exposures.push(SkillExposure {
+            agent_id: AgentId("copilot".to_string()),
+            path: PathBuf::from("/agents/copilot/skill"),
+            connection: ConnectionKind::PhysicalCopy,
+        });
+        app.inventory = vec![row];
+        app.enter_list_mode();
+        app.list_table.move_right(5);
+        app.list_table.move_right(5);
+
+        app.start_remove_from_selected_list_row()
+            .expect("remove action");
+        app.advance_remove("all").expect("all selection succeeds");
+
+        let RemoveStep::ConfirmPlan { plan, .. } = &app.remove_step else {
+            panic!("expected a remove plan after choosing all");
+        };
+        let target_paths = plan
+            .changes
+            .iter()
+            .map(|change| match change {
+                StagedChange::DetachSkill { target_path, .. }
+                | StagedChange::DeletePhysicalCopy { target_path, .. } => target_path.clone(),
+                _ => panic!("expected removal changes"),
+            })
+            .collect::<Vec<_>>();
+        assert!(plan.has_physical_deletes());
+        assert_eq!(
+            target_paths,
+            vec![
+                PathBuf::from("/agents/claude/skill"),
+                PathBuf::from("/agents/copilot/skill"),
+            ]
+        );
+    }
+
+    #[test]
+    fn list_summary_reports_imported_and_discovered_rows_separately() {
+        let mut app = test_app();
+        let exposed = scan_result("repo-a/exposed");
+        let mut imported = inventory_row("repo-a/exposed");
+        imported.exposures[0].path = exposed.skill_path.clone();
+        app.inventory = vec![imported];
+        app.scan_results = vec![exposed, scan_result("repo-a/discovered")];
+
+        assert_eq!(
+            app.list_summary_message(),
+            "Imported: 1 · Discovered not imported: 1"
+        );
+    }
+
+    #[test]
+    fn list_groups_global_rows_by_source_repository_with_privacy_safe_paths() {
         let mut app = test_app();
         let repo_path = PathBuf::from("/Users/alice/pgit/repo-a");
         let skill_path = repo_path.join(".agents/skills/one");
@@ -795,25 +882,14 @@ mod tests {
         app.inventory = vec![row];
 
         app.enter_list_mode();
-        let list_key = app.list_table.groups()[0].key.clone();
         app.list_table.move_right(4);
         let list_path = match &app.list_table.visible_rows()[1] {
             SourceTableRow::Item { display_path, .. } => display_path.clone(),
             _ => panic!("expected list child row"),
         };
 
-        app.enter_scan_mode();
-        let scan_key = app.scan_table.groups()[0].key.clone();
-        app.scan_table.move_right(4);
-        let scan_path = match &app.scan_table.visible_rows()[1] {
-            SourceTableRow::Item { display_path, .. } => display_path.clone(),
-            _ => panic!("expected scan child row"),
-        };
-
-        assert_eq!(list_key, scan_key);
         assert_eq!(list_path, ".agents/skills/one");
-        assert_eq!(scan_path, list_path);
-        assert!(!scan_path.contains("alice"));
+        assert!(!list_path.contains("alice"));
     }
 
     #[test]
@@ -1089,7 +1165,7 @@ mod tests {
 
         assert_eq!(
             labels,
-            vec!["/list", "/scan", "/source_add", "/config", "/help", "/quit"]
+            vec!["/list", "/source_add", "/config", "/help", "/quit"]
         );
         assert!(
             app.filtered_command_suggestions()
@@ -1113,7 +1189,7 @@ mod tests {
     }
 
     #[test]
-    fn command_suggestions_filter_by_command_text() {
+    fn command_suggestions_do_not_offer_scan() {
         let mut app = test_app();
         app.input = "/sc".to_string();
         app.open_command_menu();
@@ -1124,7 +1200,7 @@ mod tests {
             .map(|suggestion| suggestion.label)
             .collect::<Vec<_>>();
 
-        assert_eq!(labels, vec!["/scan"]);
+        assert!(labels.is_empty());
     }
 
     #[test]
@@ -1156,7 +1232,7 @@ mod tests {
 
         assert_eq!(
             app.selected_command_suggestion().map(|item| item.label),
-            Some("/scan")
+            Some("/source_add")
         );
 
         app.move_command_suggestion_up();

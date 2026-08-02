@@ -44,6 +44,12 @@ Columns include:
 
 Unknown Git provenance is valid inventory state and renders as `unknown`.
 
+## TUI Unified Browse View
+
+The standalone `skills-manager list` and `skills-manager scan` commands keep their separate output contracts. The interactive TUI instead uses `/list` as one browser over both data sets. It refreshes the source catalog and inventory from the same scan, then offers Full, Only exposed, and Only discovered not applied views.
+
+Full retains every inventory row and adds each discovered source whose canonical source path has no real exposure. Discovery-only rows do not become inventory rows: their agent and scope columns are `-`, their connection is `not exposed`, and they are importable but cannot be checked for batch changes or removed. Global and project-local inventory rows remain distinct even when they resolve to the same source.
+
 ## Effective Availability
 
 Claude, Codex, and Copilot are the product-facing agent columns. Config-only shared targets such as `.agents` are never rendered as an agent column or command target.

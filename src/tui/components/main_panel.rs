@@ -22,7 +22,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
                 area,
                 " Home ",
                 &format!(
-                    "{last_operation}Welcome to Skills Manager.\n\nLoaded skills: {}\nEnabled agents: {}\n\nTry /list, /scan, /source_add, /config or /help. Use table shortcuts for import and remove actions.",
+                    "{last_operation}Welcome to Skills Manager.\n\nLoaded skills: {}\nEnabled agents: {}\n\nTry /list, /source_add, /config or /help. Use table shortcuts for import and remove actions.",
                     app.loaded_skills_label(),
                     app.config
                         .agents
@@ -36,14 +36,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             if app.loading {
                 render_text_panel(frame, area, " Inventory ", "Loading...");
             } else {
-                table::render_inventory_table(frame, area, &app.inventory, &app.list_table);
-            }
-        }
-        Mode::Scan => {
-            if app.loading {
-                render_text_panel(frame, area, " Scan ", "Loading...");
-            } else {
-                table::render_scan_table(frame, area, &app.scan_results, &app.scan_table);
+                table::render_unified_inventory_table(frame, area, &app.list_rows, &app.list_table);
             }
         }
         Mode::SourceAdd => render_source_add(frame, area, app),
@@ -71,7 +64,7 @@ fn render_help(frame: &mut Frame, area: Rect) {
 }
 
 fn help_text() -> &'static str {
-    "Commands\n  /list                       Show current inventory\n  /scan                       Scan for available skills\n  /source_add <clone-url>     Add a source from an HTTPS or SSH clone URL\n  /config                     Show config\n  /help                       Show this help\n  /quit                       Exit\n\nTable actions\n  Space              Check or uncheck list skill rows\n  i                  Import checked or selected skill rows\n  x                  Remove checked or selected list skill rows\n  r                  Refresh current table\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
+    "Commands\n  /list                       Browse exposed and discovered skills\n  /source_add <clone-url>     Add a source from an HTTPS or SSH clone URL\n  /config                     Show config\n  /help                       Show this help\n  /quit                       Exit\n\nTable actions\n  Tab                Cycle Full, exposed, and discovery-only views\n  Space              Check or uncheck exposed skill rows\n  i                  Import a selected discovery skill or checked exposed rows\n  x                  Remove checked or selected exposed skill rows\n  r                  Refresh the current list view\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
 }
 
 fn render_source_add(frame: &mut Frame, area: Rect, app: &App) {
@@ -221,7 +214,7 @@ fn render_text_panel(frame: &mut Frame, area: Rect, title: &str, body: &str) {
 }
 
 fn removable_exposure_lines(row: &InventoryRow) -> String {
-    removable_exposures(row)
+    let mut lines = removable_exposures(row)
         .iter()
         .enumerate()
         .map(|(index, exposure)| {
@@ -233,8 +226,9 @@ fn removable_exposure_lines(row: &InventoryRow) -> String {
                 connection_label(exposure.connection)
             )
         })
-        .collect::<Vec<_>>()
-        .join("\n")
+        .collect::<Vec<_>>();
+    lines.push("all. Remove from all agents".to_string());
+    lines.join("\n")
 }
 
 fn connection_label(connection: ConnectionKind) -> &'static str {
@@ -249,6 +243,7 @@ fn connection_label(connection: ConnectionKind) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::{AgentId, SkillExposure, SkillId, SkillSource};
 
     #[test]
     fn help_points_to_table_actions_instead_of_standalone_mutation_commands() {
@@ -256,9 +251,11 @@ mod tests {
 
         assert!(!text.contains("/import <skill>"));
         assert!(!text.contains("/remove <skill>"));
-        assert!(text.contains("Import checked or selected skill rows"));
-        assert!(text.contains("Remove checked or selected list skill rows"));
-        assert!(text.contains("Check or uncheck list skill rows"));
+        assert!(!text.contains("/scan"));
+        assert!(text.contains("Import a selected discovery skill or checked exposed rows"));
+        assert!(text.contains("Remove checked or selected exposed skill rows"));
+        assert!(text.contains("Check or uncheck exposed skill rows"));
+        assert!(text.contains("Cycle Full, exposed, and discovery-only views"));
         assert!(text.contains("Collapse or expand source groups"));
     }
 
@@ -268,5 +265,36 @@ mod tests {
 
         assert!(text.contains("/source_add <clone-url>"));
         assert!(text.contains("HTTPS or SSH clone URL"));
+    }
+
+    #[test]
+    fn remove_picker_offers_an_all_agents_choice() {
+        let row = InventoryRow {
+            skill_id: SkillId {
+                namespace: "repo-a".to_string(),
+                name: "skill".to_string(),
+            },
+            source: SkillSource {
+                repo_name: None,
+                repo_path: None,
+                remote_url: None,
+            },
+            scope: crate::domain::Scope::Global,
+            exposures: vec![
+                SkillExposure {
+                    agent_id: AgentId("claude".to_string()),
+                    path: "/agents/claude/skill".into(),
+                    connection: ConnectionKind::Symlink,
+                },
+                SkillExposure {
+                    agent_id: AgentId("codex".to_string()),
+                    path: "/agents/codex/skill".into(),
+                    connection: ConnectionKind::Symlink,
+                },
+            ],
+            disambiguation_index: None,
+        };
+
+        assert!(removable_exposure_lines(&row).contains("all. Remove from all agents"));
     }
 }
