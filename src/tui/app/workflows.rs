@@ -93,6 +93,22 @@ impl App {
         self.error_message = None;
         self.info_message = None;
 
+        let checked_inventory = self.checked_inventory_rows();
+        if checked_inventory
+            .iter()
+            .any(|row| row.scope == Scope::ProjectLocal)
+        {
+            self.info_message =
+                Some("Project-local exposures are read-only and cannot be imported.".to_string());
+            return Ok(());
+        }
+
+        let checked = self.checked_import_scan_results();
+        if !checked.is_empty() {
+            self.start_import_for_scan_results(checked, self.enabled_agent_targets());
+            return Ok(());
+        }
+
         if let Some(selected) = self.selected_discovery_row() {
             self.start_import_for_scan_result(selected, self.enabled_agent_targets());
             return Ok(());
@@ -103,11 +119,7 @@ impl App {
             self.info_message = Some(self.selection_required_message(&self.list_table));
             return Ok(());
         }
-        if rows.len() == 1 {
-            self.start_import_for_inventory_row(rows.into_iter().next().unwrap());
-        } else {
-            self.start_import_for_inventory_rows(rows);
-        }
+        self.start_import_for_inventory_row(rows.into_iter().next().unwrap());
 
         Ok(())
     }
@@ -147,52 +159,6 @@ impl App {
                 };
             }
         }
-    }
-
-    fn start_import_for_inventory_rows(&mut self, rows: Vec<InventoryRow>) {
-        if rows.iter().any(|row| row.scope == Scope::ProjectLocal) {
-            self.info_message =
-                Some("Project-local exposures are read-only and cannot be imported.".to_string());
-            return;
-        }
-
-        let mut changes = Vec::new();
-        let mut first_selected = None;
-        for row in rows {
-            let target_agents = self.missing_enabled_agent_targets(&row);
-            if target_agents.is_empty() {
-                continue;
-            }
-            let Some(selected) = self.scan_result_for_import_row(&row) else {
-                continue;
-            };
-            first_selected.get_or_insert_with(|| selected.clone());
-            changes.extend(self.build_import_plan(&selected, &target_agents).changes);
-        }
-
-        self.mode = Mode::Import;
-        let plan = ChangePlan::new(changes);
-        if plan.is_empty() {
-            self.import_step = ImportStep::Done {
-                message: "Nothing to do.".to_string(),
-            };
-            self.info_message = Some("Nothing to do.".to_string());
-        } else if let Some(selected) = first_selected {
-            self.import_step = ImportStep::ConfirmPlan {
-                plan,
-                selected: Box::new(selected),
-                target_agents: Vec::new(),
-            };
-        }
-    }
-
-    fn scan_result_for_import_row(&self, row: &InventoryRow) -> Option<ScanResult> {
-        if let Some(selected) = self.scan_result_for_inventory_row(row) {
-            return Some(selected.clone());
-        }
-        let skill_id = display_inventory_row(row);
-        let matches = helpers::find_scan_results_by_id(&skill_id, &self.scan_results);
-        (matches.len() == 1).then(|| matches[0].clone())
     }
 
     fn actionable_inventory_rows(&self) -> Vec<InventoryRow> {
@@ -330,7 +296,12 @@ impl App {
                     };
                     return Ok(());
                 }
-                let plan = self.build_import_plan(&selected, &target_agents);
+                let plan = ChangePlan::new(
+                    selected
+                        .iter()
+                        .flat_map(|skill| self.build_import_plan(skill, &target_agents).changes)
+                        .collect(),
+                );
                 if plan.is_empty() {
                     self.import_step = ImportStep::Done {
                         message: "Nothing to do.".to_string(),
@@ -602,6 +573,14 @@ impl App {
         selected: ScanResult,
         target_agents: Vec<AgentTarget>,
     ) {
+        self.start_import_for_scan_results(vec![selected], target_agents);
+    }
+
+    fn start_import_for_scan_results(
+        &mut self,
+        selected: Vec<ScanResult>,
+        target_agents: Vec<AgentTarget>,
+    ) {
         self.mode = Mode::Import;
 
         if target_agents.is_empty() {
@@ -613,7 +592,12 @@ impl App {
         }
 
         if target_agents.len() == 1 {
-            let plan = self.build_import_plan(&selected, &target_agents);
+            let plan = ChangePlan::new(
+                selected
+                    .iter()
+                    .flat_map(|skill| self.build_import_plan(skill, &target_agents).changes)
+                    .collect(),
+            );
             self.import_step = if plan.is_empty() {
                 self.info_message = Some("Nothing to do.".to_string());
                 ImportStep::Done {
@@ -622,7 +606,7 @@ impl App {
             } else {
                 ImportStep::ConfirmPlan {
                     plan,
-                    selected: Box::new(selected),
+                    selected,
                     target_agents,
                 }
             };
@@ -630,7 +614,7 @@ impl App {
         }
 
         self.import_step = ImportStep::SelectAgents {
-            selected: Box::new(selected),
+            selected,
             agents: target_agents
                 .into_iter()
                 .map(|target| AgentSelectionItem {

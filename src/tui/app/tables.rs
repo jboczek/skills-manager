@@ -40,6 +40,17 @@ impl App {
             .collect()
     }
 
+    pub(crate) fn checked_import_scan_results(&self) -> Vec<ScanResult> {
+        self.list_table
+            .checked_items()
+            .into_iter()
+            .filter_map(|item| match self.list_rows.get(item)? {
+                UnifiedListRow::Exposed(row) => self.scan_result_for_inventory_row(row).cloned(),
+                UnifiedListRow::Discovered(result) => Some(result.clone()),
+            })
+            .collect()
+    }
+
     pub(super) fn selection_required_message(&self, table: &SourceTable) -> String {
         if matches!(table.selected_row(), Some(SourceTableRow::Group { .. })) {
             "Select a skill inside the group.".to_string()

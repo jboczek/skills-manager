@@ -95,9 +95,7 @@ fn handle_key_with_table_height(
             app.toggle_agent_selection();
         }
         KeyCode::Char(' ') if app.input.is_empty() && app.mode == Mode::List => {
-            if app.selected_inventory_row().is_some() {
-                app.list_table.toggle_selected_check();
-            }
+            app.list_table.toggle_selected_check();
         }
         KeyCode::Up if app.mode == Mode::List => {
             app.list_table.move_up(table_height);
@@ -415,7 +413,7 @@ mod tests {
     }
 
     #[test]
-    fn discovery_only_rows_cannot_be_checked_or_removed() {
+    fn discovery_only_rows_can_be_checked_but_not_removed() {
         let mut app = test_app();
         app.scan_results = vec![scan_result("repo-a/discovered")];
         app.enter_list_mode();
@@ -423,7 +421,7 @@ mod tests {
         app.list_table.move_right(3);
 
         handle_key_with_table_height(&mut app, key(KeyCode::Char(' ')), 3).expect("key handled");
-        assert!(app.list_table.checked_items().is_empty());
+        assert_eq!(app.list_table.checked_items(), vec![0]);
 
         handle_key_with_table_height(&mut app, key(KeyCode::Char('x')), 3).expect("key handled");
         assert_eq!(app.mode, Mode::Home);
@@ -432,6 +430,42 @@ mod tests {
             Some("Discovery-only skills have no exposures to remove.")
         );
         assert!(matches!(app.remove_step, RemoveStep::Done { .. }));
+    }
+
+    #[test]
+    fn i_in_list_imports_checked_discoveries_to_one_selected_agent() {
+        let mut app = test_app();
+        point_config_to_missing_paths(&mut app);
+        for (id, agent) in &mut app.config.agents {
+            agent.enabled = id == AGENT_ID_CLAUDE || id == AGENT_ID_CODEX;
+        }
+        app.global_context = app.config.resolve_global_context().unwrap();
+        app.scan_results = vec![scan_result("repo-a/one"), scan_result("repo-a/two")];
+        app.enter_list_mode();
+        app.list_table.move_right(3);
+        app.list_table.move_right(3);
+        handle_key_with_table_height(&mut app, key(KeyCode::Char(' ')), 3).expect("key handled");
+        app.list_table.move_down(3);
+        handle_key_with_table_height(&mut app, key(KeyCode::Char(' ')), 3).expect("key handled");
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('i')), 3).expect("key handled");
+
+        let ImportStep::SelectAgents { selected, .. } = &app.import_step else {
+            panic!("expected target selection for checked discoveries");
+        };
+        assert_eq!(selected.len(), 2);
+
+        app.toggle_agent_selection();
+        app.advance_import("").expect("target selection confirms");
+
+        match &app.import_step {
+            ImportStep::ConfirmPlan { plan, .. } => {
+                assert_eq!(plan.changes.len(), 2);
+                assert!(plan.render().contains("Codex"));
+                assert!(!plan.render().contains("Claude"));
+            }
+            _ => panic!("expected shared-target batch import plan"),
+        }
     }
 
     #[test]
@@ -740,7 +774,7 @@ mod tests {
         let mut app = test_app();
         app.mode = Mode::Import;
         app.import_step = ImportStep::SelectAgents {
-            selected: Box::new(scan_result("repo-a/skill")),
+            selected: vec![scan_result("repo-a/skill")],
             agents: vec![
                 AgentSelectionItem {
                     target: crate::inventory::AgentTarget {
