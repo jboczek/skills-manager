@@ -48,13 +48,13 @@ pub struct App {
     pub pending_load: Option<PendingLoad>,
     initial_loading: bool,
     initial_load: Option<Receiver<anyhow::Result<InitialLoad>>>,
+    repository_update_load: Option<Receiver<Vec<RepositoryUpdate>>>,
     command_menu_selected: Option<usize>,
 }
 
 struct InitialLoad {
     scan_results: Vec<ScanResult>,
     inventory: Vec<InventoryRow>,
-    repository_updates: Vec<RepositoryUpdate>,
 }
 
 impl App {
@@ -83,6 +83,7 @@ impl App {
             pending_load: None,
             initial_loading: false,
             initial_load: None,
+            repository_update_load: None,
             command_menu_selected: None,
         })
     }
@@ -130,6 +131,22 @@ impl App {
         }
     }
 
+    pub fn poll_repository_update_load(&mut self) {
+        let Some(receiver) = self.repository_update_load.as_ref() else {
+            return;
+        };
+        let Ok(updates) = receiver.try_recv() else {
+            return;
+        };
+
+        self.repository_update_load = None;
+        self.repository_updates = updates;
+        if self.mode == Mode::List {
+            self.list_table
+                .set_repository_updates(&self.repository_updates);
+        }
+    }
+
     pub fn initial_load_in_progress(&self) -> bool {
         self.initial_loading
     }
@@ -149,7 +166,8 @@ impl App {
         self.scan_results = raw_scan_results.clone();
         scanner::exclude_dot_directory_results(&mut self.scan_results);
         scanner::assign_disambiguation_indices(&mut self.scan_results);
-        self.repository_updates = repository_updates(&self.scan_results);
+        self.repository_updates.clear();
+        self.start_repository_update_load();
         self.inventory = inventory::build_inventory(&InventoryConfig {
             agents: helpers::agent_targets_from_global(&self.global_context),
             scan_results: raw_scan_results,
@@ -419,9 +437,14 @@ impl App {
         self.initial_load = None;
         self.scan_results = load.scan_results;
         self.inventory = load.inventory;
-        self.repository_updates = load.repository_updates;
+        self.repository_updates.clear();
+        self.start_repository_update_load();
         self.rebuild_list_rows();
         self.rebuild_status_messages();
+    }
+
+    fn start_repository_update_load(&mut self) {
+        self.repository_update_load = Some(repository_updates(&self.scan_results));
     }
 
     fn loaded_skill_count(&self) -> usize {
@@ -434,7 +457,6 @@ fn load_initial_state(context: GlobalContext) -> anyhow::Result<InitialLoad> {
     let mut scan_results = raw_scan_results.clone();
     scanner::exclude_dot_directory_results(&mut scan_results);
     scanner::assign_disambiguation_indices(&mut scan_results);
-    let repository_updates = repository_updates(&scan_results);
 
     let mut inventory = inventory::build_inventory(&InventoryConfig {
         agents: helpers::agent_targets_from_global(&context),
@@ -445,11 +467,10 @@ fn load_initial_state(context: GlobalContext) -> anyhow::Result<InitialLoad> {
     Ok(InitialLoad {
         scan_results,
         inventory,
-        repository_updates,
     })
 }
 
-fn repository_updates(scan_results: &[ScanResult]) -> Vec<RepositoryUpdate> {
+fn repository_updates(scan_results: &[ScanResult]) -> Receiver<Vec<RepositoryUpdate>> {
     let mut repositories = Vec::new();
     for result in scan_results {
         let Some(repo_path) = result.repo_path.as_ref() else {
@@ -461,19 +482,15 @@ fn repository_updates(scan_results: &[ScanResult]) -> Vec<RepositoryUpdate> {
         repositories.push(repo_path.clone());
     }
 
-    repositories
-        .into_iter()
-        .filter_map(|repo_path| match git::repository_update(&repo_path) {
-            Ok(update) => update,
-            Err(error) => {
-                eprintln!(
-                    "Warning: failed to check repository updates for {}: {error}",
-                    repo_path.display()
-                );
-                None
-            }
-        })
-        .collect()
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        let updates = repositories
+            .into_iter()
+            .filter_map(|repo_path| git::repository_update(&repo_path).ok().flatten())
+            .collect();
+        let _ = sender.send(updates);
+    });
+    receiver
 }
 
 #[cfg(test)]
@@ -481,6 +498,8 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
     use std::process::Command;
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
 
     use tempfile::tempdir;
 
@@ -567,7 +586,6 @@ mod tests {
         app.apply_initial_load(InitialLoad {
             scan_results: vec![scan_result("repo-a/one")],
             inventory: vec![inventory_row("repo-a/one")],
-            repository_updates: Vec::new(),
         });
 
         assert!(!app.initial_load_in_progress());
@@ -584,6 +602,34 @@ mod tests {
                 .iter()
                 .any(|message| message.contains("Scan: OK"))
         );
+    }
+
+    #[test]
+    fn repository_update_results_are_polled_without_blocking_the_list() {
+        let mut app = test_app();
+        let (sender, receiver) = mpsc::channel();
+        app.repository_update_load = Some(receiver);
+
+        let started = Instant::now();
+        app.poll_repository_update_load();
+
+        assert!(started.elapsed() < Duration::from_millis(100));
+        assert!(app.repository_update_load.is_some());
+        assert!(app.repository_updates.is_empty());
+
+        sender
+            .send(vec![RepositoryUpdate {
+                repo_path: PathBuf::from("/skills/repository"),
+                commits: vec![crate::git::RepositoryCommit {
+                    id: "abc1234".to_string(),
+                    subject: "Update".to_string(),
+                }],
+            }])
+            .unwrap();
+        app.poll_repository_update_load();
+
+        assert!(app.repository_update_load.is_none());
+        assert_eq!(app.repository_updates.len(), 1);
     }
 
     #[test]

@@ -4,6 +4,7 @@
 
 | Time | Change | Docs |
 |---|---|---|
+| 2026-08-22 20:30 | Made `/list` repository-update checks asynchronous, hid failed-fetch noise, and moved the green Cmd+U notice to one agent-column line. | `README.md`, `features/assistant-style-tui-shell.md`, `features/git-source-import.md` |
 | 2026-08-22 19:02 | Added TUI detection and review of remote repository commits, with Cmd+U and confirmed fast-forward-only pull. | `README.md`, `features/assistant-style-tui-shell.md`, `features/git-source-import.md` |
 
 ## 2026-07-12

@@ -47,11 +47,7 @@ pub fn repository_update(repo: &Path) -> anyhow::Result<Option<RepositoryUpdate>
         .output()
         .with_context(|| format!("failed to start git fetch for {}", repo.display()))?;
     if !fetch.status.success() {
-        bail!(
-            "git fetch failed for {}: {}",
-            repo.display(),
-            String::from_utf8_lossy(&fetch.stderr).trim()
-        );
+        return Ok(None);
     }
 
     let upstream = Command::new("git")
@@ -224,6 +220,19 @@ mod tests {
             "base\nremote update\n"
         );
         assert!(repository_update(&local).unwrap().is_none());
+    }
+
+    #[test]
+    fn repository_update_ignores_a_fetch_failure() {
+        let temp = tempdir().unwrap();
+        let repo = temp.path().join("skills");
+        git(temp.path(), &["init", "skills"]);
+        git(
+            &repo,
+            &["remote", "add", "origin", "file:///missing/repository.git"],
+        );
+
+        assert_eq!(repository_update(&repo).unwrap(), None);
     }
 
     fn git(directory: &Path, args: &[&str]) {

@@ -40,7 +40,7 @@ Import and remove actions run only from expanded skill rows; group rows never im
 
 List groups represent repositories. Global rows are grouped by source repository, while project-local rows are grouped by their containing project. Scope remains visible per row. Project-local rows are read-only, so `i` and `x` report that they cannot mutate those rows.
 
-When a global repository has commits on its origin that are not in the local checkout, its group row shows a repository-update notice. `Cmd+U` opens the missing commit subjects; entering `y` runs a fast-forward-only `git pull` and refreshes the list.
+When a global repository has commits on its origin that are not in the local checkout, `/list` checks for them in the background and shows a green one-line repository-update notice from the `CLAUDE` column. Failed checks stay out of the interface. `Cmd+U` opens the missing commit subjects; entering `y` runs a fast-forward-only `git pull` and refreshes the list.
 
 ## Configuration
 

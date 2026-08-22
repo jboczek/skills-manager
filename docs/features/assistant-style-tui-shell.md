@@ -62,7 +62,7 @@ Import mode is reached from table shortcuts or existing flow state. It guides th
 
 Remove mode is reached from table shortcuts or existing flow state. It guides the user through exposure selection when needed, staged plan preview, confirmation, apply, rescan, and result rendering.
 
-Repository-update mode is reached with Cmd+U from a repository group or one of its skill rows when origin has missing commits. It lists the short commit IDs and subjects, then runs a fast-forward-only pull after the user enters y.
+Repository-update mode is reached with Cmd+U from a repository group or one of its skill rows when a background origin check finds missing commits. Its green one-line list notice begins in the first agent column, and failed checks do not surface Git stderr. The mode lists the short commit IDs and subjects, then runs a fast-forward-only pull after the user enters y.
 
 ## Key Behavior
 

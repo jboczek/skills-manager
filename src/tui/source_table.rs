@@ -63,13 +63,7 @@ pub enum SourceTableRow {
 
 impl SourceTableRow {
     pub fn rendered_height(&self) -> usize {
-        match self {
-            Self::Group {
-                repository_update: Some(_),
-                ..
-            } => 3,
-            _ => 1,
-        }
+        1
     }
 }
 
@@ -971,7 +965,7 @@ mod tests {
     }
 
     #[test]
-    fn multi_line_update_rows_keep_the_selected_group_in_the_physical_viewport() {
+    fn one_line_update_rows_keep_the_selected_group_in_the_viewport() {
         let mut table = SourceTable::new(vec![
             item(
                 0,
@@ -1010,7 +1004,31 @@ mod tests {
         table.move_down(3);
 
         assert_eq!(table.selected_index(), Some(1));
-        assert_eq!(table.viewport_offset(), 1);
+        assert_eq!(table.viewport_offset(), 0);
+    }
+
+    #[test]
+    fn repository_update_group_rows_stay_one_line_high() {
+        let update = RepositoryUpdate {
+            repo_path: PathBuf::from("/workspace/repository"),
+            commits: vec![RepositoryCommit {
+                id: "abc1234".to_string(),
+                subject: "Add a skill".to_string(),
+            }],
+        };
+        let mut table = SourceTable::new(vec![SourceGroupItem {
+            item: 0,
+            skill_name: "skill".to_string(),
+            skill_path: PathBuf::from("/workspace/repository/skill"),
+            repo_name: Some("repository".to_string()),
+            repo_path: Some(PathBuf::from("/workspace/repository")),
+            relative_path: Some(PathBuf::from("skill")),
+            allow_repository_update: true,
+        }]);
+
+        table.set_repository_updates(&[update]);
+
+        assert_eq!(table.visible_rows()[0].rendered_height(), 1);
     }
 
     #[test]

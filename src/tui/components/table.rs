@@ -58,17 +58,12 @@ pub fn render_unified_inventory_table(
                 context,
                 count,
                 expanded,
-                repository_update,
+                repository_update: _,
                 ..
             } = projected_row
             {
                 let row = Row::new(vec![
-                    Cell::from(group_cell_label(
-                        *expanded,
-                        name,
-                        context,
-                        repository_update.is_some(),
-                    )),
+                    Cell::from(group_cell_label(*expanded, name, context)),
                     Cell::from(skill_count_label(*count)),
                     Cell::from(""),
                     Cell::from(""),
@@ -174,6 +169,36 @@ pub fn render_unified_inventory_table(
     .style(Theme::default_style());
 
     frame.render_widget(table, area);
+
+    let notice_x = inner
+        .x
+        .saturating_add(LIST_SKILL_COLUMN_WIDTH)
+        .saturating_add(1)
+        .saturating_add(24)
+        .saturating_add(1);
+    let notice_width = inner.x.saturating_add(inner.width).saturating_sub(notice_x);
+    let mut row_y = inner.y.saturating_add(1);
+    for projected_row in &projected_rows[start..end] {
+        if matches!(
+            projected_row,
+            SourceTableRow::Group {
+                repository_update: Some(_),
+                ..
+            }
+        ) && notice_width > 0
+        {
+            frame.render_widget(
+                Paragraph::new(repository_update_label()).style(Theme::success()),
+                Rect {
+                    x: notice_x,
+                    y: row_y,
+                    width: notice_width,
+                    height: 1,
+                },
+            );
+        }
+        row_y = row_y.saturating_add(projected_row.rendered_height() as u16);
+    }
 }
 
 fn render_empty(frame: &mut Frame, area: Rect, title: &str, message: &str) {
@@ -201,13 +226,12 @@ fn group_label(expanded: bool, name: &str, context: &str) -> String {
     }
 }
 
-fn group_cell_label(expanded: bool, name: &str, context: &str, has_update: bool) -> String {
-    let label = group_label(expanded, name, context);
-    if has_update {
-        format!("{label}\nNew version of repository available\n(press Cmd+U to update)")
-    } else {
-        label
-    }
+fn group_cell_label(expanded: bool, name: &str, context: &str) -> String {
+    group_label(expanded, name, context)
+}
+
+fn repository_update_label() -> &'static str {
+    "New repository version available (Cmd+U to update)"
 }
 
 fn skill_count_label(count: usize) -> String {
@@ -288,11 +312,9 @@ mod tests {
     }
 
     #[test]
-    fn group_update_label_explains_the_cmd_u_action() {
-        let label = group_cell_label(false, "skills", "pgit/skills", true);
-
-        assert!(label.contains("New version of repository available"));
-        assert!(label.contains("press Cmd+U to update"));
+    fn repository_update_label_explains_the_cmd_u_action() {
+        assert!(repository_update_label().contains("New repository version available"));
+        assert!(repository_update_label().contains("Cmd+U to update"));
     }
 
     #[test]
@@ -425,10 +447,23 @@ mod tests {
 
         let output = rendered_lines(&terminal).join("\n");
         assert!(
-            output.contains("New version of repository available"),
+            output.contains("New repository version available"),
             "{output}"
         );
-        assert!(output.contains("press Cmd+U to update"), "{output}");
+        assert!(output.contains("Cmd+U to update"), "{output}");
+
+        let notice_line = rendered_lines(&terminal)
+            .into_iter()
+            .find(|line| line.contains("New repository version available"))
+            .expect("update notice is rendered");
+        assert!(notice_line.contains("> repository"), "{notice_line}");
+        assert!(notice_line.contains("1 skill"), "{notice_line}");
+
+        let buffer = terminal.backend().buffer();
+        let notice_x = (0..buffer.area.width)
+            .find(|&x| buffer[(x, 2)].symbol() == "N")
+            .expect("notice begins on the group row");
+        assert_eq!(buffer[(notice_x, 2)].fg, Theme::SUCCESS);
     }
 
     #[test]
@@ -502,9 +537,9 @@ mod tests {
         let output = rendered_lines(&terminal).join("\n");
         assert!(output.contains("> second"), "{output}");
         assert!(
-            output.contains("New version of repository available"),
+            output.contains("New repository version available"),
             "{output}"
         );
-        assert!(output.contains("press Cmd+U to update"), "{output}");
+        assert!(output.contains("Cmd+U to update"), "{output}");
     }
 }
