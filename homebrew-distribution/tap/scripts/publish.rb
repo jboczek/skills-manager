@@ -60,7 +60,11 @@ Dir.mktmpdir("skills-manager-tap") do |download_dir|
     fail_unless(sums.fetch(asset) == checksum, "checksum mismatch for #{asset}")
     entries = `tar -tzf #{Shellwords.escape(path)}`.lines.map { |line| line.chomp.delete_suffix("/") }.sort
     fail_unless(entries == %w[LICENSE README.md skills-manager], "invalid archive layout for #{asset}")
-    system("gh", "attestation", "verify", path, "-R", source_repository) || abort("attestation verification failed for #{asset}")
+    system(
+      "gh", "attestation", "verify", path, "-R", source_repository,
+      "--signer-workflow", "#{source_repository}/.github/workflows/release.yml",
+      "--source-ref", "refs/tags/#{tag}"
+    ) || abort("attestation verification failed for #{asset}")
   end
 
   source_commit = gh_output("api", "repos/#{source_repository}/commits/#{tag}", "--jq", ".sha").strip
@@ -104,6 +108,8 @@ Dir.mktmpdir("skills-manager-tap") do |download_dir|
     fail_unless(existing_pr.nil?, "a tap PR exists without its expected branch")
     git_output("fetch", "origin", "main", "--prune")
     system("git", "checkout", "-B", branch, "origin/main") || abort("could not create tap branch")
+    system("git", "config", "user.name", "github-actions[bot]") || abort("could not configure git user")
+    system("git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com") || abort("could not configure git email")
     FileUtils.mkdir_p(File.dirname(formula_path))
     File.write(formula_path, formula)
     system("ruby", "-c", formula_path) || abort("rendered formula is not valid Ruby")

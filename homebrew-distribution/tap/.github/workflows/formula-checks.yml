@@ -5,6 +5,12 @@ on:
     branches: [main]
     paths:
       - Formula/skills-manager.rb
+      - scripts/publish.rb
+      - scripts/publisher_contract.rb
+      - .github/workflows/formula-checks.yml
+      - .github/workflows/publish-skills-manager.yml
+      - test/publisher_contract_test.rb
+      - test/tap_workflow_contract_test.rb
 
 permissions:
   contents: read
@@ -32,22 +38,20 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Audit new formula or strict update
+      - name: Run formula or automation checks
         run: |
-          if git show origin/main:Formula/skills-manager.rb >/dev/null 2>&1; then
-            brew style --formula
-            brew audit --strict --online --os=all --arch=all --formula
+          if [[ -f Formula/skills-manager.rb ]]; then
+            if git show origin/main:Formula/skills-manager.rb >/dev/null 2>&1; then
+              brew style --formula skills-manager
+              brew audit --strict --online --os=all --arch=all --formula skills-manager
+            else
+              brew audit --new --formula skills-manager
+            fi
+            brew test-bot --only-formulae --build-from-source
+            HOMEBREW_NO_INSTALL_FROM_API=1 brew install --build-from-source skills-manager
+            brew test skills-manager
+            skills-manager --version
           else
-            brew audit --new --formula
+            ruby -I scripts test/publisher_contract_test.rb
+            ruby test/tap_workflow_contract_test.rb
           fi
-
-      - name: Run BrewTestBot build checks
-        run: brew test-bot --only-formulae --build-from-source
-
-      - name: Install from source without the API
-        run: HOMEBREW_NO_INSTALL_FROM_API=1 brew install --build-from-source skills-manager
-
-      - name: Test installed formula
-        run: |
-          brew test skills-manager
-          skills-manager --version
