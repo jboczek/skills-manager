@@ -22,6 +22,7 @@ can address it as `jboczek/tap`. The first tap PR contains only
 - The source repository can create and attest release assets without gaining
   contents write access to the tap.
 - The tap owns its formula renderer, PR branch, checks, and protected `main`.
-- Until the external repository is initialized, this source repository carries
-  a tap template under `homebrew-distribution/tap/` rather than pretending the
-  template is a live tap.
+- The public repository is initialized and protected. The source repository
+  keeps the publisher and native-check files under `homebrew-distribution/tap/`
+  as a reviewable mirror; it does not receive tap contents or pull-request
+  write access.

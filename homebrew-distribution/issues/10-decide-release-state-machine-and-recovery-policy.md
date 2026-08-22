@@ -68,3 +68,7 @@ tag remains unchanged.
 
 The manual OS-version checks remain release gates even though they are not all
 available in this task workspace.
+
+The shared tap is configured with protected `main`; its publisher PR can
+auto-merge only after the native ARM64 and Intel required checks and the
+configured review requirement pass.

@@ -47,3 +47,12 @@ Any failed build, attestation, checksum, release, or tap validation stops
 before the next write. In particular, a failed tap publication cannot change
 tap `main`; only a protected PR merge can do that. The complete retry policy is
 recorded in [issue 10](10-decide-release-state-machine-and-recovery-policy.md).
+
+## Applied repository controls
+
+- `jboczek/skills-manager` has protected `release-publish` and `tap-dispatch`
+  environments with required reviewer approval and no administrator bypass.
+- The source workflow has no tap contents or pull-request write permission;
+  the tap publisher uses its own job-scoped token.
+- `jboczek/homebrew-tap` protects `main` with one approval plus the required
+  `formula (ARM64)` and `formula (Intel)` checks.

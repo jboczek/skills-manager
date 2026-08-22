@@ -4,6 +4,7 @@
 
 | Time | Change | Docs |
 |---|---|---|
+| 2026-08-22 20:28 | Initialized `jboczek/homebrew-tap` with the guarded publisher, native ARM64/Intel formula checks, and protected `main`. | `features/homebrew-distribution.md`, `../homebrew-distribution/tap/` |
 | 2026-08-22 19:00 | Added the macOS Homebrew release contract, native archive workflow design, and shared-tap publisher template. | `features/homebrew-distribution.md`, `../homebrew-distribution/` |
 
 ## 2026-07-12

@@ -14,5 +14,6 @@ publisher validates the release tag, source commit, attestations, and hashes
 before opening the one-file formula PR.
 
 The tap formula is intentionally kept out of this application repository. Its
-trusted renderer and workflow template live under `homebrew-distribution/tap/`
-until the public `jboczek/homebrew-tap` repository is initialized.
+trusted renderer and native ARM64/Intel workflow mirror live under
+`homebrew-distribution/tap/`; the public `jboczek/homebrew-tap` repository is
+the active publisher and has protected `main` with both native checks required.

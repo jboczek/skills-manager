@@ -18,6 +18,8 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
+      actions: read
+      attestations: read
       contents: write
       pull-requests: write
       checks: read

@@ -8,9 +8,9 @@ Status: approved for the first macOS release.
 - Shared public tap: `jboczek/homebrew-tap`, exposed to Homebrew as
   `jboczek/tap`.
 - The formula and tap publisher belong to the tap repository. The source
-  repository contains release/build automation and the reproducible tap
-  template used to initialize that repository; it does not place a formula in
-  the application root.
+  repository contains release/build automation and a reproducible mirror of
+  the tap automation; it does not place a formula in the application root or
+  receive tap contents write access.
 - The supported direct install is:
 
   ```sh
@@ -57,8 +57,9 @@ The tap-side publisher accepts a release tag, downloads the release assets,
 verifies the source commit, GitHub artifact attestations, and SHA-256 values,
 renders the formula from trusted code in the tap, and opens or updates one
 `automation/skills-manager-vX.Y.Z` PR. Before pushing, it rejects every diff
-other than the single formula file. The PR requires native ARM64 and Intel
-audit/install/test checks; auto-merge is enabled only after both pass.
+other than the single formula file. Protected `main` requires one approval and
+the native ARM64 and Intel audit/install/test checks; auto-merge is enabled
+only after both checks pass.
 
 See [issue 03](issues/03-use-shared-public-homebrew-tap.md), [issue 06](issues/06-select-release-build-and-artifact-architecture.md),
 [issue 07](issues/07-select-homebrew-formula-and-tap-workflow.md),
