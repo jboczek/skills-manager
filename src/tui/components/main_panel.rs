@@ -204,7 +204,7 @@ fn render_remove(frame: &mut Frame, area: Rect, app: &App) {
 
 fn render_repository_update(frame: &mut Frame, area: Rect, app: &App) {
     match &app.repository_update_step {
-        RepositoryUpdateStep::Preview { update } => {
+        RepositoryUpdateStep::Preview { update, scroll } => {
             let commits = update
                 .commits
                 .iter()
@@ -216,7 +216,7 @@ fn render_repository_update(frame: &mut Frame, area: Rect, app: &App) {
                 update.repo_path.display(),
                 commits
             );
-            render_text_panel(frame, area, " Repository Update ", &body);
+            render_text_panel_with_scroll(frame, area, " Repository Update ", &body, *scroll);
         }
         RepositoryUpdateStep::Done { message } => {
             render_text_panel(frame, area, " Repository Update ", message);
@@ -225,6 +225,16 @@ fn render_repository_update(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn render_text_panel(frame: &mut Frame, area: Rect, title: &str, body: &str) {
+    render_text_panel_with_scroll(frame, area, title, body, 0);
+}
+
+fn render_text_panel_with_scroll(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    body: &str,
+    scroll: usize,
+) {
     frame.render_widget(
         Paragraph::new(body)
             .block(
@@ -236,6 +246,7 @@ fn render_text_panel(frame: &mut Frame, area: Rect, title: &str, body: &str) {
                     .style(Theme::default_style()),
             )
             .style(Theme::default_style())
+            .scroll((u16::try_from(scroll).unwrap_or(u16::MAX), 0))
             .wrap(Wrap { trim: false }),
         area,
     );
@@ -356,6 +367,7 @@ mod tests {
                     subject: "Add a skill".to_string(),
                 }],
             },
+            scroll: 0,
         };
         let backend = TestBackend::new(100, 12);
         let mut terminal = Terminal::new(backend).unwrap();
@@ -368,5 +380,32 @@ mod tests {
         assert!(output.contains("Repository Update"), "{output}");
         assert!(output.contains("abc1234  Add a skill"), "{output}");
         assert!(output.contains("Pull this repository? [y/N]"), "{output}");
+    }
+
+    #[test]
+    fn repository_update_preview_scroll_renders_later_commits() {
+        let mut app = App::new(Config::default_config()).unwrap();
+        app.mode = Mode::RepositoryUpdate;
+        app.repository_update_step = RepositoryUpdateStep::Preview {
+            update: RepositoryUpdate {
+                repo_path: PathBuf::from("/workspace/skills"),
+                commits: (0..8)
+                    .map(|index| RepositoryCommit {
+                        id: format!("commit{index}"),
+                        subject: format!("Change {index}"),
+                    })
+                    .collect(),
+            },
+            scroll: 6,
+        };
+        let backend = TestBackend::new(100, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| render(frame, frame.area(), &app))
+            .unwrap();
+
+        let output = rendered_lines(&terminal);
+        assert!(output.contains("commit7  Change 7"), "{output}");
     }
 }

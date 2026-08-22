@@ -11,9 +11,8 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         Mode::List => {
             "arrows browse/expand   tab filter   space check   i import   x remove   r refresh   Cmd+U update   esc back   q quit"
         }
-        Mode::SourceAdd | Mode::Import | Mode::Remove | Mode::RepositoryUpdate => {
-            "enter confirm   esc cancel"
-        }
+        Mode::SourceAdd | Mode::Import | Mode::Remove => "enter confirm   esc cancel",
+        Mode::RepositoryUpdate => "arrows scroll   enter confirm   esc cancel",
         Mode::Help => "esc back",
         Mode::Config => "esc back   q quit",
         Mode::Quit => "quitting...",

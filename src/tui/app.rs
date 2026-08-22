@@ -670,6 +670,7 @@ mod tests {
                     subject: "remote update".to_string(),
                 }],
             },
+            scroll: 0,
         };
 
         app.advance_repository_update("y").unwrap();

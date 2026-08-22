@@ -59,6 +59,18 @@ pub enum SourceTableRow {
     },
 }
 
+impl SourceTableRow {
+    pub fn rendered_height(&self) -> usize {
+        match self {
+            Self::Group {
+                repository_update: Some(_),
+                ..
+            } => 3,
+            _ => 1,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SourceTable {
     groups: Vec<SourceGroup>,
@@ -135,6 +147,33 @@ impl SourceTable {
 
     pub fn viewport_offset(&self) -> usize {
         self.viewport_offset
+    }
+
+    pub fn viewport_indices(&self, viewport_height: usize) -> (usize, usize) {
+        let rows = self.visible_rows();
+        if rows.is_empty() {
+            return (0, 0);
+        }
+
+        let viewport_height = viewport_height.max(1);
+        let selected = self.selected.unwrap_or(0).min(rows.len() - 1);
+        let max_offset = max_viewport_offset(&rows, viewport_height);
+        let mut start = self.viewport_offset.min(selected).min(max_offset);
+        while start < selected && rendered_height(&rows[start..=selected]) > viewport_height {
+            start += 1;
+        }
+
+        let mut used = 0;
+        let mut end = start;
+        while end < rows.len() {
+            let height = rows[end].rendered_height();
+            if end > start && used + height > viewport_height {
+                break;
+            }
+            used += height;
+            end += 1;
+        }
+        (start, end)
     }
 
     pub fn visible_rows(&self) -> Vec<SourceTableRow> {
@@ -263,26 +302,23 @@ impl SourceTable {
     }
 
     pub fn sync(&mut self, viewport_height: usize) {
-        let row_count = self.visible_rows().len();
-        if row_count == 0 {
+        let rows = self.visible_rows();
+        if rows.is_empty() {
             self.selected = None;
             self.viewport_offset = 0;
             return;
         }
 
         let viewport_height = viewport_height.max(1);
-        let selected = self.selected.unwrap_or(0).min(row_count - 1);
-        let max_offset = row_count.saturating_sub(viewport_height);
-        let mut offset = self.viewport_offset.min(max_offset);
-
-        if selected < offset {
-            offset = selected;
-        } else if selected >= offset + viewport_height {
-            offset = selected + 1 - viewport_height;
+        let selected = self.selected.unwrap_or(0).min(rows.len() - 1);
+        let max_offset = max_viewport_offset(&rows, viewport_height);
+        let mut offset = self.viewport_offset.min(selected).min(max_offset);
+        while offset < selected && rendered_height(&rows[offset..=selected]) > viewport_height {
+            offset += 1;
         }
 
         self.selected = Some(selected);
-        self.viewport_offset = offset.min(max_offset);
+        self.viewport_offset = offset;
     }
 
     pub fn refresh(&mut self, items: Vec<SourceGroupItem>, viewport_height: usize) {
@@ -348,6 +384,18 @@ fn item_keys(groups: &[SourceGroup]) -> HashSet<ItemKey> {
                 .map(|item| ItemKey::new(&group.key, &item.skill_path))
         })
         .collect()
+}
+
+fn rendered_height(rows: &[SourceTableRow]) -> usize {
+    rows.iter().map(SourceTableRow::rendered_height).sum()
+}
+
+fn max_viewport_offset(rows: &[SourceTableRow], viewport_height: usize) -> usize {
+    let mut offset = 0;
+    while offset + 1 < rows.len() && rendered_height(&rows[offset..]) > viewport_height {
+        offset += 1;
+    }
+    offset
 }
 
 fn find_selection(rows: &[SourceTableRow], selection: &SelectionKey) -> Option<usize> {
@@ -870,6 +918,49 @@ mod tests {
         }]);
 
         assert_eq!(table.selected_repository_update(), None);
+    }
+
+    #[test]
+    fn multi_line_update_rows_keep_the_selected_group_in_the_physical_viewport() {
+        let mut table = SourceTable::new(vec![
+            item(
+                0,
+                "first",
+                "/repos/first/skills/first",
+                Some("first"),
+                Some("/repos/first"),
+                Some("skills/first"),
+            ),
+            item(
+                1,
+                "second",
+                "/repos/second/skills/second",
+                Some("second"),
+                Some("/repos/second"),
+                Some("skills/second"),
+            ),
+        ]);
+        table.set_repository_updates(&[
+            RepositoryUpdate {
+                repo_path: PathBuf::from("/repos/first"),
+                commits: vec![RepositoryCommit {
+                    id: "first123".to_string(),
+                    subject: "First update".to_string(),
+                }],
+            },
+            RepositoryUpdate {
+                repo_path: PathBuf::from("/repos/second"),
+                commits: vec![RepositoryCommit {
+                    id: "second12".to_string(),
+                    subject: "Second update".to_string(),
+                }],
+            },
+        ]);
+
+        table.move_down(3);
+
+        assert_eq!(table.selected_index(), Some(1));
+        assert_eq!(table.viewport_offset(), 1);
     }
 
     #[test]

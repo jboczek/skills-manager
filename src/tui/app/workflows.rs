@@ -24,14 +24,26 @@ impl App {
             return Ok(());
         };
         self.mode = Mode::RepositoryUpdate;
-        self.repository_update_step = RepositoryUpdateStep::Preview { update };
+        self.repository_update_step = RepositoryUpdateStep::Preview { update, scroll: 0 };
         Ok(())
+    }
+
+    pub fn move_repository_update_up(&mut self) {
+        if let RepositoryUpdateStep::Preview { scroll, .. } = &mut self.repository_update_step {
+            *scroll = scroll.saturating_sub(1);
+        }
+    }
+
+    pub fn move_repository_update_down(&mut self) {
+        if let RepositoryUpdateStep::Preview { update, scroll } = &mut self.repository_update_step {
+            *scroll = scroll.saturating_add(1).min(update.commits.len());
+        }
     }
 
     pub fn advance_repository_update(&mut self, input: &str) -> anyhow::Result<()> {
         self.error_message = None;
         match self.repository_update_step.clone() {
-            RepositoryUpdateStep::Preview { update } => {
+            RepositoryUpdateStep::Preview { update, scroll } => {
                 let normalized = input.trim().to_ascii_lowercase();
                 if normalized == "y" {
                     match git::pull_repository(&update.repo_path) {
@@ -53,7 +65,8 @@ impl App {
                         }
                         Err(error) => {
                             self.error_message = Some(error.to_string());
-                            self.repository_update_step = RepositoryUpdateStep::Preview { update };
+                            self.repository_update_step =
+                                RepositoryUpdateStep::Preview { update, scroll };
                         }
                     }
                 } else if normalized == "n" || normalized.is_empty() {
@@ -64,7 +77,7 @@ impl App {
                     };
                 } else {
                     self.error_message = Some("Pull this repository? [y/N]".to_string());
-                    self.repository_update_step = RepositoryUpdateStep::Preview { update };
+                    self.repository_update_step = RepositoryUpdateStep::Preview { update, scroll };
                 }
             }
             RepositoryUpdateStep::Done { message } => {

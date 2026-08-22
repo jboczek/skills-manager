@@ -80,8 +80,13 @@ pub enum RemoveStep {
 
 #[derive(Debug, Clone)]
 pub enum RepositoryUpdateStep {
-    Preview { update: RepositoryUpdate },
-    Done { message: String },
+    Preview {
+        update: RepositoryUpdate,
+        scroll: usize,
+    },
+    Done {
+        message: String,
+    },
 }
 
 impl Default for RepositoryUpdateStep {

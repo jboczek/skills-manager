@@ -98,6 +98,12 @@ fn handle_key_with_table_height(
         {
             app.move_agent_selection_down();
         }
+        KeyCode::Up if app.mode == Mode::RepositoryUpdate => {
+            app.move_repository_update_up();
+        }
+        KeyCode::Down if app.mode == Mode::RepositoryUpdate => {
+            app.move_repository_update_down();
+        }
         KeyCode::Char(' ')
             if app.mode == Mode::Import
                 && matches!(app.import_step, ImportStep::SelectAgents { .. }) =>
@@ -382,6 +388,36 @@ mod tests {
         assert!(matches!(
             app.repository_update_step,
             RepositoryUpdateStep::Preview { .. }
+        ));
+    }
+
+    #[test]
+    fn repository_update_preview_scrolls_with_arrow_keys() {
+        let mut app = test_app();
+        app.mode = Mode::RepositoryUpdate;
+        app.repository_update_step = RepositoryUpdateStep::Preview {
+            update: RepositoryUpdate {
+                repo_path: std::path::PathBuf::from("/repos/skills"),
+                commits: (0..8)
+                    .map(|index| RepositoryCommit {
+                        id: format!("commit{index}"),
+                        subject: format!("Change {index}"),
+                    })
+                    .collect(),
+            },
+            scroll: 0,
+        };
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Down), 3).expect("key handled");
+        assert!(matches!(
+            app.repository_update_step,
+            RepositoryUpdateStep::Preview { scroll: 1, .. }
+        ));
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Up), 3).expect("key handled");
+        assert!(matches!(
+            app.repository_update_step,
+            RepositoryUpdateStep::Preview { scroll: 0, .. }
         ));
     }
 
