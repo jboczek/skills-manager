@@ -1,0 +1,161 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing immutable vX.Y.Z tag to build or retry"
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            deployment_target: "14.0"
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+            deployment_target: "15.0"
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      MACOSX_DEPLOYMENT_TARGET: ${{ matrix.deployment_target }}
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add "${{ matrix.target }}"
+
+      - name: Validate release identity
+        run: scripts/verify-release-identity.sh "$TAG"
+
+      - name: Build and validate archive
+        run: scripts/build-release-archive.sh "$TAG" "${{ matrix.target }}" "$MACOSX_DEPLOYMENT_TARGET"
+
+      - name: Record archive path
+        id: archive
+        run: echo "path=dist/skills-manager-$TAG-${{ matrix.target }}.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - name: Generate artifact attestation
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: ${{ steps.archive.outputs.path }}
+
+      - name: Upload release archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-archive-${{ matrix.target }}
+          path: ${{ steps.archive.outputs.path }}
+          if-no-files-found: error
+          retention-days: 7
+
+  draft-release:
+    name: Create immutable draft release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - name: Check out release scripts
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Download both native archives
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-archive-*
+          path: dist
+          merge-multiple: true
+
+      - name: Install Rust for metadata validation
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Validate release identity and assets
+        run: |
+          scripts/verify-release-identity.sh "$TAG"
+          (
+            cd dist
+            shasum -a 256 *.tar.gz | sort > SHA256SUMS
+          )
+          scripts/verify-release-assets.sh "$TAG" dist
+
+      - name: Create or verify draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ensure-draft-release.sh "$TAG" dist
+
+  publish-release:
+    name: Publish release after protected approval
+    needs: draft-release
+    runs-on: ubuntu-latest
+    environment: release-publish
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - name: Check out release scripts
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Publish immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/publish-release.sh "$TAG"
+
+  dispatch-tap:
+    name: Dispatch tap publisher
+    needs: publish-release
+    if: ${{ needs.publish-release.result == 'success' }}
+    runs-on: ubuntu-latest
+    environment: tap-dispatch
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - name: Check out release scripts
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+
+      - name: Ask the tap to publish this release
+        env:
+          TAP_AUTOMATION_TOKEN: ${{ secrets.TAP_AUTOMATION_TOKEN }}
+        run: scripts/dispatch-tap.sh "$TAG"

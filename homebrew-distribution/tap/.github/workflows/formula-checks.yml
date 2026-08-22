@@ -1,0 +1,48 @@
+name: Tap formula checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - Formula/skills-manager.rb
+
+permissions:
+  contents: read
+
+jobs:
+  formula:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ARM64
+            runner: macos-14
+          - name: Intel
+            runner: macos-15-intel
+    name: formula (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Check out tap PR
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Audit new formula or strict update
+        run: |
+          if git show origin/main:Formula/skills-manager.rb >/dev/null 2>&1; then
+            brew style --formula
+            brew audit --strict --online --os=all --arch=all --formula
+          else
+            brew audit --new --formula
+          fi
+
+      - name: Run BrewTestBot build checks
+        run: brew test-bot --only-formulae --build-from-source
+
+      - name: Install from source without the API
+        run: HOMEBREW_NO_INSTALL_FROM_API=1 brew install --build-from-source skills-manager
+
+      - name: Test installed formula
+        run: |
+          brew test skills-manager
+          "$(brew --prefix)/bin/skills-manager" --version
