@@ -13,6 +13,8 @@ use crate::plan::{ChangePlan, StagedChange};
 use crate::plan_apply;
 use crate::scanner::ScanResult;
 use crate::source::{self, AcquireOutcome};
+use crate::tui::components::main_panel::repository_update_preview_max_scroll;
+use ratatui::layout::Rect;
 
 impl App {
     pub fn start_repository_update_from_selected_list_row(&mut self) -> anyhow::Result<()> {
@@ -34,9 +36,11 @@ impl App {
         }
     }
 
-    pub fn move_repository_update_down(&mut self) {
+    pub fn move_repository_update_down(&mut self, area: Rect) {
         if let RepositoryUpdateStep::Preview { update, scroll } = &mut self.repository_update_step {
-            *scroll = scroll.saturating_add(1).min(update.commits.len());
+            *scroll = scroll
+                .saturating_add(1)
+                .min(repository_update_preview_max_scroll(update, area));
         }
     }
 

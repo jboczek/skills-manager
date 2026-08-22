@@ -4,6 +4,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::config::Config;
 use crate::domain::{ConnectionKind, InventoryRow};
+use crate::git::RepositoryUpdate;
 use crate::tui::app::{
     App, ImportStep, Mode, RemoveStep, RepositoryUpdateStep, SourceAddStep, removable_exposures,
 };
@@ -205,23 +206,36 @@ fn render_remove(frame: &mut Frame, area: Rect, app: &App) {
 fn render_repository_update(frame: &mut Frame, area: Rect, app: &App) {
     match &app.repository_update_step {
         RepositoryUpdateStep::Preview { update, scroll } => {
-            let commits = update
-                .commits
-                .iter()
-                .map(|commit| format!("  {}  {}", commit.id, commit.subject))
-                .collect::<Vec<_>>()
-                .join("\n");
-            let body = format!(
-                "Repository\n  {}\n\nMissing commits\n{}\n\nPull this repository? [y/N]",
-                update.repo_path.display(),
-                commits
-            );
-            render_text_panel_with_scroll(frame, area, " Repository Update ", &body, *scroll);
+            let body = repository_update_body(update);
+            let scroll = (*scroll).min(repository_update_preview_max_scroll(update, area));
+            render_text_panel_with_scroll(frame, area, " Repository Update ", &body, scroll);
         }
         RepositoryUpdateStep::Done { message } => {
             render_text_panel(frame, area, " Repository Update ", message);
         }
     }
+}
+
+fn repository_update_body(update: &RepositoryUpdate) -> String {
+    let commits = update
+        .commits
+        .iter()
+        .map(|commit| format!("  {}  {}", commit.id, commit.subject))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "Repository\n  {}\n\nMissing commits\n{}\n\nPull this repository? [y/N]",
+        update.repo_path.display(),
+        commits
+    )
+}
+
+pub(crate) fn repository_update_preview_max_scroll(update: &RepositoryUpdate, area: Rect) -> usize {
+    let inner = Block::default().borders(Borders::ALL).inner(area);
+    Paragraph::new(repository_update_body(update))
+        .wrap(Wrap { trim: false })
+        .line_count(inner.width)
+        .saturating_sub(usize::from(inner.height))
 }
 
 fn render_text_panel(frame: &mut Frame, area: Rect, title: &str, body: &str) {
@@ -407,5 +421,47 @@ mod tests {
 
         let output = rendered_lines(&terminal);
         assert!(output.contains("commit7  Change 7"), "{output}");
+    }
+
+    #[test]
+    fn repository_update_preview_scroll_reaches_commits_after_wrapped_lines() {
+        let mut app = App::new(Config::default_config()).unwrap();
+        app.mode = Mode::RepositoryUpdate;
+        app.repository_update_step = RepositoryUpdateStep::Preview {
+            update: RepositoryUpdate {
+                repo_path: PathBuf::from(
+                    "/workspace/skills/repository-with-a-path-long-enough-to-wrap",
+                ),
+                commits: (0..8)
+                    .map(|index| RepositoryCommit {
+                        id: format!("commit{index}"),
+                        subject: if index == 7 {
+                            "Later commit".to_string()
+                        } else {
+                            "A subject long enough to wrap across several terminal lines"
+                                .to_string()
+                        },
+                    })
+                    .collect(),
+            },
+            scroll: 0,
+        };
+        for _ in 0..32 {
+            app.move_repository_update_down(Rect {
+                x: 0,
+                y: 0,
+                width: 40,
+                height: 12,
+            });
+        }
+        let backend = TestBackend::new(40, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| render(frame, frame.area(), &app))
+            .unwrap();
+
+        let output = rendered_lines(&terminal);
+        assert!(output.contains("commit7  Later commit"), "{output}");
     }
 }

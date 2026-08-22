@@ -5,13 +5,35 @@ use crate::tui::app::{App, ImportStep, Mode, RemoveStep, RepositoryUpdateStep, S
 
 /// Handle a key event. Returns true if the app should quit.
 pub fn handle_key(app: &mut App, key: KeyEvent) -> anyhow::Result<bool> {
-    handle_key_with_table_height(app, key, current_table_height())
+    let main_area = current_main_area();
+    handle_key_with_preview_area(app, key, table_height_for_main(main_area.height), main_area)
 }
 
+#[cfg(test)]
 fn handle_key_with_table_height(
     app: &mut App,
     key: KeyEvent,
     table_height: usize,
+) -> anyhow::Result<bool> {
+    let height = u16::try_from(table_height.saturating_add(3)).unwrap_or(u16::MAX);
+    handle_key_with_preview_area(
+        app,
+        key,
+        table_height,
+        Rect {
+            x: 0,
+            y: 0,
+            width: 80,
+            height,
+        },
+    )
+}
+
+fn handle_key_with_preview_area(
+    app: &mut App,
+    key: KeyEvent,
+    table_height: usize,
+    preview_area: Rect,
 ) -> anyhow::Result<bool> {
     if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
         return Ok(true);
@@ -102,7 +124,7 @@ fn handle_key_with_table_height(
             app.move_repository_update_up();
         }
         KeyCode::Down if app.mode == Mode::RepositoryUpdate => {
-            app.move_repository_update_down();
+            app.move_repository_update_down(preview_area);
         }
         KeyCode::Char(' ')
             if app.mode == Mode::Import
@@ -180,17 +202,22 @@ fn completed_command_input(label: &str) -> String {
     }
 }
 
-fn current_table_height() -> usize {
+fn current_main_area() -> Rect {
     let Ok((width, height)) = crossterm::terminal::size() else {
-        return 1;
+        return Rect {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 24,
+        };
     };
-    let layout = crate::tui::layout::AppLayout::compute(Rect {
+    crate::tui::layout::AppLayout::compute(Rect {
         x: 0,
         y: 0,
         width,
         height,
-    });
-    table_height_for_main(layout.main.height)
+    })
+    .main
 }
 
 pub(crate) fn table_height_for_main(main_height: u16) -> usize {

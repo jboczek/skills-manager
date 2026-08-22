@@ -26,6 +26,7 @@ pub struct SourceTableItem {
     pub item: usize,
     pub skill_name: String,
     pub display_path: String,
+    pub allow_repository_update: bool,
     skill_path: PathBuf,
 }
 
@@ -55,6 +56,7 @@ pub enum SourceTableRow {
         skill_name: String,
         display_path: String,
         source_path: PathBuf,
+        allow_repository_update: bool,
         checked: bool,
     },
 }
@@ -129,11 +131,16 @@ impl SourceTable {
             SourceTableRow::Group {
                 repository_update, ..
             } => repository_update,
-            SourceTableRow::Item { group_key, .. } => self
+            SourceTableRow::Item {
+                group_key,
+                allow_repository_update: true,
+                ..
+            } => self
                 .groups
                 .iter()
                 .find(|group| group.key == group_key)
                 .and_then(|group| group.repository_update.clone()),
+            SourceTableRow::Item { .. } => None,
         }
     }
 
@@ -196,6 +203,7 @@ impl SourceTable {
                         skill_name: item.skill_name.clone(),
                         display_path: item.display_path.clone(),
                         source_path: item.skill_path.clone(),
+                        allow_repository_update: item.allow_repository_update,
                         checked: self
                             .checked
                             .contains(&ItemKey::new(&group.key, &item.skill_path)),
@@ -445,6 +453,7 @@ fn build_groups(items: Vec<SourceGroupItem>) -> Vec<SourceGroup> {
             item: item.item,
             skill_name: item.skill_name,
             display_path,
+            allow_repository_update: item.allow_repository_update,
             skill_path: item.skill_path,
         });
     }
@@ -916,6 +925,47 @@ mod tests {
                 subject: "Project change".to_string(),
             }],
         }]);
+
+        assert_eq!(table.selected_repository_update(), None);
+    }
+
+    #[test]
+    fn project_local_child_in_a_mixed_group_cannot_start_repository_update() {
+        let repo_path = PathBuf::from("/repos/project");
+        let mut project_local = item(
+            1,
+            "local",
+            "/repos/project/.agents/skills/local",
+            Some("project"),
+            Some("/repos/project"),
+            Some(".agents/skills/local"),
+        );
+        project_local.allow_repository_update = false;
+        let update = RepositoryUpdate {
+            repo_path: repo_path.clone(),
+            commits: vec![RepositoryCommit {
+                id: "abc1234".to_string(),
+                subject: "Project change".to_string(),
+            }],
+        };
+        let mut table = SourceTable::new(vec![
+            item(
+                0,
+                "global",
+                "/repos/project/skills/global",
+                Some("project"),
+                Some("/repos/project"),
+                Some("skills/global"),
+            ),
+            project_local,
+        ]);
+        table.set_repository_updates(std::slice::from_ref(&update));
+
+        assert_eq!(table.selected_repository_update(), Some(update.clone()));
+        table.move_right(4);
+        table.move_right(4);
+        assert_eq!(table.selected_repository_update(), Some(update.clone()));
+        table.move_down(4);
 
         assert_eq!(table.selected_repository_update(), None);
     }
