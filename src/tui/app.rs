@@ -4,6 +4,7 @@ use std::thread;
 use crate::commands::helpers;
 use crate::config::{Config, GlobalContext};
 use crate::domain::InventoryRow;
+use crate::git::{self, RepositoryUpdate};
 use crate::inventory::{self, InventoryConfig};
 use crate::scanner::{self, ScanResult};
 use crate::source;
@@ -16,7 +17,10 @@ mod tables;
 mod workflows;
 
 pub use command::{CommandSuggestion, TuiCommand, parse_command};
-pub use state::{AgentSelectionItem, ImportStep, Mode, PendingLoad, RemoveStep, SourceAddStep};
+pub use state::{
+    AgentSelectionItem, ImportStep, Mode, PendingLoad, RemoveStep, RepositoryUpdateStep,
+    SourceAddStep,
+};
 pub(crate) use workflows::removable_exposures;
 
 use command::COMMAND_SUGGESTIONS;
@@ -28,6 +32,7 @@ pub struct App {
     pub list_rows: Vec<UnifiedListRow>,
     pub list_filter: ListFilter,
     pub scan_results: Vec<ScanResult>,
+    pub repository_updates: Vec<RepositoryUpdate>,
     pub status_messages: Vec<String>,
     pub list_table: SourceTable,
     pub config: Config,
@@ -36,6 +41,7 @@ pub struct App {
     pub source_add_step: SourceAddStep,
     pub import_step: ImportStep,
     pub remove_step: RemoveStep,
+    pub repository_update_step: RepositoryUpdateStep,
     pub error_message: Option<String>,
     pub info_message: Option<String>,
     pub loading: bool,
@@ -48,6 +54,7 @@ pub struct App {
 struct InitialLoad {
     scan_results: Vec<ScanResult>,
     inventory: Vec<InventoryRow>,
+    repository_updates: Vec<RepositoryUpdate>,
 }
 
 impl App {
@@ -60,6 +67,7 @@ impl App {
             list_rows: Vec::new(),
             list_filter: ListFilter::Full,
             scan_results: Vec::new(),
+            repository_updates: Vec::new(),
             status_messages: Vec::new(),
             list_table: SourceTable::default(),
             config,
@@ -68,6 +76,7 @@ impl App {
             source_add_step: SourceAddStep::default(),
             import_step: ImportStep::default(),
             remove_step: RemoveStep::default(),
+            repository_update_step: RepositoryUpdateStep::default(),
             error_message: None,
             info_message: None,
             loading: false,
@@ -140,6 +149,7 @@ impl App {
         self.scan_results = raw_scan_results.clone();
         scanner::exclude_dot_directory_results(&mut self.scan_results);
         scanner::assign_disambiguation_indices(&mut self.scan_results);
+        self.repository_updates = repository_updates(&self.scan_results);
         self.inventory = inventory::build_inventory(&InventoryConfig {
             agents: helpers::agent_targets_from_global(&self.global_context),
             scan_results: raw_scan_results,
@@ -184,6 +194,10 @@ impl App {
             }
             Mode::Remove => {
                 self.advance_remove(input)?;
+                return Ok(false);
+            }
+            Mode::RepositoryUpdate => {
+                self.advance_repository_update(input)?;
                 return Ok(false);
             }
             _ => {}
@@ -314,6 +328,8 @@ impl App {
         self.list_filter = ListFilter::Full;
         self.rebuild_list_rows();
         self.list_table = SourceTable::new(self.unified_list_table_items());
+        self.list_table
+            .set_repository_updates(&self.repository_updates);
     }
 
     pub fn cycle_list_filter(&mut self, viewport_height: usize) {
@@ -321,6 +337,8 @@ impl App {
         self.rebuild_list_rows();
         self.list_table
             .refresh(self.unified_list_table_items(), viewport_height);
+        self.list_table
+            .set_repository_updates(&self.repository_updates);
     }
 
     pub fn refresh_active_table(&mut self, viewport_height: usize) -> anyhow::Result<()> {
@@ -331,6 +349,8 @@ impl App {
             self.refresh_inventory()?;
             let items = self.unified_list_table_items();
             self.list_table.refresh(items, viewport_height);
+            self.list_table
+                .set_repository_updates(&self.repository_updates);
             self.info_message = Some(self.list_summary_message());
         }
 
@@ -399,6 +419,7 @@ impl App {
         self.initial_load = None;
         self.scan_results = load.scan_results;
         self.inventory = load.inventory;
+        self.repository_updates = load.repository_updates;
         self.rebuild_list_rows();
         self.rebuild_status_messages();
     }
@@ -413,6 +434,7 @@ fn load_initial_state(context: GlobalContext) -> anyhow::Result<InitialLoad> {
     let mut scan_results = raw_scan_results.clone();
     scanner::exclude_dot_directory_results(&mut scan_results);
     scanner::assign_disambiguation_indices(&mut scan_results);
+    let repository_updates = repository_updates(&scan_results);
 
     let mut inventory = inventory::build_inventory(&InventoryConfig {
         agents: helpers::agent_targets_from_global(&context),
@@ -423,7 +445,35 @@ fn load_initial_state(context: GlobalContext) -> anyhow::Result<InitialLoad> {
     Ok(InitialLoad {
         scan_results,
         inventory,
+        repository_updates,
     })
+}
+
+fn repository_updates(scan_results: &[ScanResult]) -> Vec<RepositoryUpdate> {
+    let mut repositories = Vec::new();
+    for result in scan_results {
+        let Some(repo_path) = result.repo_path.as_ref() else {
+            continue;
+        };
+        if result.remote_url.is_none() || repositories.iter().any(|path| path == repo_path) {
+            continue;
+        }
+        repositories.push(repo_path.clone());
+    }
+
+    repositories
+        .into_iter()
+        .filter_map(|repo_path| match git::repository_update(&repo_path) {
+            Ok(update) => update,
+            Err(error) => {
+                eprintln!(
+                    "Warning: failed to check repository updates for {}: {error}",
+                    repo_path.display()
+                );
+                None
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -517,6 +567,7 @@ mod tests {
         app.apply_initial_load(InitialLoad {
             scan_results: vec![scan_result("repo-a/one")],
             inventory: vec![inventory_row("repo-a/one")],
+            repository_updates: Vec::new(),
         });
 
         assert!(!app.initial_load_in_progress());
@@ -550,6 +601,88 @@ mod tests {
         assert_eq!(app.list_rows.len(), 2);
         assert!(matches!(app.list_rows[0], UnifiedListRow::Exposed(_)));
         assert!(matches!(app.list_rows[1], UnifiedListRow::Discovered(_)));
+    }
+
+    #[test]
+    fn confirmed_repository_update_pulls_and_returns_to_list() {
+        let temp = tempdir().unwrap();
+        let remote = temp.path().join("remote.git");
+        let repo = temp.path().join("skills/repo");
+        let publisher = temp.path().join("publisher");
+        fs::create_dir_all(temp.path().join("skills")).unwrap();
+        git(&[
+            "init",
+            "--bare",
+            "--initial-branch=main",
+            remote.to_str().unwrap(),
+        ]);
+        git(&["clone", remote.to_str().unwrap(), repo.to_str().unwrap()]);
+        fs::create_dir_all(repo.join("review")).unwrap();
+        fs::write(repo.join("review/SKILL.md"), "# base").unwrap();
+        git(&["-C", repo.to_str().unwrap(), "add", "."]);
+        git(&[
+            "-C",
+            repo.to_str().unwrap(),
+            "-c",
+            "user.name=Skills Manager Tests",
+            "-c",
+            "user.email=tests@example.com",
+            "commit",
+            "-m",
+            "base",
+        ]);
+        git(&[
+            "-C",
+            repo.to_str().unwrap(),
+            "push",
+            "--set-upstream",
+            "origin",
+            "main",
+        ]);
+
+        git(&[
+            "clone",
+            remote.to_str().unwrap(),
+            publisher.to_str().unwrap(),
+        ]);
+        fs::write(publisher.join("review/SKILL.md"), "# updated").unwrap();
+        git(&["-C", publisher.to_str().unwrap(), "add", "."]);
+        git(&[
+            "-C",
+            publisher.to_str().unwrap(),
+            "-c",
+            "user.name=Skills Manager Tests",
+            "-c",
+            "user.email=tests@example.com",
+            "commit",
+            "-m",
+            "remote update",
+        ]);
+        git(&["-C", publisher.to_str().unwrap(), "push", "origin", "main"]);
+
+        let mut app = App::new(test_config(temp.path())).unwrap();
+        app.mode = Mode::RepositoryUpdate;
+        app.repository_update_step = RepositoryUpdateStep::Preview {
+            update: RepositoryUpdate {
+                repo_path: repo.clone(),
+                commits: vec![crate::git::RepositoryCommit {
+                    id: "abc1234".to_string(),
+                    subject: "remote update".to_string(),
+                }],
+            },
+        };
+
+        app.advance_repository_update("y").unwrap();
+
+        assert_eq!(app.mode, Mode::List);
+        assert_eq!(
+            fs::read_to_string(repo.join("review/SKILL.md")).unwrap(),
+            "# updated"
+        );
+        assert!(matches!(
+            app.repository_update_step,
+            RepositoryUpdateStep::Done { .. }
+        ));
     }
 
     fn scan_result(skill_id: &str) -> ScanResult {

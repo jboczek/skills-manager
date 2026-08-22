@@ -34,10 +34,13 @@ Key behavior:
 - `i` imports a selected discovered skill, or imports missing enabled-agent exposures from a selected global list skill.
 - `x` removes a selected global list skill exposure or prompts for which exposure to remove.
 - `r` refreshes the current list while retaining the active view and matching selection/group expansion.
+- `Cmd+U` reviews missing commits and updates the selected repository after confirmation.
 
 Import and remove actions run only from expanded skill rows; group rows never imply a bulk action. Discovery-only rows show `-` for agents and scope and `not exposed` for connection; they can be imported with `i`, but cannot be checked or removed. Typed `/import` and `/remove` commands guide users to these shortcuts instead of starting standalone prompt workflows. Table shortcuts use the same staged plan behavior as the CLI, show the plan before applying, rescan after apply, and require exact `yes` confirmation before deleting physical copies.
 
 List groups represent repositories. Global rows are grouped by source repository, while project-local rows are grouped by their containing project. Scope remains visible per row. Project-local rows are read-only, so `i` and `x` report that they cannot mutate those rows.
+
+When a global repository has commits on its origin that are not in the local checkout, its group row shows a repository-update notice. `Cmd+U` opens the missing commit subjects; entering `y` runs a fast-forward-only `git pull` and refreshes the list.
 
 ## Configuration
 

@@ -62,6 +62,8 @@ Import mode is reached from table shortcuts or existing flow state. It guides th
 
 Remove mode is reached from table shortcuts or existing flow state. It guides the user through exposure selection when needed, staged plan preview, confirmation, apply, rescan, and result rendering.
 
+Repository-update mode is reached with Cmd+U from a repository group or one of its skill rows when origin has missing commits. It lists the short commit IDs and subjects, then runs a fast-forward-only pull after the user enters y.
+
 ## Key Behavior
 
 The implemented V1 key behavior is:
@@ -78,6 +80,7 @@ The implemented V1 key behavior is:
 - `i`: import the selected discovery skill, or import missing enabled-agent exposures from a selected global list skill
 - `x`: remove a selected global list skill exposure, or choose which exposure to remove when a row has multiple
 - `r`: refresh the active list while retaining its filter and matching selection/group expansion
+- `Cmd+U`: review missing commits for the selected repository and confirm its update
 - `Ctrl-C`: quit
 
 All source groups start collapsed. Refresh preserves expansion for source identities that still exist, and resize events keep the selected visible row within the viewport. Pressing `i` or `x` on a group row asks the user to select a skill inside the group.

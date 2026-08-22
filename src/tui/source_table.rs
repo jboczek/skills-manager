@@ -2,6 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
+use crate::git::RepositoryUpdate;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum GroupKey {
     Repository(PathBuf),
@@ -16,6 +18,7 @@ pub struct SourceGroupItem {
     pub repo_name: Option<String>,
     pub repo_path: Option<PathBuf>,
     pub relative_path: Option<PathBuf>,
+    pub allow_repository_update: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -32,6 +35,8 @@ pub struct SourceGroup {
     pub name: String,
     pub context: String,
     pub items: Vec<SourceTableItem>,
+    pub repository_update: Option<RepositoryUpdate>,
+    allow_repository_update: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +47,7 @@ pub enum SourceTableRow {
         context: String,
         count: usize,
         expanded: bool,
+        repository_update: Option<RepositoryUpdate>,
     },
     Item {
         group_key: GroupKey,
@@ -90,6 +96,35 @@ impl SourceTable {
         &self.groups
     }
 
+    pub fn set_repository_updates(&mut self, updates: &[RepositoryUpdate]) {
+        for group in &mut self.groups {
+            group.repository_update = if group.allow_repository_update {
+                match &group.key {
+                    GroupKey::Repository(path) => updates
+                        .iter()
+                        .find(|update| normalized_path(&update.repo_path) == *path)
+                        .cloned(),
+                    GroupKey::SourceContainer(_) => None,
+                }
+            } else {
+                None
+            };
+        }
+    }
+
+    pub fn selected_repository_update(&self) -> Option<RepositoryUpdate> {
+        match self.selected_row()? {
+            SourceTableRow::Group {
+                repository_update, ..
+            } => repository_update,
+            SourceTableRow::Item { group_key, .. } => self
+                .groups
+                .iter()
+                .find(|group| group.key == group_key)
+                .and_then(|group| group.repository_update.clone()),
+        }
+    }
+
     pub fn expanded_keys(&self) -> &HashSet<GroupKey> {
         &self.expanded
     }
@@ -112,6 +147,7 @@ impl SourceTable {
                 context: group.context.clone(),
                 count: group.items.len(),
                 expanded,
+                repository_update: group.repository_update.clone(),
             });
             if expanded {
                 rows.extend(group.items.iter().map(|item| {
@@ -351,9 +387,12 @@ fn build_groups(items: Vec<SourceGroupItem>) -> Vec<SourceGroup> {
                 name,
                 context,
                 items: Vec::new(),
+                repository_update: None,
+                allow_repository_update: false,
             });
             groups.len() - 1
         });
+        groups[group_index].allow_repository_update |= item.allow_repository_update;
         groups[group_index].items.push(SourceTableItem {
             item: item.item,
             skill_name: item.skill_name,
@@ -510,6 +549,8 @@ mod tests {
     use std::collections::HashSet;
     use std::path::PathBuf;
 
+    use crate::git::{RepositoryCommit, RepositoryUpdate};
+
     use super::{GroupKey, SourceGroupItem, SourceTable, SourceTableRow, bounded_path_suffix};
 
     fn item(
@@ -527,6 +568,7 @@ mod tests {
             repo_name: repo_name.map(str::to_string),
             repo_path: repo_path.map(PathBuf::from),
             relative_path: relative_path.map(PathBuf::from),
+            allow_repository_update: true,
         }
     }
 
@@ -779,6 +821,55 @@ mod tests {
             table.selected_row(),
             Some(SourceTableRow::Item { item: 1, .. })
         ));
+    }
+
+    #[test]
+    fn selected_repository_update_is_available_on_group_and_child_rows() {
+        let repo_path = PathBuf::from("/repos/skills");
+        let update = RepositoryUpdate {
+            repo_path: repo_path.clone(),
+            commits: vec![RepositoryCommit {
+                id: "abc1234".to_string(),
+                subject: "Add a skill".to_string(),
+            }],
+        };
+        let mut table = SourceTable::new(vec![item(
+            0,
+            "review",
+            "/repos/skills/review",
+            Some("skills"),
+            Some("/repos/skills"),
+            Some("review"),
+        )]);
+        table.set_repository_updates(&[update.clone()]);
+
+        assert_eq!(table.selected_repository_update(), Some(update.clone()));
+        table.move_right(4);
+        table.move_right(4);
+        assert_eq!(table.selected_repository_update(), Some(update));
+    }
+
+    #[test]
+    fn project_local_group_does_not_receive_repository_update_actions() {
+        let mut project_local = item(
+            0,
+            "review",
+            "/repos/project/.agents/skills/review",
+            Some("project"),
+            Some("/repos/project"),
+            Some(".agents/skills/review"),
+        );
+        project_local.allow_repository_update = false;
+        let mut table = SourceTable::new(vec![project_local]);
+        table.set_repository_updates(&[RepositoryUpdate {
+            repo_path: PathBuf::from("/repos/project"),
+            commits: vec![RepositoryCommit {
+                id: "abc1234".to_string(),
+                subject: "Project change".to_string(),
+            }],
+        }]);
+
+        assert_eq!(table.selected_repository_update(), None);
     }
 
     #[test]

@@ -4,7 +4,9 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::config::Config;
 use crate::domain::{ConnectionKind, InventoryRow};
-use crate::tui::app::{App, ImportStep, Mode, RemoveStep, SourceAddStep, removable_exposures};
+use crate::tui::app::{
+    App, ImportStep, Mode, RemoveStep, RepositoryUpdateStep, SourceAddStep, removable_exposures,
+};
 use crate::tui::components::{dialog, table};
 use crate::tui::theme::Theme;
 
@@ -44,6 +46,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         Mode::Help => render_help(frame, area),
         Mode::Import => render_import(frame, area, app),
         Mode::Remove => render_remove(frame, area, app),
+        Mode::RepositoryUpdate => render_repository_update(frame, area, app),
         Mode::Quit => render_text_panel(frame, area, " Goodbye ", "Closing Skills Manager..."),
     }
 }
@@ -64,7 +67,7 @@ fn render_help(frame: &mut Frame, area: Rect) {
 }
 
 fn help_text() -> &'static str {
-    "Commands\n  /list                       Browse exposed and discovered skills\n  /source_add <clone-url>     Add a source from an HTTPS or SSH clone URL\n  /config                     Show config\n  /help                       Show this help\n  /quit                       Exit\n\nTable actions\n  Tab                Cycle Full, exposed, and discovery-only views\n  Space              Check or uncheck skill rows\n  i                  Import a selected skill or checked skills\n  x                  Remove checked or selected exposed skill rows\n  r                  Refresh the current list view\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
+    "Commands\n  /list                       Browse exposed and discovered skills\n  /source_add <clone-url>     Add a source from an HTTPS or SSH clone URL\n  /config                     Show config\n  /help                       Show this help\n  /quit                       Exit\n\nTable actions\n  Tab                Cycle Full, exposed, and discovery-only views\n  Space              Check or uncheck skill rows\n  i                  Import a selected skill or checked skills\n  x                  Remove checked or selected exposed skill rows\n  r                  Refresh the current list view\n  Cmd+U              Review and update the selected repository\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
 }
 
 fn render_source_add(frame: &mut Frame, area: Rect, app: &App) {
@@ -199,6 +202,28 @@ fn render_remove(frame: &mut Frame, area: Rect, app: &App) {
     }
 }
 
+fn render_repository_update(frame: &mut Frame, area: Rect, app: &App) {
+    match &app.repository_update_step {
+        RepositoryUpdateStep::Preview { update } => {
+            let commits = update
+                .commits
+                .iter()
+                .map(|commit| format!("  {}  {}", commit.id, commit.subject))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let body = format!(
+                "Repository\n  {}\n\nMissing commits\n{}\n\nPull this repository? [y/N]",
+                update.repo_path.display(),
+                commits
+            );
+            render_text_panel(frame, area, " Repository Update ", &body);
+        }
+        RepositoryUpdateStep::Done { message } => {
+            render_text_panel(frame, area, " Repository Update ", message);
+        }
+    }
+}
+
 fn render_text_panel(frame: &mut Frame, area: Rect, title: &str, body: &str) {
     frame.render_widget(
         Paragraph::new(body)
@@ -245,8 +270,26 @@ fn connection_label(connection: ConnectionKind) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
     use super::*;
     use crate::domain::{AgentId, SkillExposure, SkillId, SkillSource};
+    use crate::git::{RepositoryCommit, RepositoryUpdate};
+
+    fn rendered_lines(terminal: &Terminal<TestBackend>) -> String {
+        let buffer = terminal.backend().buffer();
+        (0..buffer.area.height)
+            .map(|y| {
+                (0..buffer.area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 
     #[test]
     fn help_points_to_table_actions_instead_of_standalone_mutation_commands() {
@@ -299,5 +342,31 @@ mod tests {
         };
 
         assert!(removable_exposure_lines(&row).contains("all. Remove from all agents"));
+    }
+
+    #[test]
+    fn repository_update_preview_renders_missing_commit_subjects_and_confirmation() {
+        let mut app = App::new(Config::default_config()).unwrap();
+        app.mode = Mode::RepositoryUpdate;
+        app.repository_update_step = RepositoryUpdateStep::Preview {
+            update: RepositoryUpdate {
+                repo_path: PathBuf::from("/workspace/skills"),
+                commits: vec![RepositoryCommit {
+                    id: "abc1234".to_string(),
+                    subject: "Add a skill".to_string(),
+                }],
+            },
+        };
+        let backend = TestBackend::new(100, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| render(frame, frame.area(), &app))
+            .unwrap();
+
+        let output = rendered_lines(&terminal);
+        assert!(output.contains("Repository Update"), "{output}");
+        assert!(output.contains("abc1234  Add a skill"), "{output}");
+        assert!(output.contains("Pull this repository? [y/N]"), "{output}");
     }
 }

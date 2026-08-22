@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Rect;
 
-use crate::tui::app::{App, ImportStep, Mode, RemoveStep, SourceAddStep};
+use crate::tui::app::{App, ImportStep, Mode, RemoveStep, RepositoryUpdateStep, SourceAddStep};
 
 /// Handle a key event. Returns true if the app should quit.
 pub fn handle_key(app: &mut App, key: KeyEvent) -> anyhow::Result<bool> {
@@ -17,6 +17,15 @@ fn handle_key_with_table_height(
         return Ok(true);
     }
 
+    if app.mode == Mode::List
+        && app.input.is_empty()
+        && key.modifiers.contains(KeyModifiers::SUPER)
+        && matches!(key.code, KeyCode::Char('u' | 'U'))
+    {
+        app.start_repository_update_from_selected_list_row()?;
+        return Ok(false);
+    }
+
     match key.code {
         KeyCode::Esc => {
             if app.command_menu_open() {
@@ -29,6 +38,7 @@ fn handle_key_with_table_height(
             app.source_add_step = SourceAddStep::default();
             app.import_step = ImportStep::default();
             app.remove_step = RemoveStep::default();
+            app.repository_update_step = RepositoryUpdateStep::default();
             app.error_message = None;
             app.info_message = None;
         }
@@ -194,6 +204,7 @@ mod tests {
     use crate::domain::{
         AgentId, ConnectionKind, InventoryRow, Scope, SkillExposure, SkillId, SkillSource,
     };
+    use crate::git::{RepositoryCommit, RepositoryUpdate};
     use crate::scanner::{ScanResult, SourceKind};
     use crate::tui::source_table::SourceTableRow;
     use crate::tui::unified_list::ListFilter;
@@ -339,6 +350,39 @@ mod tests {
         handle_key_with_table_height(&mut app, key(KeyCode::Left), 3).expect("key handled");
 
         assert_eq!(app.list_table.visible_rows().len(), 1);
+    }
+
+    #[test]
+    fn cmd_u_opens_repository_update_review_for_selected_group() {
+        let repo_path = std::path::PathBuf::from("/repos/skills");
+        let mut row = inventory_row("review");
+        row.source.repo_name = Some("skills".to_string());
+        row.source.repo_path = Some(repo_path.clone());
+        row.exposures[0].path = repo_path.join("review");
+
+        let mut app = test_app();
+        app.inventory = vec![row];
+        app.repository_updates = vec![RepositoryUpdate {
+            repo_path,
+            commits: vec![RepositoryCommit {
+                id: "abc1234".to_string(),
+                subject: "Add a skill".to_string(),
+            }],
+        }];
+        app.enter_list_mode();
+
+        handle_key_with_table_height(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('u'), KeyModifiers::SUPER),
+            3,
+        )
+        .expect("key handled");
+
+        assert_eq!(app.mode, Mode::RepositoryUpdate);
+        assert!(matches!(
+            app.repository_update_step,
+            RepositoryUpdateStep::Preview { .. }
+        ));
     }
 
     #[test]

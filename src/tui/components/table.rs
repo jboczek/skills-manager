@@ -61,21 +61,26 @@ pub fn render_unified_inventory_table(
                 context,
                 count,
                 expanded,
+                repository_update,
                 ..
             } = projected_row
             {
-                return Some(
-                    Row::new(vec![
-                        Cell::from(group_label(*expanded, name, context)),
-                        Cell::from(skill_count_label(*count)),
-                        Cell::from(""),
-                        Cell::from(""),
-                        Cell::from(""),
-                        Cell::from(""),
-                        Cell::from(""),
-                    ])
-                    .style(row_style(selected)),
-                );
+                let row = Row::new(vec![
+                    Cell::from(group_cell_label(
+                        *expanded,
+                        name,
+                        context,
+                        repository_update.is_some(),
+                    )),
+                    Cell::from(skill_count_label(*count)),
+                    Cell::from(""),
+                    Cell::from(""),
+                    Cell::from(""),
+                    Cell::from(""),
+                    Cell::from(""),
+                ])
+                .height(if repository_update.is_some() { 3 } else { 1 });
+                return Some(row.style(row_style(selected)));
             }
 
             let SourceTableRow::Item {
@@ -199,6 +204,15 @@ fn group_label(expanded: bool, name: &str, context: &str) -> String {
     }
 }
 
+fn group_cell_label(expanded: bool, name: &str, context: &str, has_update: bool) -> String {
+    let label = group_label(expanded, name, context);
+    if has_update {
+        format!("{label}\nNew version of repository available\n(press Cmd+U to update)")
+    } else {
+        label
+    }
+}
+
 fn skill_count_label(count: usize) -> String {
     if count == 1 {
         "1 skill".to_string()
@@ -240,6 +254,7 @@ mod tests {
 
     use super::*;
     use crate::domain::{AgentId, SkillExposure, SkillId, SkillSource};
+    use crate::git::{RepositoryCommit, RepositoryUpdate};
     use crate::scanner::{ScanResult, SourceKind};
     use crate::tui::source_table::SourceGroupItem;
     use crate::tui::unified_list::UnifiedListRow;
@@ -276,6 +291,14 @@ mod tests {
     }
 
     #[test]
+    fn group_update_label_explains_the_cmd_u_action() {
+        let label = group_cell_label(false, "skills", "pgit/skills", true);
+
+        assert!(label.contains("New version of repository available"));
+        assert!(label.contains("press Cmd+U to update"));
+    }
+
+    #[test]
     fn list_skill_column_width_is_preserved() {
         assert_eq!(LIST_SKILL_COLUMN_WIDTH, 57);
     }
@@ -307,6 +330,7 @@ mod tests {
             repo_name: Some("project".to_string()),
             repo_path: Some(PathBuf::from("/workspace/project")),
             relative_path: Some(PathBuf::from(".agents/skills/adx-intake")),
+            allow_repository_update: false,
         }]);
         source_table.move_right(10);
         let backend = TestBackend::new(140, 6);
@@ -340,6 +364,7 @@ mod tests {
             repo_name: Some("repository".to_string()),
             repo_path: Some(PathBuf::from("/workspace/repository")),
             relative_path: Some(PathBuf::from("discovered")),
+            allow_repository_update: true,
         }]);
         source_table.move_right(10);
         let backend = TestBackend::new(140, 6);
@@ -363,5 +388,49 @@ mod tests {
         }
         assert!(output.contains("not exposed"), "{output}");
         assert!(output.contains("[ ] discovered"), "{output}");
+    }
+
+    #[test]
+    fn inventory_table_renders_repository_update_notice_on_group_row() {
+        let rows = vec![UnifiedListRow::Discovered(ScanResult {
+            skill_id: "repository/discovered".to_string(),
+            skill_path: PathBuf::from("/workspace/repository/discovered"),
+            skill_relative_path: Some(PathBuf::from("discovered")),
+            repo_name: Some("repository".to_string()),
+            repo_path: Some(PathBuf::from("/workspace/repository")),
+            remote_url: Some("https://example.com/repository.git".to_string()),
+            source_kind: SourceKind::CentralDir,
+            disambiguation_index: None,
+        })];
+        let mut source_table = SourceTable::new(vec![SourceGroupItem {
+            item: 0,
+            skill_name: "discovered".to_string(),
+            skill_path: PathBuf::from("/workspace/repository/discovered"),
+            repo_name: Some("repository".to_string()),
+            repo_path: Some(PathBuf::from("/workspace/repository")),
+            relative_path: Some(PathBuf::from("discovered")),
+            allow_repository_update: true,
+        }]);
+        source_table.set_repository_updates(&[RepositoryUpdate {
+            repo_path: PathBuf::from("/workspace/repository"),
+            commits: vec![RepositoryCommit {
+                id: "abc1234".to_string(),
+                subject: "Add a skill".to_string(),
+            }],
+        }]);
+        assert!(source_table.groups()[0].repository_update.is_some());
+        let backend = TestBackend::new(140, 8);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| render_unified_inventory_table(frame, frame.area(), &rows, &source_table))
+            .unwrap();
+
+        let output = rendered_lines(&terminal).join("\n");
+        assert!(
+            output.contains("New version of repository available"),
+            "{output}"
+        );
+        assert!(output.contains("press Cmd+U to update"), "{output}");
     }
 }

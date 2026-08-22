@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-22
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-08-22 19:02 | Added TUI detection and review of remote repository commits, with Cmd+U and confirmed fast-forward-only pull. | `README.md`, `features/assistant-style-tui-shell.md`, `features/git-source-import.md` |
+
 ## 2026-07-12
 
 | Time | Change | Docs |

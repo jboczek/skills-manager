@@ -43,6 +43,10 @@ Skills Manager reads the existing repository's `origin` and compares canonical i
 
 A matching origin is reused and scanned as-is. Reuse never runs fetch, pull, reset, or checkout, so dirty, detached, or locally modified repositories remain unchanged.
 
+## Remote Updates
+
+The interactive /list flow checks each visible Git source repository once per refresh by fetching origin. A repository group with commits beyond the local checkout shows an update notice and the Cmd+U shortcut. Cmd+U opens a short-ID and subject preview of the missing commits. Entering y runs git pull --ff-only for that repository and refreshes the inventory; declining or a failed pull leaves the checkout unchanged.
+
 Every unknown or conflicting destination fails:
 
 - file or symlink

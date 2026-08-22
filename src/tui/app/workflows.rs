@@ -2,9 +2,12 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 
 use super::tables::{display_inventory_row, parse_selection};
-use super::{AgentSelectionItem, App, ImportStep, Mode, RemoveStep, SourceAddStep};
+use super::{
+    AgentSelectionItem, App, ImportStep, Mode, RemoveStep, RepositoryUpdateStep, SourceAddStep,
+};
 use crate::commands::helpers;
 use crate::domain::{AgentId, ConnectionKind, InventoryRow, Scope, SkillExposure};
+use crate::git;
 use crate::inventory::AgentTarget;
 use crate::plan::{ChangePlan, StagedChange};
 use crate::plan_apply;
@@ -12,6 +15,67 @@ use crate::scanner::ScanResult;
 use crate::source::{self, AcquireOutcome};
 
 impl App {
+    pub fn start_repository_update_from_selected_list_row(&mut self) -> anyhow::Result<()> {
+        self.error_message = None;
+        self.info_message = None;
+
+        let Some(update) = self.list_table.selected_repository_update() else {
+            self.info_message = Some("Selected repository has no available update.".to_string());
+            return Ok(());
+        };
+        self.mode = Mode::RepositoryUpdate;
+        self.repository_update_step = RepositoryUpdateStep::Preview { update };
+        Ok(())
+    }
+
+    pub fn advance_repository_update(&mut self, input: &str) -> anyhow::Result<()> {
+        self.error_message = None;
+        match self.repository_update_step.clone() {
+            RepositoryUpdateStep::Preview { update } => {
+                let normalized = input.trim().to_ascii_lowercase();
+                if normalized == "y" {
+                    match git::pull_repository(&update.repo_path) {
+                        Ok(()) => {
+                            let message =
+                                format!("Updated repository at {}.", update.repo_path.display());
+                            self.mode = Mode::List;
+                            self.repository_update_step = RepositoryUpdateStep::Done {
+                                message: message.clone(),
+                            };
+                            if let Err(error) = self.refresh_inventory() {
+                                self.error_message = Some(error.to_string());
+                            } else {
+                                self.list_table.refresh(self.unified_list_table_items(), 1);
+                                self.list_table
+                                    .set_repository_updates(&self.repository_updates);
+                                self.info_message = Some(message);
+                            }
+                        }
+                        Err(error) => {
+                            self.error_message = Some(error.to_string());
+                            self.repository_update_step = RepositoryUpdateStep::Preview { update };
+                        }
+                    }
+                } else if normalized == "n" || normalized.is_empty() {
+                    self.mode = Mode::List;
+                    self.info_message = Some("Aborted.".to_string());
+                    self.repository_update_step = RepositoryUpdateStep::Done {
+                        message: "Aborted.".to_string(),
+                    };
+                } else {
+                    self.error_message = Some("Pull this repository? [y/N]".to_string());
+                    self.repository_update_step = RepositoryUpdateStep::Preview { update };
+                }
+            }
+            RepositoryUpdateStep::Done { message } => {
+                self.mode = Mode::List;
+                self.repository_update_step = RepositoryUpdateStep::Done { message };
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn advance_source_add(&mut self, input: &str) -> anyhow::Result<()> {
         self.error_message = None;
         match self.source_add_step.clone() {
@@ -472,6 +536,13 @@ impl App {
             RemoveStep::ConfirmPlan { .. } => "Apply this plan? [y/N]:",
             RemoveStep::ConfirmPhysical { .. } => "Type 'yes' to confirm permanent deletion:",
             RemoveStep::Done { .. } => "Press Enter to return to home.",
+        }
+    }
+
+    pub fn repository_update_step_hint(&self) -> &'static str {
+        match self.repository_update_step {
+            RepositoryUpdateStep::Preview { .. } => "Pull this repository? [y/N]:",
+            RepositoryUpdateStep::Done { .. } => "Press Enter to return to the list.",
         }
     }
 
