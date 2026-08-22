@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-22
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-08-22 19:00 | Added the macOS Homebrew release contract, native archive workflow design, and shared-tap publisher template. | `features/homebrew-distribution.md`, `../homebrew-distribution/` |
+
 ## 2026-07-12
 
 | Time | Change | Docs |

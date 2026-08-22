@@ -2,6 +2,23 @@
 
 Skills Manager is a terminal-first tool for discovering skill sources and managing agent exposures. Scanning, inventory, diagnostics, and mutation plans are independent of the directory and Git branch from which the application is launched.
 
+## Homebrew
+
+Install the native macOS release from the shared tap:
+
+```bash
+brew install jboczek/tap/skills-manager
+```
+
+Homebrew checks for updates normally. To update explicitly:
+
+```bash
+brew update
+brew upgrade skills-manager
+```
+
+The formula is maintained in the public [jboczek/homebrew-tap](https://github.com/jboczek/homebrew-tap) repository. The first release supports Apple Silicon and Intel Macs; Linux, Windows, bottles, and casks are not included.
+
 ## Assistant-style TUI
 
 Run without subcommands to open the full-screen assistant-style terminal UI:
