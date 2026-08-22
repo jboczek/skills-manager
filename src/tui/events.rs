@@ -41,7 +41,9 @@ fn handle_key_with_preview_area(
 
     if app.mode == Mode::List
         && app.input.is_empty()
-        && key.modifiers.contains(KeyModifiers::SUPER)
+        && key
+            .modifiers
+            .intersects(KeyModifiers::SUPER | KeyModifiers::CONTROL)
         && matches!(key.code, KeyCode::Char('u' | 'U'))
     {
         app.start_repository_update_from_selected_list_row()?;
@@ -407,6 +409,39 @@ mod tests {
         handle_key_with_table_height(
             &mut app,
             KeyEvent::new(KeyCode::Char('u'), KeyModifiers::SUPER),
+            3,
+        )
+        .expect("key handled");
+
+        assert_eq!(app.mode, Mode::RepositoryUpdate);
+        assert!(matches!(
+            app.repository_update_step,
+            RepositoryUpdateStep::Preview { .. }
+        ));
+    }
+
+    #[test]
+    fn ctrl_u_opens_repository_update_review_for_selected_group() {
+        let repo_path = std::path::PathBuf::from("/repos/skills");
+        let mut row = inventory_row("review");
+        row.source.repo_name = Some("skills".to_string());
+        row.source.repo_path = Some(repo_path.clone());
+        row.exposures[0].path = repo_path.join("review");
+
+        let mut app = test_app();
+        app.inventory = vec![row];
+        app.repository_updates = vec![RepositoryUpdate {
+            repo_path,
+            commits: vec![RepositoryCommit {
+                id: "abc1234".to_string(),
+                subject: "Add a skill".to_string(),
+            }],
+        }];
+        app.enter_list_mode();
+
+        handle_key_with_table_height(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL),
             3,
         )
         .expect("key handled");

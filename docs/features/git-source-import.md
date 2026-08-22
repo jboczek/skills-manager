@@ -45,7 +45,7 @@ A matching origin is reused and scanned as-is. Reuse never runs fetch, pull, res
 
 ## Remote Updates
 
-The interactive /list flow checks each visible Git source repository once per refresh by fetching origin in the background, so the list remains usable before remote checks finish. A repository group with commits beyond the local checkout shows a green one-line update notice from the first agent column and the Cmd+U shortcut. Failed background checks are ignored without showing Git stderr in the interface. Cmd+U opens a short-ID and subject preview of the missing commits. Entering y runs git pull --ff-only for that repository and refreshes the inventory; declining or a failed pull leaves the checkout unchanged.
+The interactive /list flow checks each visible Git source repository once per refresh by fetching origin in the background, so the list remains usable before remote checks finish. A repository group with commits beyond the local checkout shows a green one-line update notice from the first agent column and the Cmd/Ctrl+U shortcut. Failed background checks are ignored without showing Git stderr in the interface. Cmd/Ctrl+U opens a short-ID and subject preview of the missing commits. Entering y runs git pull --ff-only for that repository and refreshes the inventory; declining or a failed pull leaves the checkout unchanged.
 
 Every unknown or conflicting destination fails:
 
