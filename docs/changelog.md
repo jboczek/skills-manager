@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-22
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-08-22 19:27 | Refreshed the README around the TUI and added publication-ready home and inventory screenshots. | `README.md`, `assets/skills-manager-home.png`, `assets/skills-manager-inventory.png` |
+
 ## 2026-07-12
 
 | Time | Change | Docs |
