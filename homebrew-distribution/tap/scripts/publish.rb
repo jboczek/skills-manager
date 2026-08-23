@@ -95,21 +95,24 @@ Dir.mktmpdir("skills-manager-tap") do |download_dir|
     abort "a tap PR for #{tag} is closed; refusing to create a duplicate"
   end
 
+  system("git", "config", "user.name", "github-actions[bot]") || abort("could not configure git user")
+  system("git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com") || abort("could not configure git email")
+
   if branch_exists
     fail_unless(existing_pr, "existing #{branch} has no matching open PR")
     fail_unless(existing_pr.fetch("body", "").include?(expected_marker), "existing tap PR metadata does not match")
     git_output("fetch", "origin", "main", branch, "--prune")
     system("git", "checkout", "-B", branch, "origin/#{branch}") || abort("could not check out existing tap branch")
+    git_output("merge", "--no-edit", "origin/main")
     paths = git_output("diff", "--name-only", "origin/main...HEAD").lines.map(&:strip).reject(&:empty?)
     fail_unless(PublisherContract.allowed_diff?(paths), "existing tap PR changes more than the formula")
     fail_unless(PublisherContract.retry_matches?(expected_state, {"tag" => tag, "source_commit" => source_commit, "diff" => paths}), "existing tap PR is not an exact retry")
     fail_unless(File.binread(formula_path) == formula, "existing formula does not match release hashes")
+    system("git", "push", "origin", branch) || abort("could not update tap branch")
   else
     fail_unless(existing_pr.nil?, "a tap PR exists without its expected branch")
     git_output("fetch", "origin", "main", "--prune")
     system("git", "checkout", "-B", branch, "origin/main") || abort("could not create tap branch")
-    system("git", "config", "user.name", "github-actions[bot]") || abort("could not configure git user")
-    system("git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com") || abort("could not configure git email")
     FileUtils.mkdir_p(File.dirname(formula_path))
     File.write(formula_path, formula)
     system("ruby", "-c", formula_path) || abort("rendered formula is not valid Ruby")

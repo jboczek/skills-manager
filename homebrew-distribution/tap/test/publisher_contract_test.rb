@@ -55,4 +55,11 @@ class PublisherContractTest < Minitest::Test
     assert_includes publisher, '"--signer-workflow", "#{source_repository}/.github/workflows/release.yml"'
     assert_includes publisher, '"--source-ref", "refs/tags/#{tag}"'
   end
+
+  def test_existing_pr_retry_refreshes_its_branch_from_current_main
+    publisher = File.read(File.expand_path("../scripts/publish.rb", __dir__))
+
+    assert_includes publisher, 'git_output("merge", "--no-edit", "origin/main")'
+    assert_includes publisher, 'system("git", "push", "origin", branch)'
+  end
 end
