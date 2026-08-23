@@ -57,4 +57,13 @@ module PublisherContract
   def self.retry_matches?(expected, existing)
     expected == existing
   end
+
+  def self.release_prs_for_tag(pull_requests, tag)
+    marker = /<!--\s*skills-manager-publisher\s+tag=#{Regexp.escape(tag)}\s+source_commit=[^ >]+\s*-->/
+
+    pull_requests.select do |pull_request|
+      pull_request.fetch("baseRefName") == "main" &&
+        pull_request.fetch("body", "").match?(marker)
+    end
+  end
 end

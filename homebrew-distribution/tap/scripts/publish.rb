@@ -83,11 +83,15 @@ Dir.mktmpdir("skills-manager-tap") do |download_dir|
   expected_marker = "<!-- skills-manager-publisher tag=#{tag} source_commit=#{source_commit} -->"
   expected_state = {"tag" => tag, "source_commit" => source_commit, "diff" => ["Formula/skills-manager.rb"]}
 
-  existing_prs = JSON.parse(gh_output("pr", "list", "--repo", ENV.fetch("GITHUB_REPOSITORY"), "--head", branch, "--base", "main", "--state", "all", "--json", "number,state,body,url"))
-  fail_unless(existing_prs.length <= 1, "multiple tap PRs exist for #{tag}")
-  existing_pr = existing_prs.first
+  all_prs = JSON.parse(gh_output("pr", "list", "--repo", ENV.fetch("GITHUB_REPOSITORY"), "--base", "main", "--state", "all", "--limit", "1000", "--json", "number,state,body,url,headRefName,baseRefName"))
+  tagged_prs = PublisherContract.release_prs_for_tag(all_prs, tag)
+  fail_unless(tagged_prs.length <= 1, "multiple tap PRs exist for #{tag}")
+  existing_pr = tagged_prs.first
   branch_exists = system("git", "ls-remote", "--exit-code", "--heads", "origin", branch, out: File::NULL, err: File::NULL)
 
+  if existing_pr
+    fail_unless(existing_pr.fetch("headRefName") == branch, "a tap PR for #{tag} uses an unexpected branch")
+  end
   if existing_pr && existing_pr.fetch("state") == "MERGED"
     abort "a tap PR for #{tag} is already merged"
   end

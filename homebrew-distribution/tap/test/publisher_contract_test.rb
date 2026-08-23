@@ -44,6 +44,25 @@ class PublisherContractTest < Minitest::Test
     refute PublisherContract.retry_matches?(expected, expected.merge("diff" => ["Formula/skills-manager.rb", "README.md"]))
   end
 
+  def test_release_pr_lookup_finds_a_same_tag_marker_on_an_unexpected_branch
+    pull_request = {
+      "number" => 7,
+      "baseRefName" => "main",
+      "headRefName" => "automation/other-branch",
+      "body" => "<!-- skills-manager-publisher tag=v0.1.0 source_commit=abc123 -->",
+    }
+
+    assert_equal [pull_request], PublisherContract.release_prs_for_tag([pull_request], "v0.1.0")
+  end
+
+  def test_publisher_queries_all_main_prs_before_creating_a_branch
+    publisher = File.read(File.expand_path("../scripts/publish.rb", __dir__))
+
+    assert_includes publisher, "PublisherContract.release_prs_for_tag(all_prs, tag)"
+    assert_includes publisher, '"--base", "main", "--state", "all", "--limit", "1000"'
+    refute_includes publisher, "existing_prs = JSON.parse"
+  end
+
   def test_publisher_sets_a_noninteractive_git_identity_before_committing
     publisher = File.read(File.expand_path("../scripts/publish.rb", __dir__))
 
