@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-23
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-08-23 08:48 | Added a local visual-check skill that requires Docker-hosted Playwright and documents the inventory row-height invariants. | `.agents/skills/visual-check-playwright-docker/` |
+| 2026-08-23 08:23 | Re-rendered multi-skill inventory rows with full glyph height so `code-review` and `release-notes` are no longer clipped. | `README.md`, `assets/skills-manager-inventory.png` |
+| 2026-08-23 08:08 | Regenerated the README inventory screenshot without the selected-row highlight while preserving the expanded skill fixture. | `README.md`, `assets/skills-manager-inventory.png` |
+
+## 2026-08-22
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-08-22 19:27 | Refreshed the README around the TUI and added publication-ready home and inventory screenshots. | `README.md`, `assets/skills-manager-home.png`, `assets/skills-manager-inventory.png` |
+
 ## 2026-07-12
 
 | Time | Change | Docs |
