@@ -5,6 +5,7 @@
 | Time | Change | Docs |
 |---|---|---|
 | 2026-08-23 11:00 | Added a manually dispatched ARM64 macOS 15 smoke gate for immutable Homebrew release archives. | `features/homebrew-distribution.md`, `../.github/workflows/release-smoke.yml` |
+| 2026-08-23 11:39 | Expanded the release smoke gate to the documented ARM64 macOS 14/15/26 and Intel macOS 15/26 matrix. | `features/homebrew-distribution.md`, `../.github/workflows/release-smoke.yml` |
 
 ## 2026-08-22
 

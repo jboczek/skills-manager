@@ -18,8 +18,9 @@ trusted renderer and native ARM64/Intel workflow mirror live under
 `homebrew-distribution/tap/`; the public `jboczek/homebrew-tap` repository is
 the active publisher and has protected `main` with both native checks required.
 
-The published ARM64 archive can also be smoke-tested directly on a GitHub
-hosted ARM64 macOS 15 runner with the source repository's manually dispatched
-`Release smoke` workflow. It downloads only the requested immutable tag and
-checks the archive layout, architecture, deployment target, signature, and
-`--version` output before succeeding.
+The published archives can also be smoke-tested directly on GitHub-hosted
+macOS runners with the source repository's manually dispatched `Release smoke`
+workflow. Its matrix covers ARM64 on macOS 14, 15, and 26 plus Intel on macOS
+15 and 26. Each job downloads only the requested immutable tag and checks the
+archive layout, architecture, deployment target, signature, and `--version`
+output before succeeding.
