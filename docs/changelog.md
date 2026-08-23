@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-23
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-08-23 07:51 | Simplified repository updates to the `u` shortcut and made `Esc` return from review to the loaded list. | `README.md`, `features/assistant-style-tui-shell.md`, `features/git-source-import.md` |
+
 ## 2026-08-22
 
 | Time | Change | Docs |

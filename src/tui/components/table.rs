@@ -231,7 +231,7 @@ fn group_cell_label(expanded: bool, name: &str, context: &str) -> String {
 }
 
 fn repository_update_label() -> &'static str {
-    "New repository version available (Cmd+U to update)"
+    "New repository version available (U to update)"
 }
 
 fn skill_count_label(count: usize) -> String {
@@ -312,9 +312,9 @@ mod tests {
     }
 
     #[test]
-    fn repository_update_label_explains_the_cmd_u_action() {
+    fn repository_update_label_explains_the_u_action() {
         assert!(repository_update_label().contains("New repository version available"));
-        assert!(repository_update_label().contains("Cmd+U to update"));
+        assert!(repository_update_label().contains("U to update"));
     }
 
     #[test]
@@ -450,7 +450,7 @@ mod tests {
             output.contains("New repository version available"),
             "{output}"
         );
-        assert!(output.contains("Cmd+U to update"), "{output}");
+        assert!(output.contains("U to update"), "{output}");
 
         let notice_line = rendered_lines(&terminal)
             .into_iter()
@@ -540,6 +540,6 @@ mod tests {
             output.contains("New repository version available"),
             "{output}"
         );
-        assert!(output.contains("Cmd+U to update"), "{output}");
+        assert!(output.contains("U to update"), "{output}");
     }
 }

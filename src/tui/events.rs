@@ -42,6 +42,9 @@ fn handle_key_with_preview_area(
     if app.mode == Mode::List
         && app.input.is_empty()
         && app.list_table.selected_repository_update().is_some()
+        && !key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
         && matches!(key.code, KeyCode::Char('u' | 'U'))
     {
         app.start_repository_update_from_selected_list_row()?;
@@ -53,6 +56,14 @@ fn handle_key_with_preview_area(
             if app.command_menu_open() {
                 app.input.clear();
                 app.close_command_menu();
+                return Ok(false);
+            }
+            if app.mode == Mode::RepositoryUpdate {
+                app.input.clear();
+                app.mode = Mode::List;
+                app.repository_update_step = RepositoryUpdateStep::default();
+                app.error_message = None;
+                app.info_message = None;
                 return Ok(false);
             }
             app.input.clear();
@@ -169,7 +180,7 @@ fn handle_key_with_preview_area(
         KeyCode::Char(c)
             if !key
                 .modifiers
-                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER) =>
         {
             app.input.push(c);
             if app.command_menu_open() {
@@ -386,7 +397,7 @@ mod tests {
     }
 
     #[test]
-    fn cmd_u_opens_repository_update_review_for_selected_group() {
+    fn command_u_does_not_open_repository_update_review() {
         let repo_path = std::path::PathBuf::from("/repos/skills");
         let mut row = inventory_row("review");
         row.source.repo_name = Some("skills".to_string());
@@ -411,15 +422,12 @@ mod tests {
         )
         .expect("key handled");
 
-        assert_eq!(app.mode, Mode::RepositoryUpdate);
-        assert!(matches!(
-            app.repository_update_step,
-            RepositoryUpdateStep::Preview { .. }
-        ));
+        assert_eq!(app.mode, Mode::List);
+        assert_eq!(app.input, "");
     }
 
     #[test]
-    fn ctrl_u_opens_repository_update_review_for_selected_group() {
+    fn ctrl_u_does_not_open_repository_update_review() {
         let repo_path = std::path::PathBuf::from("/repos/skills");
         let mut row = inventory_row("review");
         row.source.repo_name = Some("skills".to_string());
@@ -444,15 +452,11 @@ mod tests {
         )
         .expect("key handled");
 
-        assert_eq!(app.mode, Mode::RepositoryUpdate);
-        assert!(matches!(
-            app.repository_update_step,
-            RepositoryUpdateStep::Preview { .. }
-        ));
+        assert_eq!(app.mode, Mode::List);
     }
 
     #[test]
-    fn alt_u_opens_repository_update_review_for_selected_group() {
+    fn alt_u_does_not_open_repository_update_review() {
         let repo_path = std::path::PathBuf::from("/repos/skills");
         let mut row = inventory_row("review");
         row.source.repo_name = Some("skills".to_string());
@@ -477,7 +481,7 @@ mod tests {
         )
         .expect("key handled");
 
-        assert_eq!(app.mode, Mode::RepositoryUpdate);
+        assert_eq!(app.mode, Mode::List);
     }
 
     #[test]
@@ -573,6 +577,32 @@ mod tests {
             app.repository_update_step,
             RepositoryUpdateStep::Preview { scroll: 0, .. }
         ));
+    }
+
+    #[test]
+    fn escape_from_repository_update_returns_to_loaded_list() {
+        let repo_path = std::path::PathBuf::from("/repos/skills");
+        let mut row = inventory_row("review");
+        row.source.repo_name = Some("skills".to_string());
+        row.source.repo_path = Some(repo_path.clone());
+        row.exposures[0].path = repo_path.join("review");
+
+        let mut app = test_app();
+        app.inventory = vec![row];
+        app.repository_updates = vec![RepositoryUpdate {
+            repo_path,
+            commits: vec![RepositoryCommit {
+                id: "abc1234".to_string(),
+                subject: "Add a skill".to_string(),
+            }],
+        }];
+        app.enter_list_mode();
+        handle_key_with_table_height(&mut app, key(KeyCode::Char('u')), 3).expect("key handled");
+
+        handle_key_with_table_height(&mut app, key(KeyCode::Esc), 3).expect("key handled");
+
+        assert_eq!(app.mode, Mode::List);
+        assert_eq!(app.list_table.visible_rows().len(), 1);
     }
 
     #[test]

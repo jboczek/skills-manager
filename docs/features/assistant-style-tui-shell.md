@@ -62,7 +62,7 @@ Import mode is reached from table shortcuts or existing flow state. It guides th
 
 Remove mode is reached from table shortcuts or existing flow state. It guides the user through exposure selection when needed, staged plan preview, confirmation, apply, rescan, and result rendering.
 
-Repository-update mode is reached with Cmd+U from a repository group or one of its skill rows when a background origin check finds missing commits. Its green one-line list notice begins in the first agent column, and failed checks do not surface Git stderr. Ctrl+U and Alt+U cover terminal remappings, while plain U is accepted only for a selected row that has an update. The mode lists the short commit IDs and subjects, then runs a fast-forward-only pull after the user enters y.
+Repository-update mode is reached with `u` from a repository group or one of its skill rows when a background origin check finds missing commits. Its green one-line list notice begins in the first agent column, and failed checks do not surface Git stderr. The mode lists the short commit IDs and subjects, then runs a fast-forward-only pull after the user enters `y`; `Esc` returns to the already loaded list without pulling.
 
 ## Key Behavior
 
@@ -80,7 +80,7 @@ The implemented V1 key behavior is:
 - `i`: import the selected discovery skill, or import missing enabled-agent exposures from a selected global list skill
 - `x`: remove a selected global list skill exposure, or choose which exposure to remove when a row has multiple
 - `r`: refresh the active list while retaining its filter and matching selection/group expansion
-- `Cmd+U` (or `Ctrl+U`, `Alt+U`, or plain `U` when an update is present): review missing commits for the selected repository and confirm its update
+- `u` when an update is present: review missing commits for the selected repository and confirm its update
 - `Ctrl-C`: quit
 
 All source groups start collapsed. Refresh preserves expansion for source identities that still exist, and resize events keep the selected visible row within the viewport. Pressing `i` or `x` on a group row asks the user to select a skill inside the group.

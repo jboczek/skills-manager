@@ -45,7 +45,7 @@ A matching origin is reused and scanned as-is. Reuse never runs fetch, pull, res
 
 ## Remote Updates
 
-The interactive /list flow checks each visible Git source repository once per refresh by fetching origin in the background, so the list remains usable before remote checks finish. A repository group with commits beyond the local checkout shows a green one-line update notice from the first agent column and the Cmd+U shortcut. Terminal variants Ctrl+U and Alt+U are accepted too; if a terminal strips the modifier, plain U is treated as the shortcut only when the selected row has an available update. Failed background checks are ignored without showing Git stderr in the interface. The shortcut opens a short-ID and subject preview of the missing commits. Entering y runs git pull --ff-only for that repository and refreshes the inventory; declining or a failed pull leaves the checkout unchanged.
+The interactive /list flow checks each visible Git source repository once per refresh by fetching origin in the background, so the list remains usable before remote checks finish. A repository group with commits beyond the local checkout shows a green one-line update notice from the first agent column and the `u` shortcut. Failed background checks are ignored without showing Git stderr in the interface. The shortcut opens a short-ID and subject preview of the missing commits only for the selected repository with an available update. Entering `y` runs `git pull --ff-only` for that repository and refreshes the inventory; `Esc`, declining, or a failed pull leaves the checkout unchanged.
 
 Every unknown or conflicting destination fails:
 
