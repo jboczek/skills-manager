@@ -2,6 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
+use crate::git::RepositoryUpdate;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum GroupKey {
     Repository(PathBuf),
@@ -16,6 +18,7 @@ pub struct SourceGroupItem {
     pub repo_name: Option<String>,
     pub repo_path: Option<PathBuf>,
     pub relative_path: Option<PathBuf>,
+    pub allow_repository_update: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -23,6 +26,7 @@ pub struct SourceTableItem {
     pub item: usize,
     pub skill_name: String,
     pub display_path: String,
+    pub allow_repository_update: bool,
     skill_path: PathBuf,
 }
 
@@ -32,6 +36,8 @@ pub struct SourceGroup {
     pub name: String,
     pub context: String,
     pub items: Vec<SourceTableItem>,
+    pub repository_update: Option<RepositoryUpdate>,
+    allow_repository_update: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +48,7 @@ pub enum SourceTableRow {
         context: String,
         count: usize,
         expanded: bool,
+        repository_update: Option<RepositoryUpdate>,
     },
     Item {
         group_key: GroupKey,
@@ -49,8 +56,15 @@ pub enum SourceTableRow {
         skill_name: String,
         display_path: String,
         source_path: PathBuf,
+        allow_repository_update: bool,
         checked: bool,
     },
+}
+
+impl SourceTableRow {
+    pub fn rendered_height(&self) -> usize {
+        1
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -90,6 +104,40 @@ impl SourceTable {
         &self.groups
     }
 
+    pub fn set_repository_updates(&mut self, updates: &[RepositoryUpdate]) {
+        for group in &mut self.groups {
+            group.repository_update = if group.allow_repository_update {
+                match &group.key {
+                    GroupKey::Repository(path) => updates
+                        .iter()
+                        .find(|update| normalized_path(&update.repo_path) == *path)
+                        .cloned(),
+                    GroupKey::SourceContainer(_) => None,
+                }
+            } else {
+                None
+            };
+        }
+    }
+
+    pub fn selected_repository_update(&self) -> Option<RepositoryUpdate> {
+        match self.selected_row()? {
+            SourceTableRow::Group {
+                repository_update, ..
+            } => repository_update,
+            SourceTableRow::Item {
+                group_key,
+                allow_repository_update: true,
+                ..
+            } => self
+                .groups
+                .iter()
+                .find(|group| group.key == group_key)
+                .and_then(|group| group.repository_update.clone()),
+            SourceTableRow::Item { .. } => None,
+        }
+    }
+
     pub fn expanded_keys(&self) -> &HashSet<GroupKey> {
         &self.expanded
     }
@@ -102,6 +150,33 @@ impl SourceTable {
         self.viewport_offset
     }
 
+    pub fn viewport_indices(&self, viewport_height: usize) -> (usize, usize) {
+        let rows = self.visible_rows();
+        if rows.is_empty() {
+            return (0, 0);
+        }
+
+        let viewport_height = viewport_height.max(1);
+        let selected = self.selected.unwrap_or(0).min(rows.len() - 1);
+        let max_offset = max_viewport_offset(&rows, viewport_height);
+        let mut start = self.viewport_offset.min(selected).min(max_offset);
+        while start < selected && rendered_height(&rows[start..=selected]) > viewport_height {
+            start += 1;
+        }
+
+        let mut used = 0;
+        let mut end = start;
+        while end < rows.len() {
+            let height = rows[end].rendered_height();
+            if end > start && used + height > viewport_height {
+                break;
+            }
+            used += height;
+            end += 1;
+        }
+        (start, end)
+    }
+
     pub fn visible_rows(&self) -> Vec<SourceTableRow> {
         let mut rows = Vec::new();
         for group in &self.groups {
@@ -112,6 +187,7 @@ impl SourceTable {
                 context: group.context.clone(),
                 count: group.items.len(),
                 expanded,
+                repository_update: group.repository_update.clone(),
             });
             if expanded {
                 rows.extend(group.items.iter().map(|item| {
@@ -121,6 +197,7 @@ impl SourceTable {
                         skill_name: item.skill_name.clone(),
                         display_path: item.display_path.clone(),
                         source_path: item.skill_path.clone(),
+                        allow_repository_update: item.allow_repository_update,
                         checked: self
                             .checked
                             .contains(&ItemKey::new(&group.key, &item.skill_path)),
@@ -227,26 +304,23 @@ impl SourceTable {
     }
 
     pub fn sync(&mut self, viewport_height: usize) {
-        let row_count = self.visible_rows().len();
-        if row_count == 0 {
+        let rows = self.visible_rows();
+        if rows.is_empty() {
             self.selected = None;
             self.viewport_offset = 0;
             return;
         }
 
         let viewport_height = viewport_height.max(1);
-        let selected = self.selected.unwrap_or(0).min(row_count - 1);
-        let max_offset = row_count.saturating_sub(viewport_height);
-        let mut offset = self.viewport_offset.min(max_offset);
-
-        if selected < offset {
-            offset = selected;
-        } else if selected >= offset + viewport_height {
-            offset = selected + 1 - viewport_height;
+        let selected = self.selected.unwrap_or(0).min(rows.len() - 1);
+        let max_offset = max_viewport_offset(&rows, viewport_height);
+        let mut offset = self.viewport_offset.min(selected).min(max_offset);
+        while offset < selected && rendered_height(&rows[offset..=selected]) > viewport_height {
+            offset += 1;
         }
 
         self.selected = Some(selected);
-        self.viewport_offset = offset.min(max_offset);
+        self.viewport_offset = offset;
     }
 
     pub fn refresh(&mut self, items: Vec<SourceGroupItem>, viewport_height: usize) {
@@ -314,6 +388,18 @@ fn item_keys(groups: &[SourceGroup]) -> HashSet<ItemKey> {
         .collect()
 }
 
+fn rendered_height(rows: &[SourceTableRow]) -> usize {
+    rows.iter().map(SourceTableRow::rendered_height).sum()
+}
+
+fn max_viewport_offset(rows: &[SourceTableRow], viewport_height: usize) -> usize {
+    let mut offset = 0;
+    while offset + 1 < rows.len() && rendered_height(&rows[offset..]) > viewport_height {
+        offset += 1;
+    }
+    offset
+}
+
 fn find_selection(rows: &[SourceTableRow], selection: &SelectionKey) -> Option<usize> {
     match selection {
         SelectionKey::Group(selected_key) => rows.iter().position(
@@ -351,13 +437,17 @@ fn build_groups(items: Vec<SourceGroupItem>) -> Vec<SourceGroup> {
                 name,
                 context,
                 items: Vec::new(),
+                repository_update: None,
+                allow_repository_update: false,
             });
             groups.len() - 1
         });
+        groups[group_index].allow_repository_update |= item.allow_repository_update;
         groups[group_index].items.push(SourceTableItem {
             item: item.item,
             skill_name: item.skill_name,
             display_path,
+            allow_repository_update: item.allow_repository_update,
             skill_path: item.skill_path,
         });
     }
@@ -510,6 +600,8 @@ mod tests {
     use std::collections::HashSet;
     use std::path::PathBuf;
 
+    use crate::git::{RepositoryCommit, RepositoryUpdate};
+
     use super::{GroupKey, SourceGroupItem, SourceTable, SourceTableRow, bounded_path_suffix};
 
     fn item(
@@ -527,6 +619,7 @@ mod tests {
             repo_name: repo_name.map(str::to_string),
             repo_path: repo_path.map(PathBuf::from),
             relative_path: relative_path.map(PathBuf::from),
+            allow_repository_update: true,
         }
     }
 
@@ -779,6 +872,163 @@ mod tests {
             table.selected_row(),
             Some(SourceTableRow::Item { item: 1, .. })
         ));
+    }
+
+    #[test]
+    fn selected_repository_update_is_available_on_group_and_child_rows() {
+        let repo_path = PathBuf::from("/repos/skills");
+        let update = RepositoryUpdate {
+            repo_path: repo_path.clone(),
+            commits: vec![RepositoryCommit {
+                id: "abc1234".to_string(),
+                subject: "Add a skill".to_string(),
+            }],
+        };
+        let mut table = SourceTable::new(vec![item(
+            0,
+            "review",
+            "/repos/skills/review",
+            Some("skills"),
+            Some("/repos/skills"),
+            Some("review"),
+        )]);
+        table.set_repository_updates(&[update.clone()]);
+
+        assert_eq!(table.selected_repository_update(), Some(update.clone()));
+        table.move_right(4);
+        table.move_right(4);
+        assert_eq!(table.selected_repository_update(), Some(update));
+    }
+
+    #[test]
+    fn project_local_group_does_not_receive_repository_update_actions() {
+        let mut project_local = item(
+            0,
+            "review",
+            "/repos/project/.agents/skills/review",
+            Some("project"),
+            Some("/repos/project"),
+            Some(".agents/skills/review"),
+        );
+        project_local.allow_repository_update = false;
+        let mut table = SourceTable::new(vec![project_local]);
+        table.set_repository_updates(&[RepositoryUpdate {
+            repo_path: PathBuf::from("/repos/project"),
+            commits: vec![RepositoryCommit {
+                id: "abc1234".to_string(),
+                subject: "Project change".to_string(),
+            }],
+        }]);
+
+        assert_eq!(table.selected_repository_update(), None);
+    }
+
+    #[test]
+    fn project_local_child_in_a_mixed_group_cannot_start_repository_update() {
+        let repo_path = PathBuf::from("/repos/project");
+        let mut project_local = item(
+            1,
+            "local",
+            "/repos/project/.agents/skills/local",
+            Some("project"),
+            Some("/repos/project"),
+            Some(".agents/skills/local"),
+        );
+        project_local.allow_repository_update = false;
+        let update = RepositoryUpdate {
+            repo_path: repo_path.clone(),
+            commits: vec![RepositoryCommit {
+                id: "abc1234".to_string(),
+                subject: "Project change".to_string(),
+            }],
+        };
+        let mut table = SourceTable::new(vec![
+            item(
+                0,
+                "global",
+                "/repos/project/skills/global",
+                Some("project"),
+                Some("/repos/project"),
+                Some("skills/global"),
+            ),
+            project_local,
+        ]);
+        table.set_repository_updates(std::slice::from_ref(&update));
+
+        assert_eq!(table.selected_repository_update(), Some(update.clone()));
+        table.move_right(4);
+        table.move_right(4);
+        assert_eq!(table.selected_repository_update(), Some(update.clone()));
+        table.move_down(4);
+
+        assert_eq!(table.selected_repository_update(), None);
+    }
+
+    #[test]
+    fn one_line_update_rows_keep_the_selected_group_in_the_viewport() {
+        let mut table = SourceTable::new(vec![
+            item(
+                0,
+                "first",
+                "/repos/first/skills/first",
+                Some("first"),
+                Some("/repos/first"),
+                Some("skills/first"),
+            ),
+            item(
+                1,
+                "second",
+                "/repos/second/skills/second",
+                Some("second"),
+                Some("/repos/second"),
+                Some("skills/second"),
+            ),
+        ]);
+        table.set_repository_updates(&[
+            RepositoryUpdate {
+                repo_path: PathBuf::from("/repos/first"),
+                commits: vec![RepositoryCommit {
+                    id: "first123".to_string(),
+                    subject: "First update".to_string(),
+                }],
+            },
+            RepositoryUpdate {
+                repo_path: PathBuf::from("/repos/second"),
+                commits: vec![RepositoryCommit {
+                    id: "second12".to_string(),
+                    subject: "Second update".to_string(),
+                }],
+            },
+        ]);
+
+        table.move_down(3);
+
+        assert_eq!(table.selected_index(), Some(1));
+        assert_eq!(table.viewport_offset(), 0);
+    }
+
+    #[test]
+    fn repository_update_group_rows_stay_one_line_high() {
+        let update = RepositoryUpdate {
+            repo_path: PathBuf::from("/workspace/repository"),
+            commits: vec![RepositoryCommit {
+                id: "abc1234".to_string(),
+                subject: "Add a skill".to_string(),
+            }],
+        };
+        let mut table = SourceTable::new(vec![SourceGroupItem {
+            item: 0,
+            skill_name: "skill".to_string(),
+            skill_path: PathBuf::from("/workspace/repository/skill"),
+            repo_name: Some("repository".to_string()),
+            repo_path: Some(PathBuf::from("/workspace/repository")),
+            relative_path: Some(PathBuf::from("skill")),
+            allow_repository_update: true,
+        }]);
+
+        table.set_repository_updates(&[update]);
+
+        assert_eq!(table.visible_rows()[0].rendered_height(), 1);
     }
 
     #[test]

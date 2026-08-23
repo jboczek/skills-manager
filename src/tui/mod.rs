@@ -123,6 +123,7 @@ fn event_loop<B: ratatui::backend::Backend>(
             .map_err(|error| anyhow::anyhow!(error.to_string()))?;
 
         app.poll_initial_load();
+        app.poll_repository_update_load();
 
         if app.pending_load.is_some() {
             if let Err(error) = app.execute_pending_load() {

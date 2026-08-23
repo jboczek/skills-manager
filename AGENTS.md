@@ -22,6 +22,7 @@
 13. Discover project-local exposures in repositories containing `SKILL.md` under both configured source root types. Use fixed agent directory conventions, classify physical project-local skill directories as local to their containing repository, and resolve symlink sources when possible.
 14. Project-local exposures are read-only inventory. Do not allow import, remove, detach, or physical deletion actions for them. The fixed `.agents/skills` convention grants effective availability to Codex and Copilot.
 15. TUI list groups represent repositories, not scope buckets. Group global exposures by source repository and project-local exposures by containing project; keep `global` and `project-local` in the scope column.
+16. When a user reports that a keyboard shortcut still does not work, reproduce the terminal-delivered key event variants in tests before changing the shortcut matcher.
 
 
 Before implementation, make a plan and add it to temp file named after the PRD `/docs/temp/prd-xxx-plan.md`. The plan should be a step-by-step outline of how the implementation will proceed and what files need to be modified. Add the plan file but do not commit it.

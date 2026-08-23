@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use crate::domain::InventoryRow;
+use crate::git::RepositoryUpdate;
 use crate::inventory::AgentTarget;
 use crate::plan::ChangePlan;
 use crate::scanner::ScanResult;
@@ -77,6 +78,25 @@ pub enum RemoveStep {
     },
 }
 
+#[derive(Debug, Clone)]
+pub enum RepositoryUpdateStep {
+    Preview {
+        update: RepositoryUpdate,
+        scroll: usize,
+    },
+    Done {
+        message: String,
+    },
+}
+
+impl Default for RepositoryUpdateStep {
+    fn default() -> Self {
+        Self::Done {
+            message: String::new(),
+        }
+    }
+}
+
 impl Default for RemoveStep {
     fn default() -> Self {
         Self::Done {
@@ -95,6 +115,7 @@ pub enum Mode {
     Help,
     Import,
     Remove,
+    RepositoryUpdate,
     Quit,
 }
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-23
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-08-23 07:51 | Simplified repository updates to the `u` shortcut and made `Esc` return from review to the loaded list. | `README.md`, `features/assistant-style-tui-shell.md`, `features/git-source-import.md` |
+
+## 2026-08-22
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-08-22 22:45 | Made the repository-update shortcut resilient to terminal Alt mappings and stripped Command modifiers. | `README.md`, `features/assistant-style-tui-shell.md`, `features/git-source-import.md` |
+| 2026-08-22 20:30 | Made `/list` repository-update checks asynchronous, hid failed-fetch noise, and moved the green Cmd+U notice to one agent-column line. | `README.md`, `features/assistant-style-tui-shell.md`, `features/git-source-import.md` |
+| 2026-08-22 19:02 | Added TUI detection and review of remote repository commits, with Cmd+U and confirmed fast-forward-only pull. | `README.md`, `features/assistant-style-tui-shell.md`, `features/git-source-import.md` |
+
 ## 2026-07-12
 
 | Time | Change | Docs |

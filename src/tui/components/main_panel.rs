@@ -4,7 +4,10 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::config::Config;
 use crate::domain::{ConnectionKind, InventoryRow};
-use crate::tui::app::{App, ImportStep, Mode, RemoveStep, SourceAddStep, removable_exposures};
+use crate::git::RepositoryUpdate;
+use crate::tui::app::{
+    App, ImportStep, Mode, RemoveStep, RepositoryUpdateStep, SourceAddStep, removable_exposures,
+};
 use crate::tui::components::{dialog, table};
 use crate::tui::theme::Theme;
 
@@ -44,6 +47,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         Mode::Help => render_help(frame, area),
         Mode::Import => render_import(frame, area, app),
         Mode::Remove => render_remove(frame, area, app),
+        Mode::RepositoryUpdate => render_repository_update(frame, area, app),
         Mode::Quit => render_text_panel(frame, area, " Goodbye ", "Closing Skills Manager..."),
     }
 }
@@ -64,7 +68,7 @@ fn render_help(frame: &mut Frame, area: Rect) {
 }
 
 fn help_text() -> &'static str {
-    "Commands\n  /list                       Browse exposed and discovered skills\n  /source_add <clone-url>     Add a source from an HTTPS or SSH clone URL\n  /config                     Show config\n  /help                       Show this help\n  /quit                       Exit\n\nTable actions\n  Tab                Cycle Full, exposed, and discovery-only views\n  Space              Check or uncheck skill rows\n  i                  Import a selected skill or checked skills\n  x                  Remove checked or selected exposed skill rows\n  r                  Refresh the current list view\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
+    "Commands\n  /list                       Browse exposed and discovered skills\n  /source_add <clone-url>     Add a source from an HTTPS or SSH clone URL\n  /config                     Show config\n  /help                       Show this help\n  /quit                       Exit\n\nTable actions\n  Tab                Cycle Full, exposed, and discovery-only views\n  Space              Check or uncheck skill rows\n  i                  Import a selected skill or checked skills\n  x                  Remove checked or selected exposed skill rows\n  r                  Refresh the current list view\n  u                  Review/update selected repository\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel repository update\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
 }
 
 fn render_source_add(frame: &mut Frame, area: Rect, app: &App) {
@@ -199,7 +203,52 @@ fn render_remove(frame: &mut Frame, area: Rect, app: &App) {
     }
 }
 
+fn render_repository_update(frame: &mut Frame, area: Rect, app: &App) {
+    match &app.repository_update_step {
+        RepositoryUpdateStep::Preview { update, scroll } => {
+            let body = repository_update_body(update);
+            let scroll = (*scroll).min(repository_update_preview_max_scroll(update, area));
+            render_text_panel_with_scroll(frame, area, " Repository Update ", &body, scroll);
+        }
+        RepositoryUpdateStep::Done { message } => {
+            render_text_panel(frame, area, " Repository Update ", message);
+        }
+    }
+}
+
+fn repository_update_body(update: &RepositoryUpdate) -> String {
+    let commits = update
+        .commits
+        .iter()
+        .map(|commit| format!("  {}  {}", commit.id, commit.subject))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "Repository\n  {}\n\nMissing commits\n{}\n\nPull this repository? [y/N]",
+        update.repo_path.display(),
+        commits
+    )
+}
+
+pub(crate) fn repository_update_preview_max_scroll(update: &RepositoryUpdate, area: Rect) -> usize {
+    let inner = Block::default().borders(Borders::ALL).inner(area);
+    Paragraph::new(repository_update_body(update))
+        .wrap(Wrap { trim: false })
+        .line_count(inner.width)
+        .saturating_sub(usize::from(inner.height))
+}
+
 fn render_text_panel(frame: &mut Frame, area: Rect, title: &str, body: &str) {
+    render_text_panel_with_scroll(frame, area, title, body, 0);
+}
+
+fn render_text_panel_with_scroll(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    body: &str,
+    scroll: usize,
+) {
     frame.render_widget(
         Paragraph::new(body)
             .block(
@@ -211,6 +260,7 @@ fn render_text_panel(frame: &mut Frame, area: Rect, title: &str, body: &str) {
                     .style(Theme::default_style()),
             )
             .style(Theme::default_style())
+            .scroll((u16::try_from(scroll).unwrap_or(u16::MAX), 0))
             .wrap(Wrap { trim: false }),
         area,
     );
@@ -245,8 +295,26 @@ fn connection_label(connection: ConnectionKind) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
     use super::*;
     use crate::domain::{AgentId, SkillExposure, SkillId, SkillSource};
+    use crate::git::{RepositoryCommit, RepositoryUpdate};
+
+    fn rendered_lines(terminal: &Terminal<TestBackend>) -> String {
+        let buffer = terminal.backend().buffer();
+        (0..buffer.area.height)
+            .map(|y| {
+                (0..buffer.area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 
     #[test]
     fn help_points_to_table_actions_instead_of_standalone_mutation_commands() {
@@ -299,5 +367,101 @@ mod tests {
         };
 
         assert!(removable_exposure_lines(&row).contains("all. Remove from all agents"));
+    }
+
+    #[test]
+    fn repository_update_preview_renders_missing_commit_subjects_and_confirmation() {
+        let mut app = App::new(Config::default_config()).unwrap();
+        app.mode = Mode::RepositoryUpdate;
+        app.repository_update_step = RepositoryUpdateStep::Preview {
+            update: RepositoryUpdate {
+                repo_path: PathBuf::from("/workspace/skills"),
+                commits: vec![RepositoryCommit {
+                    id: "abc1234".to_string(),
+                    subject: "Add a skill".to_string(),
+                }],
+            },
+            scroll: 0,
+        };
+        let backend = TestBackend::new(100, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| render(frame, frame.area(), &app))
+            .unwrap();
+
+        let output = rendered_lines(&terminal);
+        assert!(output.contains("Repository Update"), "{output}");
+        assert!(output.contains("abc1234  Add a skill"), "{output}");
+        assert!(output.contains("Pull this repository? [y/N]"), "{output}");
+    }
+
+    #[test]
+    fn repository_update_preview_scroll_renders_later_commits() {
+        let mut app = App::new(Config::default_config()).unwrap();
+        app.mode = Mode::RepositoryUpdate;
+        app.repository_update_step = RepositoryUpdateStep::Preview {
+            update: RepositoryUpdate {
+                repo_path: PathBuf::from("/workspace/skills"),
+                commits: (0..8)
+                    .map(|index| RepositoryCommit {
+                        id: format!("commit{index}"),
+                        subject: format!("Change {index}"),
+                    })
+                    .collect(),
+            },
+            scroll: 6,
+        };
+        let backend = TestBackend::new(100, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| render(frame, frame.area(), &app))
+            .unwrap();
+
+        let output = rendered_lines(&terminal);
+        assert!(output.contains("commit7  Change 7"), "{output}");
+    }
+
+    #[test]
+    fn repository_update_preview_scroll_reaches_commits_after_wrapped_lines() {
+        let mut app = App::new(Config::default_config()).unwrap();
+        app.mode = Mode::RepositoryUpdate;
+        app.repository_update_step = RepositoryUpdateStep::Preview {
+            update: RepositoryUpdate {
+                repo_path: PathBuf::from(
+                    "/workspace/skills/repository-with-a-path-long-enough-to-wrap",
+                ),
+                commits: (0..8)
+                    .map(|index| RepositoryCommit {
+                        id: format!("commit{index}"),
+                        subject: if index == 7 {
+                            "Later commit".to_string()
+                        } else {
+                            "A subject long enough to wrap across several terminal lines"
+                                .to_string()
+                        },
+                    })
+                    .collect(),
+            },
+            scroll: 0,
+        };
+        for _ in 0..32 {
+            app.move_repository_update_down(Rect {
+                x: 0,
+                y: 0,
+                width: 40,
+                height: 12,
+            });
+        }
+        let backend = TestBackend::new(40, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| render(frame, frame.area(), &app))
+            .unwrap();
+
+        let output = rendered_lines(&terminal);
+        assert!(output.contains("commit7  Later commit"), "{output}");
     }
 }

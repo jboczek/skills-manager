@@ -135,6 +135,7 @@ fn inventory_table_item(index: usize, row: &InventoryRow) -> SourceGroupItem {
         repo_name,
         repo_path,
         relative_path,
+        allow_repository_update: row.scope == Scope::Global,
     }
 }
 
@@ -146,6 +147,7 @@ fn discovery_table_item(index: usize, result: &ScanResult) -> SourceGroupItem {
         repo_name: result.repo_name.clone(),
         repo_path: result.repo_path.clone(),
         relative_path: result.skill_relative_path.clone(),
+        allow_repository_update: true,
     }
 }
 

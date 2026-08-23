@@ -13,6 +13,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         Mode::SourceAdd => format!("{} > ", app.source_add_step_hint()),
         Mode::Import => format!("{} > ", app.import_step_hint()),
         Mode::Remove => format!("{} > ", app.remove_step_hint()),
+        Mode::RepositoryUpdate => format!("{} > ", app.repository_update_step_hint()),
         _ => "> ".to_string(),
     };
     let cursor = if app.mode == Mode::Quit { "" } else { "▏" };
