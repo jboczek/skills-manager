@@ -20,7 +20,7 @@ module PublisherContract
       class SkillsManager < Formula
         desc "Terminal-first skill exposure manager"
         homepage "https://github.com/jboczek/skills-manager"
-        version "#{version}"
+        version Version.new("#{version}", detected_from_url: true)
         license "MIT"
         depends_on :macos
 

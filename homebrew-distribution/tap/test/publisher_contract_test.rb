@@ -9,7 +9,7 @@ class PublisherContractTest < Minitest::Test
   def test_formula_is_architecture_specific_and_installs_the_binary
     formula = PublisherContract.render_formula(VERSION, ARM_SHA, INTEL_SHA)
 
-    assert_includes formula, 'version "0.1.0"'
+    assert_includes formula, 'version Version.new("0.1.0", detected_from_url: true)'
     assert_includes formula, "depends_on :macos"
     assert_includes formula, "on_arm do"
     assert_includes formula, "on_intel do"
