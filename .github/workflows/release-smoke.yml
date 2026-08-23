@@ -1,0 +1,67 @@
+name: Release smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Published immutable skills-manager release tag"
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  arm64-macos-15:
+    name: ARM64 macOS 15
+    runs-on: macos-15
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: Validate runner architecture and OS
+        run: |
+          test "$(uname -m)" = "arm64"
+          test "$(sw_vers -productVersion | cut -d. -f1)" = "15"
+
+      - name: Download the immutable ARM64 archive
+        run: |
+          case "$TAG" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "invalid release tag: $TAG" >&2; exit 1 ;;
+          esac
+          archive="skills-manager-$TAG-aarch64-apple-darwin.tar.gz"
+          mkdir -p dist
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "$archive" \
+            --dir dist
+
+      - name: Validate and run the release binary
+        run: |
+          archive="dist/skills-manager-$TAG-aarch64-apple-darwin.tar.gz"
+          package_dir="$(mktemp -d "${TMPDIR:-/tmp}/skills-manager-smoke.XXXXXX")"
+          trap 'rm -rf "$package_dir"' EXIT
+
+          tar -xzf "$archive" -C "$package_dir"
+          actual_entries="$(find "$package_dir" -mindepth 1 -maxdepth 1 -exec basename {} \; | sort)"
+          expected_entries="$(printf '%s\n' LICENSE README.md skills-manager)"
+          test "$actual_entries" = "$expected_entries"
+
+          binary="$package_dir/skills-manager"
+          test -x "$binary"
+          test "$(find "$package_dir" -maxdepth 1 -type f -perm -111 -exec basename {} \;)" = "skills-manager"
+          test "$(lipo -archs "$binary")" = "arm64"
+          file -b "$binary" | grep -q "Mach-O 64-bit executable arm64"
+
+          deployment_target="$(otool -l "$binary" | awk '
+            /LC_BUILD_VERSION/ { in_build=1; next }
+            in_build && $1 == "minos" { print $2; exit }
+            /LC_VERSION_MIN_MACOSX/ { in_min=1; next }
+            in_min && $1 == "version" { print $2; exit }
+          ')"
+          test "$deployment_target" = "14.0"
+          codesign --verify --strict --verbose=2 "$binary"
+          codesign --display --verbose=4 "$binary" 2>&1 | grep -q '^Signature=adhoc$'
+          test "$($binary --version)" = "skills-manager ${TAG#v}"

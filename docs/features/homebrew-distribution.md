@@ -17,3 +17,9 @@ The tap formula is intentionally kept out of this application repository. Its
 trusted renderer and native ARM64/Intel workflow mirror live under
 `homebrew-distribution/tap/`; the public `jboczek/homebrew-tap` repository is
 the active publisher and has protected `main` with both native checks required.
+
+The published ARM64 archive can also be smoke-tested directly on a GitHub
+hosted ARM64 macOS 15 runner with the source repository's manually dispatched
+`Release smoke` workflow. It downloads only the requested immutable tag and
+checks the archive layout, architecture, deployment target, signature, and
+`--version` output before succeeding.
