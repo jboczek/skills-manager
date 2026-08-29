@@ -4,6 +4,7 @@ pub enum TuiCommand {
     SourceAdd(String),
     Import,
     Remove,
+    Update,
     Config,
     Help,
     Quit,
@@ -16,7 +17,7 @@ pub struct CommandSuggestion {
     pub description: &'static str,
 }
 
-pub(crate) const COMMAND_SUGGESTIONS: [CommandSuggestion; 5] = [
+pub(crate) const COMMAND_SUGGESTIONS: [CommandSuggestion; 6] = [
     CommandSuggestion {
         label: "/list",
         description: "Show exposed skills and availability",
@@ -32,6 +33,10 @@ pub(crate) const COMMAND_SUGGESTIONS: [CommandSuggestion; 5] = [
     CommandSuggestion {
         label: "/help",
         description: "Show commands and keybindings",
+    },
+    CommandSuggestion {
+        label: "/update",
+        description: "Install the latest Homebrew version and restart",
     },
     CommandSuggestion {
         label: "/quit",
@@ -57,6 +62,7 @@ pub fn parse_command(input: &str) -> TuiCommand {
         "remove" => TuiCommand::Remove,
         "config" => TuiCommand::Config,
         "help" | "?" => TuiCommand::Help,
+        "update" => TuiCommand::Update,
         "q" | "quit" => TuiCommand::Quit,
         _ => TuiCommand::Unknown(trimmed.to_string()),
     }

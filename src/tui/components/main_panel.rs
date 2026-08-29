@@ -64,7 +64,7 @@ fn render_help(frame: &mut Frame, area: Rect) {
 }
 
 fn help_text() -> &'static str {
-    "Commands\n  /list                       Browse exposed and discovered skills\n  /source_add <clone-url>     Add a source from an HTTPS or SSH clone URL\n  /config                     Show config\n  /help                       Show this help\n  /quit                       Exit\n\nTable actions\n  Tab                Cycle Full, exposed, and discovery-only views\n  Space              Check or uncheck skill rows\n  i                  Import a selected skill or checked skills\n  x                  Remove checked or selected exposed skill rows\n  r                  Refresh the current list view\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
+    "Commands\n  /list                       Browse exposed and discovered skills\n  /source_add <clone-url>     Add a source from an HTTPS or SSH clone URL\n  /config                     Show config\n  /help                       Show this help\n  /update                     Install the latest Homebrew version and restart\n  /quit                       Exit\n\nTable actions\n  Tab                Cycle Full, exposed, and discovery-only views\n  Space              Check or uncheck skill rows\n  i                  Import a selected skill or checked skills\n  x                  Remove checked or selected exposed skill rows\n  r                  Refresh the current list view\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
 }
 
 fn render_source_add(frame: &mut Frame, area: Rect, app: &App) {
@@ -268,6 +268,11 @@ mod tests {
 
         assert!(text.contains("/source_add <clone-url>"));
         assert!(text.contains("HTTPS or SSH clone URL"));
+    }
+
+    #[test]
+    fn help_describes_the_update_command() {
+        assert!(help_text().contains("/update"));
     }
 
     #[test]

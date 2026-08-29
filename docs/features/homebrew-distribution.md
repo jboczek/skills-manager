@@ -32,3 +32,12 @@ workflow. Its matrix covers ARM64 on macOS 14, 15, and 26 plus Intel on macOS
 15 and 26. Each job downloads only the requested immutable tag and checks the
 archive layout, architecture, deployment target, signature, and `--version`
 output before succeeding.
+
+## In-app updates
+
+On TUI startup, Skills Manager runs `brew update`, then checks
+`brew outdated --json=v2 skills-manager`, asynchronously. If Homebrew reports
+a newer formula version, the header shows the version and directs the user to
+`/update`. That command runs `brew update` followed by `brew upgrade
+skills-manager`, closes the TUI cleanly, and starts the upgraded executable
+again.
