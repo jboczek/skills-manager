@@ -42,6 +42,9 @@ pub struct App {
     pub pending_load: Option<PendingLoad>,
     initial_loading: bool,
     initial_load: Option<Receiver<anyhow::Result<InitialLoad>>>,
+    update_check: Option<Receiver<anyhow::Result<Option<String>>>>,
+    pub available_update: Option<String>,
+    restart_requested: bool,
     command_menu_selected: Option<usize>,
 }
 
@@ -74,6 +77,9 @@ impl App {
             pending_load: None,
             initial_loading: false,
             initial_load: None,
+            update_check: None,
+            available_update: None,
+            restart_requested: false,
             command_menu_selected: None,
         })
     }
@@ -99,9 +105,26 @@ impl App {
         thread::spawn(move || {
             let _ = sender.send(load_initial_state(context));
         });
+
+        let (sender, receiver) = mpsc::channel();
+        self.update_check = Some(receiver);
+        thread::spawn(move || {
+            let _ = sender.send(crate::update::check());
+        });
     }
 
     pub fn poll_initial_load(&mut self) {
+        if let Some(receiver) = self.update_check.as_ref() {
+            match receiver.try_recv() {
+                Ok(Ok(update)) => {
+                    self.available_update = update;
+                    self.update_check = None;
+                }
+                Ok(Err(_)) | Err(TryRecvError::Disconnected) => self.update_check = None,
+                Err(TryRecvError::Empty) => {}
+            }
+        }
+
         let result = match self.initial_load.as_ref().map(Receiver::try_recv) {
             Some(Ok(result)) => result,
             Some(Err(TryRecvError::Empty)) | None => return,
@@ -229,6 +252,14 @@ impl App {
             TuiCommand::Help => {
                 self.mode = Mode::Help;
             }
+            TuiCommand::Update => match crate::update::install() {
+                Ok(()) => {
+                    self.restart_requested = true;
+                    self.mode = Mode::Quit;
+                    return Ok(true);
+                }
+                Err(error) => self.error_message = Some(error.to_string()),
+            },
             TuiCommand::Quit => {
                 self.mode = Mode::Quit;
                 return Ok(true);
@@ -242,6 +273,10 @@ impl App {
         }
 
         Ok(false)
+    }
+
+    pub fn restart_requested(&self) -> bool {
+        self.restart_requested
     }
 
     pub fn command_menu_open(&self) -> bool {
@@ -625,6 +660,11 @@ mod tests {
     #[test]
     fn parse_command_slash_list() {
         assert_eq!(parse_command("/list"), TuiCommand::List);
+    }
+
+    #[test]
+    fn parse_command_update() {
+        assert_eq!(parse_command("/update"), TuiCommand::Update);
     }
 
     #[test]
@@ -1165,7 +1205,14 @@ mod tests {
 
         assert_eq!(
             labels,
-            vec!["/list", "/source_add", "/config", "/help", "/quit"]
+            vec![
+                "/list",
+                "/source_add",
+                "/config",
+                "/help",
+                "/update",
+                "/quit"
+            ]
         );
         assert!(
             app.filtered_command_suggestions()

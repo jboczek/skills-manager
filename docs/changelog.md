@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-29
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-08-29 12:00 | Added asynchronous Homebrew update notices and `/update` restart flow in the TUI. | `README.md`, `features/homebrew-distribution.md` |
+
 ## 2026-08-23
 
 | Time | Change | Docs |

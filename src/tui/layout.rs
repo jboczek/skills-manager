@@ -14,7 +14,7 @@ impl AppLayout {
         let regions = LayoutEngine::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(4),
+                Constraint::Length(5),
                 Constraint::Length(3),
                 Constraint::Min(0),
                 Constraint::Length(2),
@@ -29,5 +29,18 @@ impl AppLayout {
             prompt: regions[3],
             footer: regions[4],
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn header_reserves_three_content_lines_for_an_update_notice() {
+        assert_eq!(
+            AppLayout::compute(Rect::new(0, 0, 120, 30)).header.height,
+            5
+        );
     }
 }
