@@ -36,9 +36,19 @@ class LocalReleaseTest < Minitest::Test
     end
   end
 
+  def test_rejects_a_stale_cargo_lock_before_creating_release_refs
+    with_fixture("0.2.0", "0.1.0", stale_lock: true) do |fixture|
+      stdout, stderr, status = Open3.capture3("bash", fixture[:script], chdir: fixture[:checkout])
+
+      refute status.success?
+      assert_match(/Cargo\.lock is out of date/, "#{stdout}#{stderr}")
+      refute remote_ref?(fixture[:remote], "refs/heads/release/v0.2.0")
+    end
+  end
+
   private
 
-  def with_fixture(version, published_version)
+  def with_fixture(version, published_version, stale_lock: false)
     Dir.mktmpdir("skills-manager-release-test") do |root|
       remote = File.join(root, "remote.git")
       seed = File.join(root, "seed")
@@ -62,6 +72,7 @@ class LocalReleaseTest < Minitest::Test
 
       unless version == published_version
         write_project(seed, version)
+        rewrite_project_lock_version(seed, published_version) if stale_lock
         git(seed, "add", ".")
         git(seed, "commit", "-m", "prepare release")
         git(seed, "push", "origin", "main")
@@ -89,6 +100,17 @@ class LocalReleaseTest < Minitest::Test
     )
     File.write(File.join(directory, "src", "lib.rs"), "")
     run_command("cargo", "generate-lockfile", chdir: directory)
+  end
+
+  def rewrite_project_lock_version(directory, version)
+    lock_path = File.join(directory, "Cargo.lock")
+    lock = File.read(lock_path)
+    updated = lock.sub(/(name = "skills-manager"\nversion = ")[^"]+/) do
+      "#{Regexp.last_match(1)}#{version}"
+    end
+    raise "skills-manager package is missing from Cargo.lock" if updated == lock
+
+    File.write(lock_path, updated)
   end
 
   def install_push_log_hook(remote, push_log)

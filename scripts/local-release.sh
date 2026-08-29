@@ -23,8 +23,11 @@ local_main="$(git rev-parse refs/heads/main)"
 remote_main="$(git rev-parse refs/remotes/origin/main)"
 [ "$local_main" = "$remote_main" ] || die "local main is not synchronized with origin/main"
 
+cargo_metadata="$(cargo metadata --locked --format-version 1)" ||
+  die "Cargo.lock is out of date or inconsistent with Cargo.toml; run cargo check and commit Cargo.lock"
+
 cargo_version="$(
-  cargo metadata --no-deps --locked --format-version 1 |
+  printf '%s' "$cargo_metadata" |
     ruby -rjson -e '
       metadata = JSON.parse(STDIN.read)
       package = metadata.fetch("packages").find { |candidate| candidate.fetch("name") == "skills-manager" }

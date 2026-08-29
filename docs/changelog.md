@@ -4,6 +4,7 @@
 
 | Time | Change | Docs |
 |---|---|---|
+| 2026-08-29 15:37 | Bumped the package to `0.1.3` and made local release preparation reject a stale or inconsistent `Cargo.lock`. | `README.md`, `features/homebrew-distribution.md`, `scripts/local-release.sh` |
 | 2026-08-29 13:26 | Added `scripts/local-release.sh` to validate the Cargo version and create/push the matching release branch and tag. | `README.md`, `features/homebrew-distribution.md`, `scripts/local_release_test.rb` |
 | 2026-08-29 12:00 | Added asynchronous Homebrew update notices and `/update` restart flow in the TUI. | `README.md`, `features/homebrew-distribution.md` |
 
