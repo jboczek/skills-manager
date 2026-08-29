@@ -13,6 +13,14 @@ The source release workflow builds `aarch64-apple-darwin` on `macos-14` and
 publisher validates the release tag, source commit, attestations, and hashes
 before opening the one-file formula PR.
 
+## Local release preparation
+
+Run `./scripts/local-release.sh` from a clean local `main` synchronized with
+`origin/main`. It reads the package version with Cargo metadata, rejects an
+invalid or non-increasing version compared with the latest published tag, then
+creates and pushes `release/vX.Y.Z`. It creates and pushes `vX.Y.Z` only after
+the branch is remote, which starts the tag-triggered release workflow.
+
 The tap formula is intentionally kept out of this application repository. Its
 trusted renderer and native ARM64/Intel workflow mirror live under
 `homebrew-distribution/tap/`; the public `jboczek/homebrew-tap` repository is

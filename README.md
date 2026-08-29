@@ -22,6 +22,17 @@ brew upgrade skills-manager
 
 The formula is maintained in the public [jboczek/homebrew-tap](https://github.com/jboczek/homebrew-tap) repository. The first release supports Apple Silicon and Intel Macs; Linux, Windows, bottles, and casks are not included.
 
+Prepare a new release from a clean, synchronized `main` checkout with:
+
+```bash
+./scripts/local-release.sh
+```
+
+The helper reads the package version through Cargo metadata, requires it to be
+greater than the latest published `vX.Y.Z` tag, creates `release/vX.Y.Z` from
+`origin/main`, and pushes the matching tag after the branch. The tag starts
+the release workflow automatically.
+
 ## Assistant-style TUI
 Skills Manager is a Rust CLI/TUI for discovering directories that contain
 `SKILL.md` and managing their exposures to Codex, Claude, and Copilot. It
