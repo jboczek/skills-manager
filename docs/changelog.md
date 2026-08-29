@@ -6,6 +6,9 @@
 |---|---|---|
 | 2026-08-23 11:00 | Added a manually dispatched ARM64 macOS 15 smoke gate for immutable Homebrew release archives. | `features/homebrew-distribution.md`, `../.github/workflows/release-smoke.yml` |
 | 2026-08-23 11:39 | Expanded the release smoke gate to the documented ARM64 macOS 14/15/26 and Intel macOS 15/26 matrix. | `features/homebrew-distribution.md`, `../.github/workflows/release-smoke.yml` |
+| 2026-08-23 08:48 | Added a local visual-check skill that requires Docker-hosted Playwright and documents the inventory row-height invariants. | `.agents/skills/visual-check-playwright-docker/` |
+| 2026-08-23 08:23 | Re-rendered multi-skill inventory rows with full glyph height so `code-review` and `release-notes` are no longer clipped. | `README.md`, `assets/skills-manager-inventory.png` |
+| 2026-08-23 08:08 | Regenerated the README inventory screenshot without the selected-row highlight while preserving the expanded skill fixture. | `README.md`, `assets/skills-manager-inventory.png` |
 
 ## 2026-08-22
 
@@ -13,6 +16,7 @@
 |---|---|---|
 | 2026-08-22 20:28 | Initialized `jboczek/homebrew-tap` with the guarded publisher, native ARM64/Intel formula checks, and protected `main`. | `features/homebrew-distribution.md`, `../homebrew-distribution/tap/` |
 | 2026-08-22 19:00 | Added the macOS Homebrew release contract, native archive workflow design, and shared-tap publisher template. | `features/homebrew-distribution.md`, `../homebrew-distribution/` |
+| 2026-08-22 19:27 | Refreshed the README around the TUI and added publication-ready home and inventory screenshots. | `README.md`, `assets/skills-manager-home.png`, `assets/skills-manager-inventory.png` |
 
 ## 2026-07-12
 
