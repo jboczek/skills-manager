@@ -2,6 +2,24 @@
 
 > See every skill, source, and agent exposure in one terminal-first workflow.
 
+## Homebrew
+
+Install the native macOS release from the shared tap:
+
+```bash
+brew install jboczek/tap/skills-manager
+```
+
+Homebrew checks for updates normally. To update explicitly:
+
+```bash
+brew update
+brew upgrade skills-manager
+```
+
+The formula is maintained in the public [jboczek/homebrew-tap](https://github.com/jboczek/homebrew-tap) repository. The first release supports Apple Silicon and Intel Macs; Linux, Windows, bottles, and casks are not included.
+
+## Assistant-style TUI
 Skills Manager is a Rust CLI/TUI for discovering directories that contain
 `SKILL.md` and managing their exposures to Codex, Claude, and Copilot. It
 builds one privacy-safe inventory, groups skills by source repository, and
