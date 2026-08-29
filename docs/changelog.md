@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-29
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-08-29 13:26 | Added `scripts/local-release.sh` to validate the Cargo version and create/push the matching release branch and tag. | `README.md`, `features/homebrew-distribution.md`, `scripts/local_release_test.rb` |
+
 ## 2026-08-23
 
 | Time | Change | Docs |
