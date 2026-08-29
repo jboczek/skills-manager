@@ -10,7 +10,10 @@ Install the native macOS release from the shared tap:
 brew install jboczek/tap/skills-manager
 ```
 
-Homebrew checks for updates normally. To update explicitly:
+At startup, the TUI checks Homebrew for a newer version without blocking the
+skill scan. When one is available it displays the version in the header; enter
+`/update` to fetch it, install it, and restart the application. To update from
+the shell instead:
 
 ```bash
 brew update
@@ -97,6 +100,7 @@ Press `/` from an empty prompt. The palette provides:
 /source_add <clone-url>       Add a source from an HTTPS or SSH clone URL
 /config                       Show the resolved config and TOML
 /help                         Show commands and keybindings
+/update                       Install the latest Homebrew version and restart
 /quit                         Exit Skills Manager
 ```
 

@@ -12,6 +12,7 @@ pub mod scanner;
 pub mod source;
 pub mod symlink;
 pub mod tui;
+pub mod update;
 
 use anyhow::Result;
 use clap::Parser;
