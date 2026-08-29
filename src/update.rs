@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, bail};
+use std::path::PathBuf;
 use std::process::Command;
 
 const FORMULA: &str = "skills-manager";
@@ -22,9 +23,15 @@ pub fn install() -> Result<()> {
 }
 
 pub fn restart() -> Result<()> {
-    let executable =
-        std::env::current_exe().context("could not locate Skills Manager executable")?;
-    Command::new(executable)
+    let output = Command::new("brew")
+        .args(["--prefix", FORMULA])
+        .output()
+        .context("could not locate Homebrew Skills Manager installation")?;
+    if !output.status.success() {
+        bail!("could not locate Homebrew Skills Manager installation");
+    }
+
+    Command::new(launcher_path(&String::from_utf8_lossy(&output.stdout)))
         .args(std::env::args_os().skip(1))
         .spawn()
         .context("could not restart Skills Manager")?;
@@ -50,9 +57,14 @@ fn available_version(output: &str) -> Option<String> {
     Some(version.split_once('"')?.0.to_string())
 }
 
+fn launcher_path(prefix: &str) -> PathBuf {
+    PathBuf::from(prefix.trim()).join("bin").join(FORMULA)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::available_version;
+    use super::{available_version, launcher_path};
+    use std::path::PathBuf;
 
     #[test]
     fn finds_available_version_in_homebrew_outdated_json() {
@@ -67,5 +79,13 @@ mod tests {
     #[test]
     fn ignores_empty_homebrew_outdated_result() {
         assert_eq!(available_version(r#"{"formulae":[],"casks":[]}"#), None);
+    }
+
+    #[test]
+    fn restarts_from_homebrew_stable_formula_launcher() {
+        assert_eq!(
+            launcher_path("/opt/homebrew/opt/skills-manager\n"),
+            PathBuf::from("/opt/homebrew/opt/skills-manager/bin/skills-manager")
+        );
     }
 }
