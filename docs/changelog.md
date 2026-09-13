@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-13
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-09-13 13:29 | Added global `o200k_base` discovery-metadata estimates per enabled agent to the TUI status feed, with deterministic global-row filtering and refresh-aware states. | `README.md`, `features/context-budget-visibility.md`, `features/assistant-style-tui-shell.md`, `prds/012-context-budget-visibility.md`, `roadmap.md` |
+
 ## 2026-08-29
 
 | Time | Change | Docs |

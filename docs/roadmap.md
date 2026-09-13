@@ -237,9 +237,10 @@ Turn Skills Manager from a local exposure utility into a durable control plane f
 - **Outcome:** Users can see a practical estimate of how much context enabled skills consume for each agent.
 - **Description:** Estimate context impact from skill descriptions or relevant metadata and show it per configured agent.
 - **Why now:** This depends on trusted inventory and real user need; it should not distract from V1/V2 safety and workflow foundations.
-- **PRD candidate:** Later. Suggested file: `docs/prds/012-context-budget-visibility.md`
+- **PRD candidate:** Yes. PRD: [`docs/prds/012-context-budget-visibility.md`](prds/012-context-budget-visibility.md)
 - **Dependencies:** 004, 007.
 - **Validation signal:** Users can identify obviously overexposed or overly verbose skill setups and make better enablement decisions.
+- **Status:** Done.
 - **Notes / risks:** Estimates may be approximate because each agent may inject skill context differently.
 
 ### 013 - Shareable setup profiles

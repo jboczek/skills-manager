@@ -55,6 +55,17 @@ skills that are not exposed yet. Groups start collapsed; expand one to see
 repository-relative skill paths, agent availability, scope, and connection
 type.
 
+The status feed also estimates global discovery metadata with `o200k_base`.
+For example:
+
+```text
+• Estimated tokens (global): Claude Code ~776 (36 skills) · Codex ~6394 (201 skills) · GitHub Copilot ~1568 (72 skills)
+```
+
+These are directional estimates of exposed global `SKILL.md` metadata. Project-
+local rows and skill bodies are excluded; the CLI `list` and `scan` output is
+unchanged.
+
 <p align="center">
   <img src="docs/assets/skills-manager-inventory.png" width="960" alt="Skills Manager unified inventory grouped by source repository">
 </p>
