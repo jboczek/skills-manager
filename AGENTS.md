@@ -25,6 +25,7 @@
 16. Broken-skill detection, warnings, filtering and repair apply only to global exposures. Project-local exposures remain outside this mechanism.
 17. In TUI inventory, a broken global skill and its discovered replacement with the same repository path and skill name share one row. Show the unique current Source and distinguish `broken (folder changed)` from `broken (removed)`; preserve original exposure paths for repair.
 18. F must honor all checked broken global skills, using the cursor row only when nothing is checked. Resolve each ambiguous source before reviewing one combined plan; never apply intermediate choices.
+19. Before adding or changing a list action, inspect existing selection, filtering, grouping, and read-only contracts. Checked rows take precedence; use the cursor only when no rows are checked, never because filtering checks leaves no eligible rows. Preserve action-specific eligibility. Add keyboard-driven regression scenarios for zero, one, and multiple checks with the cursor on an unchecked row; verify exact plan targets, apply/cancel effects, and protected rows. Check these contracts for every affected action, not only the newly added shortcut.
 
 
 

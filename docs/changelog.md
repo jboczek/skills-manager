@@ -5,6 +5,7 @@
 | Time | Change | Docs |
 |---|---|---|
 | 2026-10-31 | Reduced source scans to one Git origin lookup per repository per scan; added deterministic performance and freshness regression tests. | `features/skill-source-scanning.md` |
+| 2026-10-31 | Added keyboard-driven selection contract tests for i/x/F, prevented import/remove cursor fallback from ineligible checks, and added a shared-interaction rule to AGENTS.md. | `features/inventory-and-exposure-resolution.md`, `prds/013-broken-skills.md` |
 | 2026-10-31 | Fixed F ignoring checked skills: all checked broken skills now share one confirmed repair plan, with per-skill source choices. | `features/inventory-and-exposure-resolution.md`, `prds/013-broken-skills.md` |
 | 2026-10-31 | Consolidated moved skills into one TUI row with the current source and folder changed/removed broken reasons. | `features/inventory-and-exposure-resolution.md`, `prds/013-broken-skills.md` |
 | 2026-10-31 | Added broken global skill warnings, Tab filter and confirmed F repair or removal; import explains broken targets. | `features/inventory-and-exposure-resolution.md`, `prds/013-broken-skills.md`, `roadmap.md`, `README.md` |
