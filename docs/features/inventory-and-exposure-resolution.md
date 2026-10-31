@@ -48,7 +48,9 @@ Unknown Git provenance is valid inventory state and renders as `unknown`.
 
 The standalone `skills-manager list` and `skills-manager scan` commands keep their separate output contracts. The interactive TUI instead uses `/list` as one browser over both data sets. It refreshes the source catalog and inventory from the same scan, then offers Full, Only exposed, and Only discovered not applied views.
 
-Full retains every inventory row and adds each discovered source whose canonical source path has no real exposure. Discovery-only rows do not become inventory rows: their agent and scope columns are `-`, their connection is `not exposed`, and they are importable but cannot be checked for batch changes or removed. Global and project-local inventory rows remain distinct even when they resolve to the same source.
+Full retains every inventory row and adds each discovered source whose canonical source path has no real exposure. Discovery-only rows do not become inventory rows: their agent and scope columns are `-`, their connection is `not exposed`, and they can be checked for batch import but cannot be removed. Global and project-local inventory rows remain distinct even when they resolve to the same source.
+
+For `i`, `x`, and `F`, checked rows take precedence over the cursor; cursor fallback is permitted only when nothing is checked. An ineligible selection never redirects the action to an unchecked cursor row. Import and remove reject project-local checks; F ignores healthy and project-local checks. Remove ignores discovery-only checks and reports when no removable exposure is selected. Keyboard regression tests cover zero, one and multiple checks across repositories, exact preview paths, confirmation, cancellation and protected rows using temporary filesystem fixtures.
 
 ## Effective Availability
 

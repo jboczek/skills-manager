@@ -328,3 +328,5 @@ V3 works if Skills Manager becomes the trusted local place to curate, audit, and
 PRD 013 follow-up complete: moved global skills share one inventory row with their current source and a broken reason; repair keeps original link paths.
 
 PRD 013 batch correction complete: F honors all checked broken skills, resolves per-skill ambiguity and confirms a combined plan.
+
+PRD 013 selection-contract follow-up: keyboard tests protect checked-row precedence, exact plan/apply targets and cancellation across i/x/F; ineligible checks no longer redirect import or removal to the unchecked cursor.

@@ -190,6 +190,10 @@ pub(crate) fn table_height_for_main(main_height: u16) -> usize {
     usize::from(main_height.saturating_sub(3)).max(1)
 }
 
+#[cfg(all(test, unix))]
+#[path = "events/selection_tests.rs"]
+mod selection_tests;
+
 #[cfg(test)]
 mod tests {
     use std::fs;

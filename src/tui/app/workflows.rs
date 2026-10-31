@@ -109,7 +109,9 @@ impl App {
             return Ok(());
         }
 
-        if let Some(selected) = self.selected_discovery_row() {
+        if self.list_table.checked_items().is_empty()
+            && let Some(selected) = self.selected_discovery_row()
+        {
             self.start_import_for_scan_result(selected, self.enabled_agent_targets());
             return Ok(());
         }
@@ -167,11 +169,10 @@ impl App {
     }
 
     fn actionable_inventory_rows(&self) -> Vec<InventoryRow> {
-        let checked = self.checked_inventory_rows();
-        if checked.is_empty() {
+        if self.list_table.checked_items().is_empty() {
             self.selected_inventory_row().into_iter().collect()
         } else {
-            checked
+            self.checked_inventory_rows()
         }
     }
 
@@ -181,7 +182,9 @@ impl App {
 
         let rows = self.actionable_inventory_rows();
         if rows.is_empty() {
-            if self.selected_discovery_row().is_some() {
+            if !self.list_table.checked_items().is_empty()
+                || self.selected_discovery_row().is_some()
+            {
                 let message = "Discovery-only skills have no exposures to remove.".to_string();
                 self.mode = Mode::Home;
                 self.info_message = Some(message.clone());
