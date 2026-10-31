@@ -48,10 +48,7 @@ pub fn render_unified_inventory_table(
     let inner = block.inner(area);
     let visible_rows = usize::from(inner.height.saturating_sub(1)).max(1);
     let projected_rows = source_table.visible_rows();
-    let start = source_table
-        .viewport_offset()
-        .min(projected_rows.len().saturating_sub(visible_rows));
-    let end = (start + visible_rows).min(projected_rows.len());
+    let (start, end) = source_table.viewport_indices(visible_rows);
 
     let display_rows = projected_rows[start..end]
         .iter()
@@ -78,7 +75,7 @@ pub fn render_unified_inventory_table(
                             _ => false,
                         })
                     });
-                let label = group_label(*expanded, name, context);
+                let label = group_cell_label(*expanded, name, context);
                 let label = if broken {
                     Line::from(vec![
                         Span::styled("! ", Style::default().fg(Color::Red)),
@@ -97,6 +94,7 @@ pub fn render_unified_inventory_table(
                         Cell::from(""),
                         Cell::from(""),
                     ])
+                    .height(projected_row.rendered_height() as u16)
                     .style(row_style(selected)),
                 );
             }
@@ -200,6 +198,36 @@ pub fn render_unified_inventory_table(
     .style(Theme::default_style());
 
     frame.render_widget(table, area);
+
+    let notice_x = inner
+        .x
+        .saturating_add(LIST_SKILL_COLUMN_WIDTH)
+        .saturating_add(1)
+        .saturating_add(24)
+        .saturating_add(1);
+    let notice_width = inner.x.saturating_add(inner.width).saturating_sub(notice_x);
+    let mut row_y = inner.y.saturating_add(1);
+    for projected_row in &projected_rows[start..end] {
+        if matches!(
+            projected_row,
+            SourceTableRow::Group {
+                repository_update: Some(_),
+                ..
+            }
+        ) && notice_width > 0
+        {
+            frame.render_widget(
+                Paragraph::new(repository_update_label()).style(Theme::success()),
+                Rect {
+                    x: notice_x,
+                    y: row_y,
+                    width: notice_width,
+                    height: 1,
+                },
+            );
+        }
+        row_y = row_y.saturating_add(projected_row.rendered_height() as u16);
+    }
 }
 
 fn render_empty(frame: &mut Frame, area: Rect, title: &str, message: &str) {
@@ -225,6 +253,14 @@ fn group_label(expanded: bool, name: &str, context: &str) -> String {
     } else {
         format!("{marker} {name} · {context}")
     }
+}
+
+fn group_cell_label(expanded: bool, name: &str, context: &str) -> String {
+    group_label(expanded, name, context)
+}
+
+fn repository_update_label() -> &'static str {
+    "An update is available. Press U."
 }
 
 fn skill_count_label(count: usize) -> String {
@@ -269,6 +305,7 @@ mod tests {
 
     use super::*;
     use crate::domain::{AgentId, SkillExposure, SkillId, SkillSource};
+    use crate::git::{RepositoryCommit, RepositoryUpdate};
     use crate::scanner::{ScanResult, SourceKind};
     use crate::tui::source_table::SourceGroupItem;
     use crate::tui::unified_list::UnifiedListRow;
@@ -305,6 +342,14 @@ mod tests {
     }
 
     #[test]
+    fn repository_update_label_explains_the_u_action() {
+        assert_eq!(
+            repository_update_label(),
+            "An update is available. Press U."
+        );
+    }
+
+    #[test]
     fn list_skill_column_width_is_preserved() {
         assert_eq!(LIST_SKILL_COLUMN_WIDTH, 57);
     }
@@ -336,6 +381,7 @@ mod tests {
             repo_name: Some("project".to_string()),
             repo_path: Some(PathBuf::from("/workspace/project")),
             relative_path: Some(PathBuf::from(".agents/skills/adx-intake")),
+            allow_repository_update: false,
         }]);
         source_table.move_right(10);
         let backend = TestBackend::new(140, 6);
@@ -369,6 +415,7 @@ mod tests {
             repo_name: Some("repository".to_string()),
             repo_path: Some(PathBuf::from("/workspace/repository")),
             relative_path: Some(PathBuf::from("discovered")),
+            allow_repository_update: true,
         }]);
         source_table.move_right(10);
         let backend = TestBackend::new(140, 6);
@@ -394,5 +441,141 @@ mod tests {
         }
         assert!(output.contains("not exposed"), "{output}");
         assert!(output.contains("[ ] discovered"), "{output}");
+    }
+
+    #[test]
+    fn inventory_table_renders_repository_update_notice_on_group_row() {
+        let rows = vec![UnifiedListRow::Discovered(ScanResult {
+            skill_id: "repository/discovered".to_string(),
+            skill_path: PathBuf::from("/workspace/repository/discovered"),
+            skill_relative_path: Some(PathBuf::from("discovered")),
+            repo_name: Some("repository".to_string()),
+            repo_path: Some(PathBuf::from("/workspace/repository")),
+            remote_url: Some("https://example.com/repository.git".to_string()),
+            source_kind: SourceKind::CentralDir,
+            disambiguation_index: None,
+        })];
+        let mut source_table = SourceTable::new(vec![SourceGroupItem {
+            item: 0,
+            skill_name: "discovered".to_string(),
+            skill_path: PathBuf::from("/workspace/repository/discovered"),
+            repo_name: Some("repository".to_string()),
+            repo_path: Some(PathBuf::from("/workspace/repository")),
+            relative_path: Some(PathBuf::from("discovered")),
+            allow_repository_update: true,
+        }]);
+        source_table.set_repository_updates(&[RepositoryUpdate {
+            repo_path: PathBuf::from("/workspace/repository"),
+            commits: vec![RepositoryCommit {
+                id: "abc1234".to_string(),
+                subject: "Add a skill".to_string(),
+            }],
+        }]);
+        assert!(source_table.groups()[0].repository_update.is_some());
+        let backend = TestBackend::new(140, 8);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| {
+                render_unified_inventory_table(frame, frame.area(), &rows, &source_table, &[])
+            })
+            .unwrap();
+
+        let output = rendered_lines(&terminal).join("\n");
+        assert!(
+            output.contains("An update is available. Press U."),
+            "{output}"
+        );
+
+        let notice_line = rendered_lines(&terminal)
+            .into_iter()
+            .find(|line| line.contains("An update is available. Press U."))
+            .expect("update notice is rendered");
+        assert!(notice_line.contains("> repository"), "{notice_line}");
+        assert!(notice_line.contains("1 skill"), "{notice_line}");
+
+        let buffer = terminal.backend().buffer();
+        let notice_x = (0..buffer.area.width)
+            .find(|&x| buffer[(x, 2)].symbol() == "A")
+            .expect("notice begins on the group row");
+        assert_eq!(buffer[(notice_x, 2)].fg, Theme::SUCCESS);
+    }
+
+    #[test]
+    fn inventory_table_renders_the_selected_later_update_group_in_the_viewport() {
+        let rows = vec![
+            UnifiedListRow::Discovered(ScanResult {
+                skill_id: "first/discovered".to_string(),
+                skill_path: PathBuf::from("/workspace/first/discovered"),
+                skill_relative_path: Some(PathBuf::from("discovered")),
+                repo_name: Some("first".to_string()),
+                repo_path: Some(PathBuf::from("/workspace/first")),
+                remote_url: Some("https://example.com/first.git".to_string()),
+                source_kind: SourceKind::CentralDir,
+                disambiguation_index: None,
+            }),
+            UnifiedListRow::Discovered(ScanResult {
+                skill_id: "second/discovered".to_string(),
+                skill_path: PathBuf::from("/workspace/second/discovered"),
+                skill_relative_path: Some(PathBuf::from("discovered")),
+                repo_name: Some("second".to_string()),
+                repo_path: Some(PathBuf::from("/workspace/second")),
+                remote_url: Some("https://example.com/second.git".to_string()),
+                source_kind: SourceKind::CentralDir,
+                disambiguation_index: None,
+            }),
+        ];
+        let mut source_table = SourceTable::new(vec![
+            SourceGroupItem {
+                item: 0,
+                skill_name: "first".to_string(),
+                skill_path: PathBuf::from("/workspace/first/discovered"),
+                repo_name: Some("first".to_string()),
+                repo_path: Some(PathBuf::from("/workspace/first")),
+                relative_path: Some(PathBuf::from("discovered")),
+                allow_repository_update: true,
+            },
+            SourceGroupItem {
+                item: 1,
+                skill_name: "second".to_string(),
+                skill_path: PathBuf::from("/workspace/second/discovered"),
+                repo_name: Some("second".to_string()),
+                repo_path: Some(PathBuf::from("/workspace/second")),
+                relative_path: Some(PathBuf::from("discovered")),
+                allow_repository_update: true,
+            },
+        ]);
+        source_table.set_repository_updates(&[
+            RepositoryUpdate {
+                repo_path: PathBuf::from("/workspace/first"),
+                commits: vec![RepositoryCommit {
+                    id: "first123".to_string(),
+                    subject: "First update".to_string(),
+                }],
+            },
+            RepositoryUpdate {
+                repo_path: PathBuf::from("/workspace/second"),
+                commits: vec![RepositoryCommit {
+                    id: "second12".to_string(),
+                    subject: "Second update".to_string(),
+                }],
+            },
+        ]);
+        source_table.move_down(3);
+        let backend = TestBackend::new(140, 8);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| {
+                render_unified_inventory_table(frame, frame.area(), &rows, &source_table, &[])
+            })
+            .unwrap();
+
+        let output = rendered_lines(&terminal).join("\n");
+        assert!(output.contains("> second"), "{output}");
+        assert!(
+            output.contains("An update is available. Press U."),
+            "{output}"
+        );
     }
 }

@@ -138,12 +138,15 @@ Press `/` from an empty prompt. The palette provides:
 | `i` | Import the selected skill or checked skills to enabled agents. |
 | `x` | Remove a selected global exposure; discovery-only and project-local rows are protected. |
 | `F` | Review repairs for checked broken global skills, or the cursor row when nothing is checked. |
+| `u` | Review missing commits and update the selected repository after confirmation. |
 | `r` | Refresh the list while keeping the active filter and matching selection. |
 | `Esc` | Cancel the current flow and return home. |
 | `?` | Open help from an empty prompt. |
 | `q` | Quit from an empty prompt. |
 
 For `i`, `x`, and `F`, checked rows take precedence over the cursor. If none of the checks qualify, the action does not fall back to an unchecked cursor row. Every mutation requires plan confirmation; cancelling preserves the links.
+
+When a global repository has commits on its origin that are not in the local checkout, `/list` checks in the background and shows a green repository-update notice. `u` reviews missing commit subjects; `y` runs a fast-forward-only pull and refreshes the list. `Esc` returns from the review to the loaded list without pulling.
 
 ### Safe mutations
 

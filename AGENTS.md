@@ -27,6 +27,7 @@
 18. F must honor all checked broken global skills, using the cursor row only when nothing is checked. Resolve each ambiguous source before reviewing one combined plan; never apply intermediate choices.
 19. Before adding or changing a list action, inspect existing selection, filtering, grouping, and read-only contracts. Checked rows take precedence; use the cursor only when no rows are checked, never because filtering checks leaves no eligible rows. Preserve action-specific eligibility. Add keyboard-driven regression scenarios for zero, one, and multiple checks with the cursor on an unchecked row; verify exact plan targets, apply/cancel effects, and protected rows. Check these contracts for every affected action, not only the newly added shortcut.
 
+20. When a user reports that a keyboard shortcut still does not work, reproduce the terminal-delivered key event variants in tests before changing the shortcut matcher.
 
 
 Before implementation, make a plan and add it to temp file named after the PRD `/docs/temp/prd-xxx-plan.md`. The plan should be a step-by-step outline of how the implementation will proceed and what files need to be modified. Add the plan file but do not commit it.

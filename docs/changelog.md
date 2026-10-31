@@ -33,6 +33,7 @@
 | 2026-08-23 08:48 | Added a local visual-check skill that requires Docker-hosted Playwright and documents the inventory row-height invariants. | `.agents/skills/visual-check-playwright-docker/` |
 | 2026-08-23 08:23 | Re-rendered multi-skill inventory rows with full glyph height so `code-review` and `release-notes` are no longer clipped. | `README.md`, `assets/skills-manager-inventory.png` |
 | 2026-08-23 08:08 | Regenerated the README inventory screenshot without the selected-row highlight while preserving the expanded skill fixture. | `README.md`, `assets/skills-manager-inventory.png` |
+| 2026-08-23 07:51 | Simplified repository updates to the `u` shortcut and made `Esc` return from review to the loaded list. | `README.md`, `features/assistant-style-tui-shell.md`, `features/git-source-import.md` |
 
 ## 2026-08-22
 
@@ -41,6 +42,9 @@
 | 2026-08-22 20:28 | Initialized `jboczek/homebrew-tap` with the guarded publisher, native ARM64/Intel formula checks, and protected `main`. | `features/homebrew-distribution.md`, `../homebrew-distribution/tap/` |
 | 2026-08-22 19:00 | Added the macOS Homebrew release contract, native archive workflow design, and shared-tap publisher template. | `features/homebrew-distribution.md`, `../homebrew-distribution/` |
 | 2026-08-22 19:27 | Refreshed the README around the TUI and added publication-ready home and inventory screenshots. | `README.md`, `assets/skills-manager-home.png`, `assets/skills-manager-inventory.png` |
+| 2026-08-22 22:45 | Made the repository-update shortcut resilient to terminal Alt mappings and stripped Command modifiers. | `README.md`, `features/assistant-style-tui-shell.md`, `features/git-source-import.md` |
+| 2026-08-22 20:30 | Made `/list` repository-update checks asynchronous, hid failed-fetch noise, and moved the green Cmd+U notice to one agent-column line. | `README.md`, `features/assistant-style-tui-shell.md`, `features/git-source-import.md` |
+| 2026-08-22 19:02 | Added TUI detection and review of remote repository commits, with Cmd+U and confirmed fast-forward-only pull. | `README.md`, `features/assistant-style-tui-shell.md`, `features/git-source-import.md` |
 
 ## 2026-07-12
 
