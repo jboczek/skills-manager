@@ -483,21 +483,20 @@ mod tests {
 
         let output = rendered_lines(&terminal).join("\n");
         assert!(
-            output.contains("New repository version available"),
+            output.contains("An update is available. Press U."),
             "{output}"
         );
-        assert!(output.contains("U to update"), "{output}");
 
         let notice_line = rendered_lines(&terminal)
             .into_iter()
-            .find(|line| line.contains("New repository version available"))
+            .find(|line| line.contains("An update is available. Press U."))
             .expect("update notice is rendered");
         assert!(notice_line.contains("> repository"), "{notice_line}");
         assert!(notice_line.contains("1 skill"), "{notice_line}");
 
         let buffer = terminal.backend().buffer();
         let notice_x = (0..buffer.area.width)
-            .find(|&x| buffer[(x, 2)].symbol() == "N")
+            .find(|&x| buffer[(x, 2)].symbol() == "A")
             .expect("notice begins on the group row");
         assert_eq!(buffer[(notice_x, 2)].fg, Theme::SUCCESS);
     }
@@ -575,9 +574,8 @@ mod tests {
         let output = rendered_lines(&terminal).join("\n");
         assert!(output.contains("> second"), "{output}");
         assert!(
-            output.contains("New repository version available"),
+            output.contains("An update is available. Press U."),
             "{output}"
         );
-        assert!(output.contains("U to update"), "{output}");
     }
 }
