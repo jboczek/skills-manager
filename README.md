@@ -134,13 +134,16 @@ Press `/` from an empty prompt. The palette provides:
 | `Up` / `Down` | Move through visible source groups and skill rows. |
 | `Left` / `Right` | Collapse a group, expand it, or move to its first skill. |
 | `Tab` | Cycle `Full`, `Only exposed`, and `Only discovered not applied`. |
-| `Space` | Check or uncheck a skill row for a batch import. |
+| `Space` | Check or uncheck a skill row for a batch action. |
 | `i` | Import the selected skill or checked skills to enabled agents. |
 | `x` | Remove a selected global exposure; discovery-only and project-local rows are protected. |
+| `F` | Review repairs for checked broken global skills, or the cursor row when nothing is checked. |
 | `r` | Refresh the list while keeping the active filter and matching selection. |
 | `Esc` | Cancel the current flow and return home. |
 | `?` | Open help from an empty prompt. |
 | `q` | Quit from an empty prompt. |
+
+For `i`, `x`, and `F`, checked rows take precedence over the cursor. If none of the checks qualify, the action does not fall back to an unchecked cursor row. Every mutation requires plan confirmation; cancelling preserves the links.
 
 ### Safe mutations
 
