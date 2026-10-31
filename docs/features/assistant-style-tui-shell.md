@@ -17,7 +17,7 @@ In an interactive terminal, the app enters a ratatui/crossterm alternate-screen 
 The shell uses fixed regions:
 
 - header with app name and purpose
-- status feed with loaded skill and agent counts
+- status feed with loaded skill and agent counts plus global discovery-token estimates
 - main content panel for the current mode
 - sticky prompt labeled `Skills`
 - footer with mode-specific shortcuts
@@ -47,6 +47,9 @@ The slash suggestion menu lists `/list`, `/source_add`, `/config`, `/help`, and 
 ## Modes
 
 Home mode shows loaded skill and enabled-agent counts with suggested commands.
+After the inventory is loaded, the status feed adds an `Estimated tokens
+(global)` line for every enabled configured agent. Values are prefixed with
+`~` because they count only directional discovery metadata estimates.
 
 List mode is the sole TUI browser. `/list` refreshes one source catalog and its exposure inventory, then opens Full with one collapsed group per repository. Full contains every real global or project-local inventory row plus each discovered source skill with no real exposure. A discovered source is de-duplicated only by canonical source identity; exposure scope and agent availability are never inferred from its path.
 

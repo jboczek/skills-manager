@@ -15,7 +15,7 @@ impl AppLayout {
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(5),
-                Constraint::Length(3),
+                Constraint::Length(4),
                 Constraint::Min(0),
                 Constraint::Length(2),
                 Constraint::Length(1),
@@ -41,6 +41,14 @@ mod tests {
         assert_eq!(
             AppLayout::compute(Rect::new(0, 0, 120, 30)).header.height,
             5
+        );
+    }
+
+    #[test]
+    fn status_reserves_four_content_lines_for_context_estimate() {
+        assert_eq!(
+            AppLayout::compute(Rect::new(0, 0, 120, 30)).status.height,
+            4
         );
     }
 }

@@ -36,13 +36,35 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             if app.loading {
                 render_text_panel(frame, area, " Inventory ", "Loading...");
             } else {
-                table::render_unified_inventory_table(frame, area, &app.list_rows, &app.list_table);
+                table::render_unified_inventory_table(
+                    frame,
+                    area,
+                    &app.list_rows,
+                    &app.list_table,
+                    &app.scan_results,
+                );
             }
         }
         Mode::SourceAdd => render_source_add(frame, area, app),
         Mode::Config => render_config(frame, area, app),
         Mode::Help => render_help(frame, area),
         Mode::Import => render_import(frame, area, app),
+        Mode::Fix => {
+            frame.render_widget(
+                Paragraph::new(app.fix_body())
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .border_style(Theme::border())
+                            .title(" Fix broken skills ")
+                            .title_style(Theme::header()),
+                    )
+                    .style(Theme::default_style())
+                    .wrap(Wrap { trim: false })
+                    .scroll((app.fix_scroll, 0)),
+                area,
+            );
+        }
         Mode::Remove => render_remove(frame, area, app),
         Mode::Quit => render_text_panel(frame, area, " Goodbye ", "Closing Skills Manager..."),
     }
@@ -64,7 +86,7 @@ fn render_help(frame: &mut Frame, area: Rect) {
 }
 
 fn help_text() -> &'static str {
-    "Commands\n  /list                       Browse exposed and discovered skills\n  /source_add <clone-url>     Add a source from an HTTPS or SSH clone URL\n  /config                     Show config\n  /help                       Show this help\n  /update                     Install the latest Homebrew version and restart\n  /quit                       Exit\n\nTable actions\n  Tab                Cycle Full, exposed, and discovery-only views\n  Space              Check or uncheck skill rows\n  i                  Import a selected skill or checked skills\n  x                  Remove checked or selected exposed skill rows\n  r                  Refresh the current list view\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
+    "Commands\n  /list                       Browse exposed and discovered skills\n  /source_add <clone-url>     Add a source from an HTTPS or SSH clone URL\n  /config                     Show config\n  /help                       Show this help\n  /update                     Install the latest Homebrew version and restart\n  /quit                       Exit\n\nTable actions\n  Tab                Cycle Full, exposed, discovery-only, and broken views\n  Space              Check or uncheck skill rows\n  i                  Import a selected skill or checked skills\n  f                  Fix checked or selected broken global skills after reviewing a plan\n  x                  Remove checked or selected exposed skill rows\n  r                  Refresh the current list view\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
 }
 
 fn render_source_add(frame: &mut Frame, area: Rect, app: &App) {
@@ -236,6 +258,7 @@ fn removable_exposure_lines(row: &InventoryRow) -> String {
 
 fn connection_label(connection: ConnectionKind) -> &'static str {
     match connection {
+        ConnectionKind::Broken => "broken",
         ConnectionKind::Symlink => "symlink",
         ConnectionKind::PhysicalCopy => "copy",
         ConnectionKind::Missing => "missing",
@@ -258,7 +281,7 @@ mod tests {
         assert!(text.contains("Import a selected skill or checked skills"));
         assert!(text.contains("Remove checked or selected exposed skill rows"));
         assert!(text.contains("Check or uncheck skill rows"));
-        assert!(text.contains("Cycle Full, exposed, and discovery-only views"));
+        assert!(text.contains("Cycle Full, exposed, discovery-only, and broken views"));
         assert!(text.contains("Collapse or expand source groups"));
     }
 

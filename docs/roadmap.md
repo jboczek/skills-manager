@@ -237,9 +237,10 @@ Turn Skills Manager from a local exposure utility into a durable control plane f
 - **Outcome:** Users can see a practical estimate of how much context enabled skills consume for each agent.
 - **Description:** Estimate context impact from skill descriptions or relevant metadata and show it per configured agent.
 - **Why now:** This depends on trusted inventory and real user need; it should not distract from V1/V2 safety and workflow foundations.
-- **PRD candidate:** Later. Suggested file: `docs/prds/012-context-budget-visibility.md`
+- **PRD candidate:** Yes. PRD: [`docs/prds/012-context-budget-visibility.md`](prds/012-context-budget-visibility.md)
 - **Dependencies:** 004, 007.
 - **Validation signal:** Users can identify obviously overexposed or overly verbose skill setups and make better enablement decisions.
+- **Status:** Done.
 - **Notes / risks:** Estimates may be approximate because each agent may inject skill context differently.
 
 ### 013 - Shareable setup profiles
@@ -319,3 +320,13 @@ V3 works if Skills Manager becomes the trusted local place to curate, audit, and
 - 2026-05-19: Added V1 PRD links for roadmap items 001-007 and marked those PRDs as drafted.
 - 2026-05-19: Updated PRD Candidates table to include version assignment and ordering dependencies.
 - 2026-05-19: Initial roadmap created from Big Picture, interview notes, and Rust engineering guidelines.
+
+## Broken skills — complete (2026-10-31)
+
+[PRD 013](prds/013-broken-skills.md): global dangling-link inventory, red warnings, Tab filter and confirmed F repair/removal flow. Project-local exposures excluded.
+
+PRD 013 follow-up complete: moved global skills share one inventory row with their current source and a broken reason; repair keeps original link paths.
+
+PRD 013 batch correction complete: F honors all checked broken skills, resolves per-skill ambiguity and confirms a combined plan.
+
+PRD 013 selection-contract follow-up: keyboard tests protect checked-row precedence, exact plan/apply targets and cancellation across i/x/F; ineligible checks no longer redirect import or removal to the unchecked cursor.

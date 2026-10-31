@@ -55,6 +55,17 @@ skills that are not exposed yet. Groups start collapsed; expand one to see
 repository-relative skill paths, agent availability, scope, and connection
 type.
 
+The status feed also estimates global discovery metadata with `o200k_base`.
+For example:
+
+```text
+• Estimated tokens (global): Claude Code ~776 (36 skills) · Codex ~6394 (201 skills) · GitHub Copilot ~1568 (72 skills)
+```
+
+These are directional estimates of exposed global `SKILL.md` metadata. Project-
+local rows and skill bodies are excluded; the CLI `list` and `scan` output is
+unchanged.
+
 <p align="center">
   <img src="docs/assets/skills-manager-inventory.png" width="960" alt="Skills Manager unified inventory grouped by source repository">
 </p>
@@ -123,13 +134,16 @@ Press `/` from an empty prompt. The palette provides:
 | `Up` / `Down` | Move through visible source groups and skill rows. |
 | `Left` / `Right` | Collapse a group, expand it, or move to its first skill. |
 | `Tab` | Cycle `Full`, `Only exposed`, and `Only discovered not applied`. |
-| `Space` | Check or uncheck a skill row for a batch import. |
+| `Space` | Check or uncheck a skill row for a batch action. |
 | `i` | Import the selected skill or checked skills to enabled agents. |
 | `x` | Remove a selected global exposure; discovery-only and project-local rows are protected. |
+| `F` | Review repairs for checked broken global skills, or the cursor row when nothing is checked. |
 | `r` | Refresh the list while keeping the active filter and matching selection. |
 | `Esc` | Cancel the current flow and return home. |
 | `?` | Open help from an empty prompt. |
 | `q` | Quit from an empty prompt. |
+
+For `i`, `x`, and `F`, checked rows take precedence over the cursor. If none of the checks qualify, the action does not fall back to an unchecked cursor row. Every mutation requires plan confirmation; cancelling preserves the links.
 
 ### Safe mutations
 
@@ -194,3 +208,11 @@ cargo clippy --all-targets --all-features -- -D warnings
 Product context and durable feature notes live in [`docs/`](docs/), including
 the [TUI feature notes](docs/features/assistant-style-tui-shell.md) and the
 [roadmap](docs/roadmap.md).
+
+### Broken skills
+
+In TUI `/list`, Tab includes **Only broken** for dangling global symlinks. A red `!` marks affected repositories; broken skill rows are red with connection `broken`. Press **F** on a broken row to review repairs for all its broken agent links. Replacements come from the original repository; choose when ambiguous. With no replacement, the plan offers symlink removal only. Confirm before applying; source directories are preserved. Project-local exposures are excluded.
+
+Moved global skills appear once in TUI inventory: match by repository path and skill directory name, combine existing global exposures, and suppress the separate discovery row. Show the unique current source with `broken (folder changed)`, or `broken (removed)` when no replacement is found. Keep the row red while any link is broken. If multiple replacements exist, retain the old Source until the user chooses in F; never guess. Original link targets remain available in the repair preview.
+
+F uses all checked broken global skills; only when nothing is checked does it use the cursor row. Healthy and project-local checks are left unchanged. Resolve ambiguous sources separately for each skill, then review and confirm one combined repair/removal plan. Cancelling before confirmation changes no links.

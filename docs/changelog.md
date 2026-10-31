@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-10-31
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-10-31 | Added keyboard-driven selection contract tests for i/x/F, prevented import/remove cursor fallback from ineligible checks, and added a shared-interaction rule to AGENTS.md. | `features/inventory-and-exposure-resolution.md`, `prds/013-broken-skills.md` |
+| 2026-10-31 | Fixed F ignoring checked skills: all checked broken skills now share one confirmed repair plan, with per-skill source choices. | `features/inventory-and-exposure-resolution.md`, `prds/013-broken-skills.md` |
+| 2026-10-31 | Consolidated moved skills into one TUI row with the current source and folder changed/removed broken reasons. | `features/inventory-and-exposure-resolution.md`, `prds/013-broken-skills.md` |
+| 2026-10-31 | Added broken global skill warnings, Tab filter and confirmed F repair or removal; import explains broken targets. | `features/inventory-and-exposure-resolution.md`, `prds/013-broken-skills.md`, `roadmap.md`, `README.md` |
+
+## 2026-09-13
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-09-13 13:29 | Added global `o200k_base` discovery-metadata estimates per enabled agent to the TUI status feed, with deterministic global-row filtering and refresh-aware states. | `README.md`, `features/context-budget-visibility.md`, `features/assistant-style-tui-shell.md`, `prds/012-context-budget-visibility.md`, `roadmap.md` |
+
 ## 2026-08-29
 
 | Time | Change | Docs |

@@ -22,6 +22,11 @@
 13. Discover project-local exposures in repositories containing `SKILL.md` under both configured source root types. Use fixed agent directory conventions, classify physical project-local skill directories as local to their containing repository, and resolve symlink sources when possible.
 14. Project-local exposures are read-only inventory. Do not allow import, remove, detach, or physical deletion actions for them. The fixed `.agents/skills` convention grants effective availability to Codex and Copilot.
 15. TUI list groups represent repositories, not scope buckets. Group global exposures by source repository and project-local exposures by containing project; keep `global` and `project-local` in the scope column.
+16. Broken-skill detection, warnings, filtering and repair apply only to global exposures. Project-local exposures remain outside this mechanism.
+17. In TUI inventory, a broken global skill and its discovered replacement with the same repository path and skill name share one row. Show the unique current Source and distinguish `broken (folder changed)` from `broken (removed)`; preserve original exposure paths for repair.
+18. F must honor all checked broken global skills, using the cursor row only when nothing is checked. Resolve each ambiguous source before reviewing one combined plan; never apply intermediate choices.
+19. Before adding or changing a list action, inspect existing selection, filtering, grouping, and read-only contracts. Checked rows take precedence; use the cursor only when no rows are checked, never because filtering checks leaves no eligible rows. Preserve action-specific eligibility. Add keyboard-driven regression scenarios for zero, one, and multiple checks with the cursor on an unchecked row; verify exact plan targets, apply/cancel effects, and protected rows. Check these contracts for every affected action, not only the newly added shortcut.
+
 
 
 Before implementation, make a plan and add it to temp file named after the PRD `/docs/temp/prd-xxx-plan.md`. The plan should be a step-by-step outline of how the implementation will proceed and what files need to be modified. Add the plan file but do not commit it.

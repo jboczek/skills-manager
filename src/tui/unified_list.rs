@@ -10,6 +10,7 @@ pub enum ListFilter {
     Full,
     OnlyExposed,
     OnlyDiscovered,
+    OnlyBroken,
 }
 
 impl ListFilter {
@@ -18,6 +19,7 @@ impl ListFilter {
             Self::Full => "Full",
             Self::OnlyExposed => "Only exposed",
             Self::OnlyDiscovered => "Only discovered not applied",
+            Self::OnlyBroken => "Only broken",
         }
     }
 
@@ -25,7 +27,8 @@ impl ListFilter {
         match self {
             Self::Full => Self::OnlyExposed,
             Self::OnlyExposed => Self::OnlyDiscovered,
-            Self::OnlyDiscovered => Self::Full,
+            Self::OnlyDiscovered => Self::OnlyBroken,
+            Self::OnlyBroken => Self::Full,
         }
     }
 }
@@ -41,11 +44,17 @@ pub fn project_rows(
     scan_results: &[ScanResult],
     filter: ListFilter,
 ) -> Vec<UnifiedListRow> {
-    let exposed_sources = inventory
+    let inventory = merge_broken_rows(inventory);
+    let mut exposed_sources = inventory
         .iter()
         .flat_map(|row| row.exposures.iter())
         .map(|exposure| canonical_source_identity(&exposure.path))
         .collect::<HashSet<_>>();
+    for row in inventory.iter().filter(|row| row.is_broken()) {
+        for source in crate::broken::replacements(row, scan_results) {
+            exposed_sources.insert(canonical_source_identity(&source.skill_path));
+        }
+    }
     let discovered = scan_results
         .iter()
         .filter(|result| !exposed_sources.contains(&canonical_source_identity(&result.skill_path)))
@@ -65,7 +74,44 @@ pub fn project_rows(
             .map(UnifiedListRow::Exposed)
             .collect(),
         ListFilter::OnlyDiscovered => discovered.collect(),
+        ListFilter::OnlyBroken => inventory
+            .iter()
+            .filter(|r| r.is_broken())
+            .cloned()
+            .map(UnifiedListRow::Exposed)
+            .collect(),
     }
+}
+
+// Presentation only: keep the actual link paths for F and availability checks.
+fn merge_broken_rows(inventory: &[InventoryRow]) -> Vec<InventoryRow> {
+    let mut rows: Vec<InventoryRow> = Vec::new();
+    for row in inventory {
+        let has_broken = inventory
+            .iter()
+            .any(|other| other.is_broken() && same_global_skill(row, other));
+        if has_broken
+            && let Some(existing) = rows.iter_mut().find(|other| same_global_skill(row, other))
+        {
+            for exposure in &row.exposures {
+                if !existing.exposures.contains(exposure) {
+                    existing.exposures.push(exposure.clone());
+                }
+            }
+            existing.disambiguation_index = None;
+        } else {
+            rows.push(row.clone());
+        }
+    }
+    rows
+}
+
+fn same_global_skill(a: &InventoryRow, b: &InventoryRow) -> bool {
+    a.scope == crate::domain::Scope::Global
+        && b.scope == a.scope
+        && a.source.repo_path.is_some()
+        && a.source.repo_path == b.source.repo_path
+        && a.skill_id.name == b.skill_id.name
 }
 
 fn canonical_source_identity(path: &Path) -> PathBuf {
@@ -198,7 +244,8 @@ mod tests {
     fn filter_cycle_is_full_then_exposed_then_discovered() {
         assert_eq!(ListFilter::Full.next(), ListFilter::OnlyExposed);
         assert_eq!(ListFilter::OnlyExposed.next(), ListFilter::OnlyDiscovered);
-        assert_eq!(ListFilter::OnlyDiscovered.next(), ListFilter::Full);
+        assert_eq!(ListFilter::OnlyDiscovered.next(), ListFilter::OnlyBroken);
+        assert_eq!(ListFilter::OnlyBroken.next(), ListFilter::Full);
     }
 
     #[test]

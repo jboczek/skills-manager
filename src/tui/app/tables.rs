@@ -64,7 +64,9 @@ impl App {
             .iter()
             .enumerate()
             .map(|(index, row)| match row {
-                UnifiedListRow::Exposed(row) => inventory_table_item(index, row),
+                UnifiedListRow::Exposed(row) => {
+                    inventory_table_item(index, row, &self.scan_results)
+                }
                 UnifiedListRow::Discovered(result) => discovery_table_item(index, result),
             })
             .collect()
@@ -95,8 +97,20 @@ impl App {
     }
 }
 
-fn inventory_table_item(index: usize, row: &InventoryRow) -> SourceGroupItem {
-    let skill_path = source_path_for_inventory_row(row);
+fn inventory_table_item(
+    index: usize,
+    row: &InventoryRow,
+    catalog: &[ScanResult],
+) -> SourceGroupItem {
+    let replacements = if row.is_broken() {
+        crate::broken::replacements(row, catalog)
+    } else {
+        vec![]
+    };
+    let skill_path = match replacements.as_slice() {
+        [source] => source.skill_path.clone(),
+        _ => source_path_for_inventory_row(row),
+    };
     let (repo_name, repo_path, relative_path) = match row.scope {
         Scope::Global => {
             let relative_path = row
@@ -158,6 +172,10 @@ fn source_path_for_inventory_row(row: &InventoryRow) -> PathBuf {
             .map(|path| path.join(&row.skill_id.name))
             .unwrap_or_else(|| PathBuf::from(&row.skill_id.name));
     };
+    if exposure.connection == ConnectionKind::Broken {
+        return crate::inventory::link_target(&exposure.path)
+            .unwrap_or_else(|| exposure.path.clone());
+    }
     if exposure.connection == ConnectionKind::Symlink {
         return fs::canonicalize(&exposure.path).unwrap_or_else(|_| exposure.path.clone());
     }

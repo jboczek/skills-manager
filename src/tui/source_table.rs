@@ -53,25 +53,13 @@ pub enum SourceTableRow {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SourceTable {
     groups: Vec<SourceGroup>,
     expanded: HashSet<GroupKey>,
     checked: HashSet<ItemKey>,
     selected: Option<usize>,
     viewport_offset: usize,
-}
-
-impl Default for SourceTable {
-    fn default() -> Self {
-        Self {
-            groups: Vec::new(),
-            expanded: HashSet::new(),
-            checked: HashSet::new(),
-            selected: None,
-            viewport_offset: 0,
-        }
-    }
 }
 
 impl SourceTable {

@@ -48,7 +48,9 @@ Unknown Git provenance is valid inventory state and renders as `unknown`.
 
 The standalone `skills-manager list` and `skills-manager scan` commands keep their separate output contracts. The interactive TUI instead uses `/list` as one browser over both data sets. It refreshes the source catalog and inventory from the same scan, then offers Full, Only exposed, and Only discovered not applied views.
 
-Full retains every inventory row and adds each discovered source whose canonical source path has no real exposure. Discovery-only rows do not become inventory rows: their agent and scope columns are `-`, their connection is `not exposed`, and they are importable but cannot be checked for batch changes or removed. Global and project-local inventory rows remain distinct even when they resolve to the same source.
+Full retains every inventory row and adds each discovered source whose canonical source path has no real exposure. Discovery-only rows do not become inventory rows: their agent and scope columns are `-`, their connection is `not exposed`, and they can be checked for batch import but cannot be removed. Global and project-local inventory rows remain distinct even when they resolve to the same source.
+
+For `i`, `x`, and `F`, checked rows take precedence over the cursor; cursor fallback is permitted only when nothing is checked. An ineligible selection never redirects the action to an unchecked cursor row. Import and remove reject project-local checks; F ignores healthy and project-local checks. Remove ignores discovery-only checks and reports when no removable exposure is selected. Keyboard regression tests cover zero, one and multiple checks across repositories, exact preview paths, confirmation, cancellation and protected rows using temporary filesystem fixtures.
 
 ## Effective Availability
 
@@ -85,3 +87,15 @@ SKILL            SOURCE                          CLAUDE   CODEX    COPILOT  SCOP
 `skills-manager list` is read-only. It does not create, delete, link, clone, import, remove, or persist skill files.
 
 Configuration validation completes before source scanning or target inspection. Relative active paths fail instead of resolving against CWD.
+
+## Broken global links
+
+Global symlinks whose targets no longer exist remain in inventory with `broken` connection and their original repository provenance when recoverable from the old target path. They do not grant effective agent availability or contribute to context estimates. Project-local exposures are outside broken detection and repair.
+
+TUI Tab cycles Full, Only exposed, Only discovered not applied, Only broken. A red `!` precedes repository groups containing broken rows; broken rows render red with `broken` connection. Press F on a broken row to review changes for all its broken agent links (shared physical links appear only once).
+
+Find replacement directories with the same skill directory name inside the original repository. A unique match is proposed; multiple matches require choosing a full source path. Without a match, propose removing the broken symlinks only. No matching across unrelated repositories. Preview includes old and new targets, agent and link paths. Applying requires confirmation; Esc or a negative answer preserves links. Source directories are never removed. Recheck link identity and source availability before applying; report partial failures and refresh inventory. Import encountering broken targets directs users to F.
+
+Moved global skills appear once in TUI inventory: match by repository path and skill directory name, combine existing global exposures, and suppress the separate discovery row. Show the unique current source with `broken (folder changed)`, or `broken (removed)` when no replacement is found. Keep the row red while any link is broken. If multiple replacements exist, retain the old Source until the user chooses in F; never guess. Original link targets remain available in the repair preview.
+
+F uses all checked broken global skills; only when nothing is checked does it use the cursor row. Healthy and project-local checks are left unchanged. Resolve ambiguous sources separately for each skill, then review and confirm one combined repair/removal plan. Cancelling before confirmation changes no links.

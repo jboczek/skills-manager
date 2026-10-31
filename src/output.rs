@@ -90,11 +90,9 @@ fn source_display(row: &InventoryRow) -> String {
 }
 
 fn exposure_mark(row: &InventoryRow, agent_id: &str) -> &'static str {
-    if row
-        .exposures
-        .iter()
-        .any(|exposure| exposure.agent_id.0 == agent_id)
-    {
+    if row.exposures.iter().any(|exposure| {
+        exposure.agent_id.0 == agent_id && exposure.connection != ConnectionKind::Broken
+    }) {
         "✓"
     } else {
         "-"
@@ -114,6 +112,7 @@ fn scope_display(row: &InventoryRow) -> &'static str {
 
 fn connection_display(row: &InventoryRow) -> &'static str {
     match primary_connection(row) {
+        Some(ConnectionKind::Broken) => "broken",
         Some(ConnectionKind::Symlink) => "symlink",
         Some(ConnectionKind::PhysicalCopy) => "physical",
         Some(ConnectionKind::Missing) => "missing",
@@ -126,6 +125,7 @@ fn primary_connection(row: &InventoryRow) -> Option<ConnectionKind> {
         .iter()
         .map(|exposure| exposure.connection)
         .max_by_key(|connection| match connection {
+            ConnectionKind::Broken => 5,
             ConnectionKind::Symlink => 4,
             ConnectionKind::PhysicalCopy => 3,
             ConnectionKind::Missing => 2,
