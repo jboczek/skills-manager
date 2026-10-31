@@ -260,7 +260,7 @@ fn group_cell_label(expanded: bool, name: &str, context: &str) -> String {
 }
 
 fn repository_update_label() -> &'static str {
-    "New repository version available (U to update)"
+    "An update is available. Press U."
 }
 
 fn skill_count_label(count: usize) -> String {
@@ -343,8 +343,10 @@ mod tests {
 
     #[test]
     fn repository_update_label_explains_the_u_action() {
-        assert!(repository_update_label().contains("New repository version available"));
-        assert!(repository_update_label().contains("U to update"));
+        assert_eq!(
+            repository_update_label(),
+            "An update is available. Press U."
+        );
     }
 
     #[test]
