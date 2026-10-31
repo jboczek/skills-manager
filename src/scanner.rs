@@ -31,6 +31,22 @@ pub struct ScanConfig {
 }
 
 pub fn scan(scan_config: &ScanConfig) -> anyhow::Result<Vec<ScanResult>> {
+    scan_with_origin_lookup(scan_config, git::origin_url)
+}
+
+fn scan_with_origin_lookup(
+    scan_config: &ScanConfig,
+    mut lookup_origin: impl FnMut(&Path) -> anyhow::Result<Option<String>>,
+) -> anyhow::Result<Vec<ScanResult>> {
+    // Keep successes, missing origins and failures for this scan only.
+    let mut origins = HashMap::new();
+    let mut origin_url = |repo: &Path| {
+        origins
+            .entry(repo.to_path_buf())
+            .or_insert_with(|| lookup_origin(repo).map_err(|error| error.to_string()))
+            .clone()
+            .map_err(anyhow::Error::msg)
+    };
     let mut results = Vec::new();
     let mut seen_paths = HashSet::new();
     let mut warnings = Vec::new();
@@ -42,6 +58,7 @@ pub fn scan(scan_config: &ScanConfig) -> anyhow::Result<Vec<ScanResult>> {
         &mut results,
         &mut seen_paths,
         &mut warnings,
+        &mut origin_url,
     );
 
     for root in &scan_config.scan_parent_dirs {
@@ -52,6 +69,7 @@ pub fn scan(scan_config: &ScanConfig) -> anyhow::Result<Vec<ScanResult>> {
             &mut results,
             &mut seen_paths,
             &mut warnings,
+            &mut origin_url,
         );
     }
 
@@ -103,6 +121,7 @@ fn scan_root(
     results: &mut Vec<ScanResult>,
     seen_paths: &mut HashSet<PathBuf>,
     warnings: &mut Vec<String>,
+    origin_url: &mut impl FnMut(&Path) -> anyhow::Result<Option<String>>,
 ) {
     if !root.exists() || is_symlink(root) {
         return;
@@ -143,19 +162,18 @@ fn scan_root(
                 .ok()
                 .map(Path::to_path_buf)
         });
-        let remote_url =
-            repo_path
-                .as_deref()
-                .and_then(|repo_root| match git::origin_url(repo_root) {
-                    Ok(url) => url,
-                    Err(error) => {
-                        warnings.push(format!(
-                            "failed to read origin for {}: {error}",
-                            repo_root.display()
-                        ));
-                        None
-                    }
-                });
+        let remote_url = repo_path
+            .as_deref()
+            .and_then(|repo_root| match origin_url(repo_root) {
+                Ok(url) => url,
+                Err(error) => {
+                    warnings.push(format!(
+                        "failed to read origin for {}: {error}",
+                        repo_root.display()
+                    ));
+                    None
+                }
+            });
         let skill_name = path_name(&skill_path).unwrap_or_else(|| skill_path.display().to_string());
         let skill_id = match repo_name.as_deref() {
             Some(repo_name) => format!("{repo_name}/{skill_name}"),
@@ -197,6 +215,82 @@ mod tests {
 
     #[cfg(unix)]
     use std::os::unix::fs::symlink;
+
+    fn write_skill(path: &Path) {
+        fs::create_dir_all(path).unwrap();
+        fs::write(path.join("SKILL.md"), "# skill").unwrap();
+    }
+
+    #[test]
+    fn origin_lookup_budget_scales_with_repositories_not_skills() {
+        let temp = tempdir().unwrap();
+        // Distinct repositories with the same name, plus a nested repository.
+        let repos = [
+            temp.path().join("one/repo"),
+            temp.path().join("two/repo"),
+            temp.path().join("one/repo/nested"),
+        ];
+        for repo in &repos {
+            fs::create_dir_all(repo.join(".git")).unwrap();
+            for index in 0..100 {
+                write_skill(&repo.join(format!("skill-{index}")));
+            }
+        }
+        let config = ScanConfig {
+            central_dir: repos[0].join("skill-0"),
+            scan_parent_dirs: vec![temp.path().to_path_buf(), repos[0].clone()],
+            max_scan_depth: 10,
+        };
+        for generation in ["before", "after"] {
+            let mut calls = HashMap::<PathBuf, usize>::new();
+            let results = scan_with_origin_lookup(&config, |repo| {
+                *calls.entry(repo.to_path_buf()).or_default() += 1;
+                Ok(Some(format!("{generation}:{}", repo.display())))
+            })
+            .unwrap();
+            assert_eq!(results.len(), 300);
+            for result in &results {
+                let repo = result.repo_path.as_ref().unwrap();
+                assert_eq!(
+                    result.remote_url,
+                    Some(format!("{generation}:{}", repo.display()))
+                );
+            }
+            assert_eq!(calls.len(), 3);
+            assert!(
+                calls.values().all(|count| *count == 1),
+                "origin lookup budget exceeded: {calls:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn missing_and_failed_origins_are_looked_up_once_per_scan() {
+        let temp = tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        fs::create_dir_all(repo.join(".git")).unwrap();
+        write_skill(&repo.join("one"));
+        write_skill(&repo.join("two"));
+        let config = ScanConfig {
+            central_dir: repo,
+            scan_parent_dirs: vec![],
+            max_scan_depth: 10,
+        };
+        for fail in [false, true] {
+            let mut calls = 0;
+            let results = scan_with_origin_lookup(&config, |_| {
+                calls += 1;
+                if fail {
+                    anyhow::bail!("origin unavailable");
+                }
+                Ok(None)
+            })
+            .unwrap();
+            assert_eq!(results.len(), 2);
+            assert!(results.iter().all(|result| result.remote_url.is_none()));
+            assert_eq!(calls, 1);
+        }
+    }
 
     #[test]
     fn scan_finds_single_skill_md() {
