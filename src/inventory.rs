@@ -64,7 +64,13 @@ pub fn build_inventory(cfg: &InventoryConfig) -> Vec<InventoryRow> {
             let Some(skill_name) = path_name(&exposure_path) else {
                 continue;
             };
-            let connection = detect_connection(&exposure_path);
+            let mut connection = detect_connection(&exposure_path);
+            if target.scope == Scope::Global
+                && connection == ConnectionKind::Symlink
+                && !exposure_path.exists()
+            {
+                connection = ConnectionKind::Broken;
+            }
             let resolution = resolve_exposure(&exposure_path, &skill_name, connection, &scan_index);
             let row_key = contextual_row_key(
                 &resolution.row_key,
@@ -251,8 +257,8 @@ fn resolve_exposure(
         return resolution_from_scan(scan_result);
     }
 
-    if connection == ConnectionKind::Symlink
-        && let Some(target_path) = resolve_symlink_target(exposure_path)
+    if matches!(connection, ConnectionKind::Symlink | ConnectionKind::Broken)
+        && let Some(target_path) = link_target(exposure_path)
     {
         if let Some(scan_result) = scan_result_for_path(&target_path, scan_index) {
             return resolution_from_scan(scan_result);
@@ -307,14 +313,14 @@ fn resolution_from_scan(scan_result: &ScanResult) -> ExposureResolution {
     }
 }
 
-fn resolve_symlink_target(path: &Path) -> Option<PathBuf> {
+pub fn link_target(path: &Path) -> Option<PathBuf> {
     let target = symlink::read_symlink_target(path).ok()?;
     let absolute_target = if target.is_absolute() {
         target
     } else {
         path.parent().unwrap_or_else(|| Path::new(".")).join(target)
     };
-    absolute_target.exists().then_some(absolute_target)
+    Some(absolute_target)
 }
 
 fn source_for_path(path: &Path) -> SkillSource {
@@ -379,6 +385,40 @@ mod tests {
 
     #[cfg(unix)]
     use std::os::unix::fs::symlink;
+
+    #[cfg(unix)]
+    #[test]
+    fn broken_global_link_keeps_original_repository_and_is_not_available() {
+        let temp = tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        fs::create_dir_all(repo.join(".git")).unwrap();
+        let targets = temp.path().join("targets");
+        fs::create_dir_all(&targets).unwrap();
+        symlink(repo.join("old/code"), targets.join("code")).unwrap();
+        let rows = build_inventory(&InventoryConfig {
+            agents: vec![AgentTarget {
+                agent_id: "codex".into(),
+                display_name: "Codex".into(),
+                global_dir: Some(targets),
+                shared_target_dirs: vec![],
+                enabled: true,
+            }],
+            scan_results: vec![],
+        });
+        assert_eq!(rows[0].source.repo_path.as_ref(), Some(&repo));
+        assert!(rows[0].is_broken());
+        assert!(crate::output::render_inventory(&rows).contains("broken"));
+        assert!(!crate::output::render_inventory(&rows).contains("✓"));
+        assert_eq!(
+            crate::tui::unified_list::project_rows(
+                &rows,
+                &[],
+                crate::tui::unified_list::ListFilter::OnlyBroken
+            )
+            .len(),
+            1
+        );
+    }
 
     #[test]
     fn build_inventory_returns_empty_when_no_targets_exist() {

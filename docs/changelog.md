@@ -1,15 +1,47 @@
 # Changelog
 
+## 2026-10-31
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-10-31 | Reduced source scans to one Git origin lookup per repository per scan; added deterministic performance and freshness regression tests. | `features/skill-source-scanning.md` |
+| 2026-10-31 | Added keyboard-driven selection contract tests for i/x/F, prevented import/remove cursor fallback from ineligible checks, and added a shared-interaction rule to AGENTS.md. | `features/inventory-and-exposure-resolution.md`, `prds/013-broken-skills.md` |
+| 2026-10-31 | Fixed F ignoring checked skills: all checked broken skills now share one confirmed repair plan, with per-skill source choices. | `features/inventory-and-exposure-resolution.md`, `prds/013-broken-skills.md` |
+| 2026-10-31 | Consolidated moved skills into one TUI row with the current source and folder changed/removed broken reasons. | `features/inventory-and-exposure-resolution.md`, `prds/013-broken-skills.md` |
+| 2026-10-31 | Added broken global skill warnings, Tab filter and confirmed F repair or removal; import explains broken targets. | `features/inventory-and-exposure-resolution.md`, `prds/013-broken-skills.md`, `roadmap.md`, `README.md` |
+
+## 2026-09-13
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-09-13 13:29 | Added global `o200k_base` discovery-metadata estimates per enabled agent to the TUI status feed, with deterministic global-row filtering and refresh-aware states. | `README.md`, `features/context-budget-visibility.md`, `features/assistant-style-tui-shell.md`, `prds/012-context-budget-visibility.md`, `roadmap.md` |
+
+## 2026-08-29
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-08-29 15:37 | Bumped the package to `0.1.3` and made local release preparation reject a stale or inconsistent `Cargo.lock`. | `README.md`, `features/homebrew-distribution.md`, `scripts/local-release.sh` |
+| 2026-08-29 13:26 | Added `scripts/local-release.sh` to validate the Cargo version and create/push the matching release branch and tag. | `README.md`, `features/homebrew-distribution.md`, `scripts/local_release_test.rb` |
+| 2026-08-29 12:00 | Added asynchronous Homebrew update notices and `/update` restart flow in the TUI. | `README.md`, `features/homebrew-distribution.md` |
+
 ## 2026-08-23
 
 | Time | Change | Docs |
 |---|---|---|
+| 2026-08-23 11:00 | Added a manually dispatched ARM64 macOS 15 smoke gate for immutable Homebrew release archives. | `features/homebrew-distribution.md`, `../.github/workflows/release-smoke.yml` |
+| 2026-08-23 11:39 | Expanded the release smoke gate to the documented ARM64 macOS 14/15/26 and Intel macOS 15/26 matrix. | `features/homebrew-distribution.md`, `../.github/workflows/release-smoke.yml` |
+| 2026-08-23 08:48 | Added a local visual-check skill that requires Docker-hosted Playwright and documents the inventory row-height invariants. | `.agents/skills/visual-check-playwright-docker/` |
+| 2026-08-23 08:23 | Re-rendered multi-skill inventory rows with full glyph height so `code-review` and `release-notes` are no longer clipped. | `README.md`, `assets/skills-manager-inventory.png` |
+| 2026-08-23 08:08 | Regenerated the README inventory screenshot without the selected-row highlight while preserving the expanded skill fixture. | `README.md`, `assets/skills-manager-inventory.png` |
 | 2026-08-23 07:51 | Simplified repository updates to the `u` shortcut and made `Esc` return from review to the loaded list. | `README.md`, `features/assistant-style-tui-shell.md`, `features/git-source-import.md` |
 
 ## 2026-08-22
 
 | Time | Change | Docs |
 |---|---|---|
+| 2026-08-22 20:28 | Initialized `jboczek/homebrew-tap` with the guarded publisher, native ARM64/Intel formula checks, and protected `main`. | `features/homebrew-distribution.md`, `../homebrew-distribution/tap/` |
+| 2026-08-22 19:00 | Added the macOS Homebrew release contract, native archive workflow design, and shared-tap publisher template. | `features/homebrew-distribution.md`, `../homebrew-distribution/` |
+| 2026-08-22 19:27 | Refreshed the README around the TUI and added publication-ready home and inventory screenshots. | `README.md`, `assets/skills-manager-home.png`, `assets/skills-manager-inventory.png` |
 | 2026-08-22 22:45 | Made the repository-update shortcut resilient to terminal Alt mappings and stripped Command modifiers. | `README.md`, `features/assistant-style-tui-shell.md`, `features/git-source-import.md` |
 | 2026-08-22 20:30 | Made `/list` repository-update checks asynchronous, hid failed-fetch noise, and moved the green Cmd+U notice to one agent-column line. | `README.md`, `features/assistant-style-tui-shell.md`, `features/git-source-import.md` |
 | 2026-08-22 19:02 | Added TUI detection and review of remote repository commits, with Cmd+U and confirmed fast-forward-only pull. | `README.md`, `features/assistant-style-tui-shell.md`, `features/git-source-import.md` |

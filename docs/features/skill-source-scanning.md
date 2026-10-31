@@ -55,3 +55,15 @@ git -C <repo_path> remote get-url origin
 ```
 
 Repositories without an origin are valid scan results and show `unknown` for the origin.
+
+Origin lookups are memoized by repository path for one scan, shared across configured
+roots. A repository containing many skills runs the origin command once, including
+when the origin is missing or the lookup fails. Each subsequent scan reads origins
+again, so origin changes remain visible. Repositories with the same name at different
+paths and nested repositories have separate entries.
+
+The scanner's performance regression test uses 300 skills in three repositories and
+asserts a budget of one origin lookup per repository per scan, alongside complete
+results and fresh origins on the next scan. This deterministic budget detects repeated
+Git subprocess work without a machine-dependent wall-clock threshold. Missing and
+failed origins have the same lookup budget.

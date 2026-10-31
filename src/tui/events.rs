@@ -146,6 +146,12 @@ fn handle_key_with_preview_area(
         KeyCode::Char(' ') if app.input.is_empty() && app.mode == Mode::List => {
             app.list_table.toggle_selected_check();
         }
+        KeyCode::Up if app.mode == Mode::Fix => {
+            app.fix_scroll = app.fix_scroll.saturating_sub(1);
+        }
+        KeyCode::Down if app.mode == Mode::Fix => {
+            app.fix_scroll = app.fix_scroll.saturating_add(1);
+        }
         KeyCode::Up if app.mode == Mode::List => {
             app.list_table.move_up(table_height);
         }
@@ -163,6 +169,9 @@ fn handle_key_with_preview_area(
         }
         KeyCode::Char('q') if app.input.is_empty() => {
             return Ok(true);
+        }
+        KeyCode::Char('f' | 'F') if app.input.is_empty() && app.mode == Mode::List => {
+            app.start_fix();
         }
         KeyCode::Char('i') if app.input.is_empty() && app.mode == Mode::List => {
             app.start_import_from_selected_list_row()?;
@@ -234,6 +243,10 @@ fn current_main_area() -> Rect {
 pub(crate) fn table_height_for_main(main_height: u16) -> usize {
     usize::from(main_height.saturating_sub(3)).max(1)
 }
+
+#[cfg(all(test, unix))]
+#[path = "events/selection_tests.rs"]
+mod selection_tests;
 
 #[cfg(test)]
 mod tests {
@@ -992,6 +1005,9 @@ mod tests {
         assert_eq!(app.list_filter, ListFilter::OnlyDiscovered);
         assert_eq!(app.list_rows.len(), 1);
 
+        handle_key(&mut app, key(KeyCode::Tab)).expect("key handled");
+        assert_eq!(app.list_filter, ListFilter::OnlyBroken);
+        assert!(app.list_rows.is_empty());
         handle_key(&mut app, key(KeyCode::Tab)).expect("key handled");
         assert_eq!(app.list_filter, ListFilter::Full);
         assert_eq!(app.list_rows.len(), 2);

@@ -29,6 +29,7 @@ pub enum Scope {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionKind {
     Symlink,
+    Broken,
     PhysicalCopy,
     Missing,
     Unknown,
@@ -55,6 +56,16 @@ pub struct InventoryRow {
     pub scope: Scope,
     pub exposures: Vec<SkillExposure>,
     pub disambiguation_index: Option<usize>,
+}
+
+impl InventoryRow {
+    pub fn is_broken(&self) -> bool {
+        self.scope == Scope::Global
+            && self
+                .exposures
+                .iter()
+                .any(|e| e.connection == ConnectionKind::Broken)
+    }
 }
 
 #[cfg(test)]

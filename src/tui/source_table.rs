@@ -67,25 +67,13 @@ impl SourceTableRow {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SourceTable {
     groups: Vec<SourceGroup>,
     expanded: HashSet<GroupKey>,
     checked: HashSet<ItemKey>,
     selected: Option<usize>,
     viewport_offset: usize,
-}
-
-impl Default for SourceTable {
-    fn default() -> Self {
-        Self {
-            groups: Vec::new(),
-            expanded: HashSet::new(),
-            checked: HashSet::new(),
-            selected: None,
-            viewport_offset: 0,
-        }
-    }
 }
 
 impl SourceTable {
@@ -892,7 +880,7 @@ mod tests {
             Some("/repos/skills"),
             Some("review"),
         )]);
-        table.set_repository_updates(&[update.clone()]);
+        table.set_repository_updates(std::slice::from_ref(&update));
 
         assert_eq!(table.selected_repository_update(), Some(update.clone()));
         table.move_right(4);

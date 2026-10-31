@@ -77,11 +77,13 @@ pub fn run(args: RemoveArgs) -> Result<()> {
             .unwrap_or_else(|| exposure.agent_id.0.clone());
 
         match exposure.connection {
-            ConnectionKind::Symlink => changes.push(StagedChange::DetachSkill {
-                skill_name: display_skill.clone(),
-                agent_id: AgentId(display_name),
-                target_path: exposure.path.clone(),
-            }),
+            ConnectionKind::Symlink | ConnectionKind::Broken => {
+                changes.push(StagedChange::DetachSkill {
+                    skill_name: display_skill.clone(),
+                    agent_id: AgentId(display_name),
+                    target_path: exposure.path.clone(),
+                })
+            }
             ConnectionKind::PhysicalCopy => changes.push(StagedChange::DeletePhysicalCopy {
                 skill_name: display_skill.clone(),
                 agent_id: AgentId(display_name),

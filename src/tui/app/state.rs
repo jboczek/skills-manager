@@ -116,6 +116,7 @@ pub enum Mode {
     Import,
     Remove,
     RepositoryUpdate,
+    Fix,
     Quit,
 }
 
@@ -128,4 +129,19 @@ pub enum PendingLoad {
 pub struct AgentSelectionItem {
     pub target: AgentTarget,
     pub checked: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub enum FixStep {
+    Choose {
+        row: Box<InventoryRow>,
+        candidates: Vec<ScanResult>,
+        remaining: Vec<InventoryRow>,
+        plan: ChangePlan,
+    },
+    Confirm {
+        plan: ChangePlan,
+    },
+    #[default]
+    Done,
 }

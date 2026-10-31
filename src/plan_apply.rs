@@ -29,6 +29,36 @@ pub fn apply_plan(plan: &ChangePlan) -> ApplyResult {
 
 fn apply_change(change: &StagedChange) -> anyhow::Result<()> {
     match change {
+        StagedChange::FixBroken {
+            target_path,
+            old_source,
+            replacement,
+            ..
+        } => {
+            anyhow::ensure!(
+                symlink::is_symlink(target_path)?
+                    && !target_path.exists()
+                    && crate::inventory::link_target(target_path).as_ref() == Some(old_source),
+                "Broken link changed since preview: {}",
+                target_path.display()
+            );
+            if let Some(source) = replacement {
+                anyhow::ensure!(
+                    source.join("SKILL.md").is_file(),
+                    "Replacement skill is no longer available: {}",
+                    source.display()
+                );
+            }
+            symlink::remove_symlink(target_path)?;
+            if let Some(source) = replacement
+                && let Err(error) = symlink::create_symlink(source, target_path)
+            {
+                symlink::create_symlink(old_source, target_path)?;
+                return Err(error);
+            }
+            Ok(())
+        }
+
         StagedChange::ExposeSkill {
             source_path,
             target_path,

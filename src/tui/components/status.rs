@@ -126,4 +126,30 @@ mod tests {
         assert!(text.contains("SSH clone URL"));
         assert!(text.contains("repository page."));
     }
+
+    #[test]
+    fn reference_width_keeps_all_four_status_lines_visible() {
+        let mut app = App::new(Config::default_config()).expect("default config resolves");
+        app.status_messages = vec![
+            "• Global context: 5 skills, 3 agents".to_string(),
+            "• Estimated tokens (global): Claude ~776 (1 skill) · Codex ~6394 (2 skills) · Copilot ~1568 (0 skills)".to_string(),
+            "• Scan: OK".to_string(),
+            "• Imported: 5 · Discovered not imported: 1".to_string(),
+        ];
+        let backend = TestBackend::new(160, 4);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| render(frame, frame.area(), &app))
+            .unwrap();
+
+        let lines = rendered_lines(&terminal);
+        assert!(lines[0].contains("Global context: 5 skills, 3 agents"));
+        assert!(lines[1].contains("Estimated tokens (global):"));
+        assert!(lines[1].contains("~776 (1 skill)"));
+        assert!(lines[1].contains("~6394 (2 skills)"));
+        assert!(lines[1].contains("~1568 (0 skills)"));
+        assert!(lines[2].contains("Scan: OK"));
+        assert!(lines[3].contains("Imported: 5 · Discovered not imported: 1"));
+    }
 }

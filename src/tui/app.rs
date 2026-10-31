@@ -3,6 +3,7 @@ use std::thread;
 
 use crate::commands::helpers;
 use crate::config::{Config, GlobalContext};
+use crate::context_estimate::{self, ContextEstimate};
 use crate::domain::InventoryRow;
 use crate::git::{self, RepositoryUpdate};
 use crate::inventory::{self, InventoryConfig};
@@ -12,13 +13,14 @@ use crate::tui::source_table::SourceTable;
 use crate::tui::unified_list::{ListFilter, UnifiedListRow, project_rows};
 
 mod command;
+mod fix;
 mod state;
 mod tables;
 mod workflows;
 
 pub use command::{CommandSuggestion, TuiCommand, parse_command};
 pub use state::{
-    AgentSelectionItem, ImportStep, Mode, PendingLoad, RemoveStep, RepositoryUpdateStep,
+    AgentSelectionItem, FixStep, ImportStep, Mode, PendingLoad, RemoveStep, RepositoryUpdateStep,
     SourceAddStep,
 };
 pub(crate) use workflows::removable_exposures;
@@ -33,6 +35,7 @@ pub struct App {
     pub list_filter: ListFilter,
     pub scan_results: Vec<ScanResult>,
     pub repository_updates: Vec<RepositoryUpdate>,
+    context_estimates: Option<Vec<ContextEstimate>>,
     pub status_messages: Vec<String>,
     pub list_table: SourceTable,
     pub config: Config,
@@ -42,6 +45,8 @@ pub struct App {
     pub import_step: ImportStep,
     pub remove_step: RemoveStep,
     pub repository_update_step: RepositoryUpdateStep,
+    pub fix_step: FixStep,
+    pub fix_scroll: u16,
     pub error_message: Option<String>,
     pub info_message: Option<String>,
     pub loading: bool,
@@ -49,12 +54,16 @@ pub struct App {
     initial_loading: bool,
     initial_load: Option<Receiver<anyhow::Result<InitialLoad>>>,
     repository_update_load: Option<Receiver<Vec<RepositoryUpdate>>>,
+    update_check: Option<Receiver<anyhow::Result<Option<String>>>>,
+    pub available_update: Option<String>,
+    restart_requested: bool,
     command_menu_selected: Option<usize>,
 }
 
 struct InitialLoad {
     scan_results: Vec<ScanResult>,
     inventory: Vec<InventoryRow>,
+    context_estimates: Vec<ContextEstimate>,
 }
 
 impl App {
@@ -68,6 +77,7 @@ impl App {
             list_filter: ListFilter::Full,
             scan_results: Vec::new(),
             repository_updates: Vec::new(),
+            context_estimates: None,
             status_messages: Vec::new(),
             list_table: SourceTable::default(),
             config,
@@ -77,6 +87,8 @@ impl App {
             import_step: ImportStep::default(),
             remove_step: RemoveStep::default(),
             repository_update_step: RepositoryUpdateStep::default(),
+            fix_step: FixStep::default(),
+            fix_scroll: 0,
             error_message: None,
             info_message: None,
             loading: false,
@@ -84,6 +96,9 @@ impl App {
             initial_loading: false,
             initial_load: None,
             repository_update_load: None,
+            update_check: None,
+            available_update: None,
+            restart_requested: false,
             command_menu_selected: None,
         })
     }
@@ -109,9 +124,26 @@ impl App {
         thread::spawn(move || {
             let _ = sender.send(load_initial_state(context));
         });
+
+        let (sender, receiver) = mpsc::channel();
+        self.update_check = Some(receiver);
+        thread::spawn(move || {
+            let _ = sender.send(crate::update::check());
+        });
     }
 
     pub fn poll_initial_load(&mut self) {
+        if let Some(receiver) = self.update_check.as_ref() {
+            match receiver.try_recv() {
+                Ok(Ok(update)) => {
+                    self.available_update = update;
+                    self.update_check = None;
+                }
+                Ok(Err(_)) | Err(TryRecvError::Disconnected) => self.update_check = None,
+                Err(TryRecvError::Empty) => {}
+            }
+        }
+
         let result = match self.initial_load.as_ref().map(Receiver::try_recv) {
             Some(Ok(result)) => result,
             Some(Err(TryRecvError::Empty)) | None => return,
@@ -168,11 +200,16 @@ impl App {
         scanner::assign_disambiguation_indices(&mut self.scan_results);
         self.repository_updates.clear();
         self.start_repository_update_load();
+        let agents = helpers::agent_targets_from_global(&self.global_context);
         self.inventory = inventory::build_inventory(&InventoryConfig {
-            agents: helpers::agent_targets_from_global(&self.global_context),
+            agents: agents.clone(),
             scan_results: raw_scan_results,
         });
         inventory::assign_disambiguation_indices(&mut self.inventory);
+        self.context_estimates = Some(context_estimate::estimate_global_context(
+            &self.inventory,
+            &agents,
+        ));
         self.rebuild_list_rows();
         self.rebuild_status_messages();
         Ok(())
@@ -202,6 +239,10 @@ impl App {
         self.close_command_menu();
 
         match self.mode {
+            Mode::Fix => {
+                self.advance_fix(input)?;
+                return Ok(false);
+            }
             Mode::SourceAdd => {
                 self.advance_source_add(input)?;
                 return Ok(false);
@@ -261,6 +302,14 @@ impl App {
             TuiCommand::Help => {
                 self.mode = Mode::Help;
             }
+            TuiCommand::Update => match crate::update::install() {
+                Ok(()) => {
+                    self.restart_requested = true;
+                    self.mode = Mode::Quit;
+                    return Ok(true);
+                }
+                Err(error) => self.error_message = Some(error.to_string()),
+            },
             TuiCommand::Quit => {
                 self.mode = Mode::Quit;
                 return Ok(true);
@@ -274,6 +323,10 @@ impl App {
         }
 
         Ok(false)
+    }
+
+    pub fn restart_requested(&self) -> bool {
+        self.restart_requested
     }
 
     pub fn command_menu_open(&self) -> bool {
@@ -422,6 +475,7 @@ impl App {
                     .filter(|agent| agent.enabled)
                     .count()
             ),
+            self.context_estimate_status(),
             format!("• Scan: {scan_status}"),
         ];
         self.status_messages.extend(
@@ -439,12 +493,42 @@ impl App {
         self.inventory = load.inventory;
         self.repository_updates.clear();
         self.start_repository_update_load();
+        self.context_estimates = Some(load.context_estimates);
         self.rebuild_list_rows();
         self.rebuild_status_messages();
     }
 
     fn start_repository_update_load(&mut self) {
         self.repository_update_load = Some(repository_updates(&self.scan_results));
+    }
+
+    fn context_estimate_status(&self) -> String {
+        let value = if self.initial_loading {
+            "(loading)".to_string()
+        } else if let Some(estimates) = &self.context_estimates {
+            estimates
+                .iter()
+                .map(|estimate| {
+                    let skill_label = if estimate.skill_count == 1 {
+                        "skill"
+                    } else {
+                        "skills"
+                    };
+                    format!(
+                        "{} ~{} ({} {skill_label})",
+                        estimate.display_name, estimate.token_count, estimate.skill_count
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" · ")
+        } else {
+            "unavailable".to_string()
+        };
+        if value.is_empty() {
+            "• Estimated tokens (global):".to_string()
+        } else {
+            format!("• Estimated tokens (global): {value}")
+        }
     }
 
     fn loaded_skill_count(&self) -> usize {
@@ -464,9 +548,13 @@ fn load_initial_state(context: GlobalContext) -> anyhow::Result<InitialLoad> {
     });
     inventory::assign_disambiguation_indices(&mut inventory);
 
+    let agents = helpers::agent_targets_from_global(&context);
+    let context_estimates = context_estimate::estimate_global_context(&inventory, &agents);
+
     Ok(InitialLoad {
         scan_results,
         inventory,
+        context_estimates,
     })
 }
 
@@ -574,6 +662,11 @@ mod tests {
         assert!(
             app.status_messages
                 .iter()
+                .any(|message| message == "• Estimated tokens (global): (loading)")
+        );
+        assert!(
+            app.status_messages
+                .iter()
                 .any(|message| message.contains("Scan: loading"))
         );
     }
@@ -586,12 +679,31 @@ mod tests {
         app.apply_initial_load(InitialLoad {
             scan_results: vec![scan_result("repo-a/one")],
             inventory: vec![inventory_row("repo-a/one")],
+            context_estimates: vec![
+                ContextEstimate {
+                    agent_id: "claude".to_string(),
+                    display_name: "Claude".to_string(),
+                    token_count: 12,
+                    skill_count: 1,
+                },
+                ContextEstimate {
+                    agent_id: "codex".to_string(),
+                    display_name: "Codex".to_string(),
+                    token_count: 34,
+                    skill_count: 0,
+                },
+            ],
         });
 
         assert!(!app.initial_load_in_progress());
         assert_eq!(app.loaded_skills_label(), "1");
         assert_eq!(app.scan_results.len(), 1);
         assert_eq!(app.inventory.len(), 1);
+        assert_eq!(
+            app.status_messages[1],
+            "• Estimated tokens (global): Claude ~12 (1 skill) · Codex ~34 (0 skills)"
+        );
+        assert_eq!(app.status_messages[2], "• Scan: OK");
         assert!(
             app.status_messages
                 .iter()
@@ -630,6 +742,69 @@ mod tests {
 
         assert!(app.repository_update_load.is_none());
         assert_eq!(app.repository_updates.len(), 1);
+    }
+
+    #[test]
+    fn initial_load_failure_shows_unavailable_and_keeps_error_message() {
+        let mut app = test_app();
+        let (sender, receiver) = std::sync::mpsc::channel::<anyhow::Result<InitialLoad>>();
+        sender
+            .send(Err(anyhow::anyhow!("initial scan failed")))
+            .expect("failure is queued");
+        app.initial_loading = true;
+        app.initial_load = Some(receiver);
+
+        app.poll_initial_load();
+
+        assert_eq!(
+            app.status_messages[1],
+            "• Estimated tokens (global): unavailable"
+        );
+        assert_eq!(app.error_message.as_deref(), Some("initial scan failed"));
+    }
+
+    #[test]
+    fn successful_inventory_refresh_recalculates_context_estimates() {
+        let temp = tempdir().expect("temporary directory");
+        let config = test_config(temp.path());
+        let claude_dir = PathBuf::from(config.agents["claude"].global_dir.clone());
+        fs::create_dir_all(&claude_dir).expect("Claude target exists");
+        fs::create_dir_all(claude_dir.join("one")).expect("first skill exists");
+        fs::write(
+            claude_dir.join("one/SKILL.md"),
+            "---\nname: One\ndescription: First\n---\n",
+        )
+        .expect("first skill metadata is written");
+        let mut app = App::new(config).expect("test config resolves");
+
+        app.refresh_inventory().expect("first refresh succeeds");
+        assert_eq!(
+            app.context_estimates
+                .as_ref()
+                .and_then(|estimates| estimates
+                    .iter()
+                    .find(|estimate| estimate.agent_id == "claude"))
+                .map(|estimate| estimate.skill_count),
+            Some(1)
+        );
+
+        fs::create_dir_all(claude_dir.join("two")).expect("second skill exists");
+        fs::write(
+            claude_dir.join("two/SKILL.md"),
+            "---\nname: Two\ndescription: Second\n---\n",
+        )
+        .expect("second skill metadata is written");
+        app.refresh_inventory().expect("second refresh succeeds");
+
+        assert_eq!(
+            app.context_estimates
+                .as_ref()
+                .and_then(|estimates| estimates
+                    .iter()
+                    .find(|estimate| estimate.agent_id == "claude"))
+                .map(|estimate| estimate.skill_count),
+            Some(2)
+        );
     }
 
     #[test]
@@ -805,6 +980,11 @@ mod tests {
     #[test]
     fn parse_command_slash_list() {
         assert_eq!(parse_command("/list"), TuiCommand::List);
+    }
+
+    #[test]
+    fn parse_command_update() {
+        assert_eq!(parse_command("/update"), TuiCommand::Update);
     }
 
     #[test]
@@ -1345,7 +1525,14 @@ mod tests {
 
         assert_eq!(
             labels,
-            vec!["/list", "/source_add", "/config", "/help", "/quit"]
+            vec![
+                "/list",
+                "/source_add",
+                "/config",
+                "/help",
+                "/update",
+                "/quit"
+            ]
         );
         assert!(
             app.filtered_command_suggestions()

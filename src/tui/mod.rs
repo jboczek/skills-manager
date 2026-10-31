@@ -108,9 +108,14 @@ pub fn run() -> anyhow::Result<()> {
     app.start_initial_load();
 
     let result = event_loop(&mut terminal, &mut app);
+    let restart_requested = app.restart_requested();
     let cleanup_result = cleanup_terminal(&mut terminal, &mut cleanup);
 
-    result.and(cleanup_result)
+    result.and(cleanup_result)?;
+    if restart_requested {
+        crate::update::restart()?;
+    }
+    Ok(())
 }
 
 fn event_loop<B: ratatui::backend::Backend>(
