@@ -23,6 +23,7 @@
 14. Project-local exposures are read-only inventory. Do not allow import, remove, detach, or physical deletion actions for them. The fixed `.agents/skills` convention grants effective availability to Codex and Copilot.
 15. TUI list groups represent repositories, not scope buckets. Group global exposures by source repository and project-local exposures by containing project; keep `global` and `project-local` in the scope column.
 16. Broken-skill detection, warnings, filtering and repair apply only to global exposures. Project-local exposures remain outside this mechanism.
+17. In TUI inventory, a broken global skill and its discovered replacement with the same repository path and skill name share one row. Show the unique current Source and distinguish `broken (folder changed)` from `broken (removed)`; preserve original exposure paths for repair.
 
 
 Before implementation, make a plan and add it to temp file named after the PRD `/docs/temp/prd-xxx-plan.md`. The plan should be a step-by-step outline of how the implementation will proceed and what files need to be modified. Add the plan file but do not commit it.

@@ -22,6 +22,14 @@ pub fn replacements(row: &InventoryRow, catalog: &[ScanResult]) -> Vec<ScanResul
         .collect()
 }
 
+pub fn connection_label(row: &InventoryRow, catalog: &[ScanResult]) -> &'static str {
+    if replacements(row, catalog).is_empty() {
+        "broken (removed)"
+    } else {
+        "broken (folder changed)"
+    }
+}
+
 pub fn plan(row: &InventoryRow, replacement: Option<PathBuf>) -> ChangePlan {
     let mut seen = HashSet::new();
     ChangePlan::new(

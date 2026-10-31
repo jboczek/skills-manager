@@ -181,6 +181,24 @@ mod tests {
     }
 
     #[test]
+    fn moved_skill_is_one_red_inventory_row_with_current_source_and_original_repair_paths() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = fixture(temp.path(), &["new/code"]);
+        app.enter_list_mode();
+        assert_eq!(app.list_rows.len(), 1);
+        let items = app.unified_list_table_items();
+        assert_eq!(items[0].skill_path, temp.path().join("repo/new/code"));
+        app.list_table.move_right(30);
+        app.list_table.move_right(30);
+        app.start_fix();
+        assert!(app.fix_body().contains("old/code"));
+        assert!(app.fix_body().contains("new/code"));
+        app.advance_fix("y").unwrap();
+        assert_eq!(app.list_rows.len(), 1);
+        assert!(!app.inventory[0].is_broken());
+    }
+
+    #[test]
     fn import_explains_broken_collision_and_fix_plan_can_be_scrolled() {
         let temp = tempfile::tempdir().unwrap();
         let mut app = fixture(temp.path(), &["new/code"]);
@@ -194,11 +212,54 @@ mod tests {
         app.advance_fix("n").unwrap();
         app.list_filter = ListFilter::OnlyExposed;
         app.cycle_list_filter(30);
-        app.list_table.move_right(30);
-        app.list_table.move_right(30);
-        app.start_import_from_selected_list_row().unwrap();
-        app.advance_import("").unwrap();
-        assert!(app.info_message.as_ref().unwrap().contains("Broken links"));
+        assert!(app.list_rows.is_empty()); // Replacement is represented by the broken row.
+    }
+
+    #[test]
+    fn removed_and_moved_reasons_and_partial_repairs_keep_one_row() {
+        use crate::tui::unified_list::{UnifiedListRow, project_rows};
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = fixture(temp.path(), &["new/code"]);
+        let broken = app.inventory[0].clone();
+        assert_eq!(
+            crate::broken::connection_label(&broken, &app.scan_results),
+            "broken (folder changed)"
+        );
+        fs::remove_file(temp.path().join("codex/code")).unwrap();
+        std::os::unix::fs::symlink(
+            temp.path().join("repo/new/code"),
+            temp.path().join("codex/code"),
+        )
+        .unwrap();
+        app.refresh_inventory().unwrap();
+        let projected = project_rows(&app.inventory, &app.scan_results, ListFilter::Full);
+        assert_eq!(projected.len(), 1);
+        let UnifiedListRow::Exposed(row) = &projected[0] else {
+            panic!("expected exposure");
+        };
+        assert!(row.is_broken());
+        assert_eq!(row.exposures.len(), 3);
+        assert_eq!(
+            crate::broken::plan(row, Some(temp.path().join("repo/new/code")))
+                .changes
+                .len(),
+            2
+        );
+        let mut other = app.scan_results[0].clone();
+        other.repo_path = Some(temp.path().join("other-repo"));
+        other.skill_path = temp.path().join("other-repo/code");
+        fs::create_dir_all(&other.skill_path).unwrap();
+        fs::write(other.skill_path.join("SKILL.md"), "test").unwrap();
+        assert_eq!(
+            project_rows(std::slice::from_ref(&broken), &[other], ListFilter::Full).len(),
+            2
+        );
+        fs::remove_file(temp.path().join("repo/new/code/SKILL.md")).unwrap();
+        assert_eq!(
+            crate::broken::connection_label(&broken, &app.scan_results),
+            "broken (removed)"
+        );
+        assert_eq!(project_rows(&[broken], &[], ListFilter::Full).len(), 1);
     }
 
     #[test]
@@ -233,6 +294,7 @@ mod tests {
                         f.area(),
                         &app.list_rows,
                         &app.list_table,
+                        &app.scan_results,
                     )
                 })
                 .unwrap();
@@ -244,6 +306,9 @@ mod tests {
                 .collect::<String>();
             assert!(text.contains("!"));
             assert!(text.contains("code"));
+            if width == 180 {
+                assert!(text.contains("broken (folder changed)"));
+            }
             assert!(
                 buffer
                     .content

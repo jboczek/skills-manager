@@ -4,6 +4,7 @@
 
 | Time | Change | Docs |
 |---|---|---|
+| 2026-10-31 | Consolidated moved skills into one TUI row with the current source and folder changed/removed broken reasons. | `features/inventory-and-exposure-resolution.md`, `prds/013-broken-skills.md` |
 | 2026-10-31 | Added broken global skill warnings, Tab filter and confirmed F repair or removal; import explains broken targets. | `features/inventory-and-exposure-resolution.md`, `prds/013-broken-skills.md`, `roadmap.md`, `README.md` |
 
 ## 2026-09-13

@@ -24,7 +24,7 @@ pub fn render_inventory_table(
         .cloned()
         .map(UnifiedListRow::Exposed)
         .collect::<Vec<_>>();
-    render_unified_inventory_table(frame, area, &rows, source_table);
+    render_unified_inventory_table(frame, area, &rows, source_table, &[]);
 }
 
 pub fn render_unified_inventory_table(
@@ -32,6 +32,7 @@ pub fn render_unified_inventory_table(
     area: Rect,
     rows: &[UnifiedListRow],
     source_table: &SourceTable,
+    catalog: &[crate::scanner::ScanResult],
 ) {
     if rows.is_empty() {
         render_empty(frame, area, " Inventory ", "No skills found.");
@@ -137,7 +138,7 @@ pub fn render_unified_inventory_table(
                         Cell::from(agents("copilot")),
                         Cell::from(scope_label(row.scope)),
                         Cell::from(if row.is_broken() {
-                            "broken".to_string()
+                            crate::broken::connection_label(row, catalog).to_string()
                         } else if connections.is_empty() {
                             "-".to_string()
                         } else {
@@ -374,7 +375,9 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
 
         terminal
-            .draw(|frame| render_unified_inventory_table(frame, frame.area(), &rows, &source_table))
+            .draw(|frame| {
+                render_unified_inventory_table(frame, frame.area(), &rows, &source_table, &[])
+            })
             .unwrap();
 
         let output = rendered_lines(&terminal).join("\n");

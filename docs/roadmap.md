@@ -324,3 +324,5 @@ V3 works if Skills Manager becomes the trusted local place to curate, audit, and
 ## Broken skills — complete (2026-10-31)
 
 [PRD 013](prds/013-broken-skills.md): global dangling-link inventory, red warnings, Tab filter and confirmed F repair/removal flow. Project-local exposures excluded.
+
+PRD 013 follow-up complete: moved global skills share one inventory row with their current source and a broken reason; repair keeps original link paths.
