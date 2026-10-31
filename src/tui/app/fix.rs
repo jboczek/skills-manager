@@ -1,41 +1,68 @@
 use super::{App, FixStep, Mode};
-use crate::{broken, domain::InventoryRow, scanner::ScanResult};
+use crate::{broken, domain::InventoryRow};
 
 impl App {
     pub fn start_fix(&mut self) {
         self.error_message = None;
         self.fix_scroll = 0;
-        let Some(row) = self
-            .selected_inventory_row()
-            .filter(InventoryRow::is_broken)
-        else {
-            self.info_message = Some("Select a broken global skill to fix.".into());
-            return;
-        };
-        let candidates = broken::replacements(&row, &self.scan_results);
-        self.mode = Mode::Fix;
-        if candidates.len() > 1 {
-            self.fix_step = FixStep::Choose {
-                row: Box::new(row),
-                candidates,
-            };
+        let rows = if self.list_table.checked_items().is_empty() {
+            self.selected_inventory_row()
+                .into_iter()
+                .collect::<Vec<_>>()
         } else {
-            self.prepare_fix(&row, candidates.first());
+            self.checked_inventory_rows()
+        };
+        let rows = rows
+            .into_iter()
+            .filter(InventoryRow::is_broken)
+            .collect::<Vec<_>>();
+        if rows.is_empty() {
+            self.info_message = Some("Select or check broken global skills to fix.".into());
+            return;
         }
+        self.info_message = None;
+        self.mode = Mode::Fix;
+        self.prepare_fixes(rows, crate::plan::ChangePlan::new(vec![]));
     }
 
-    fn prepare_fix(&mut self, row: &InventoryRow, replacement: Option<&ScanResult>) {
+    fn prepare_fixes(
+        &mut self,
+        mut remaining: Vec<InventoryRow>,
+        mut plan: crate::plan::ChangePlan,
+    ) {
         self.fix_scroll = 0;
-        self.fix_step = FixStep::Confirm {
-            plan: broken::plan(row, replacement.map(|s| s.skill_path.clone())),
-        };
+        while !remaining.is_empty() {
+            let row = remaining.remove(0);
+            let candidates = broken::replacements(&row, &self.scan_results);
+            if candidates.len() > 1 {
+                self.fix_step = FixStep::Choose {
+                    row: Box::new(row),
+                    candidates,
+                    remaining,
+                    plan,
+                };
+                return;
+            }
+            plan.changes.extend(
+                broken::plan(&row, candidates.first().map(|s| s.skill_path.clone())).changes,
+            );
+        }
+        self.fix_step = FixStep::Confirm { plan };
     }
 
     pub(super) fn advance_fix(&mut self, input: &str) -> anyhow::Result<()> {
         match self.fix_step.clone() {
-            FixStep::Choose { row, candidates } => {
+            FixStep::Choose {
+                row,
+                candidates,
+                remaining,
+                mut plan,
+            } => {
                 if let Some(index) = super::tables::parse_selection(input, candidates.len()) {
-                    self.prepare_fix(&row, candidates.get(index));
+                    plan.changes.extend(
+                        broken::plan(&row, Some(candidates[index].skill_path.clone())).changes,
+                    );
+                    self.prepare_fixes(remaining, plan);
                 } else {
                     self.error_message =
                         Some("Choose a replacement number, or Esc to cancel.".into());
@@ -72,7 +99,9 @@ impl App {
 
     pub fn fix_body(&self) -> String {
         match &self.fix_step {
-            FixStep::Choose { row, candidates } => format!(
+            FixStep::Choose {
+                row, candidates, ..
+            } => format!(
                 "Multiple replacements for {} in the original repository:\n\n{}",
                 row.skill_id,
                 candidates
@@ -128,6 +157,146 @@ mod tests {
         app.list_table.move_right(30);
         app.list_table.move_right(30);
         app
+    }
+
+    fn batch_fixture(root: &Path, ambiguous: bool, removed: bool) -> App {
+        let mut app = fixture(root, &["new/code"]);
+        for skill in ["commit", "verify"] {
+            if !removed || skill == "verify" {
+                let source = root.join("repo/new").join(skill);
+                fs::create_dir_all(&source).unwrap();
+                fs::write(source.join("SKILL.md"), "test").unwrap();
+            }
+            for id in ["codex", "claude", "copilot"] {
+                std::os::unix::fs::symlink(
+                    root.join("repo/old").join(skill),
+                    root.join(id).join(skill),
+                )
+                .unwrap();
+            }
+        }
+        if ambiguous {
+            for skill in ["code", "commit"] {
+                let source = root.join("repo/other").join(skill);
+                fs::create_dir_all(&source).unwrap();
+                fs::write(source.join("SKILL.md"), "test").unwrap();
+            }
+        }
+        app.refresh_inventory().unwrap();
+        app.enter_list_mode();
+        app.list_table.move_right(30);
+        app.list_table.move_right(30);
+        app.list_table.toggle_selected_check(); // code
+        app.list_table.move_down(30);
+        app.list_table.toggle_selected_check(); // commit
+        app.list_table.move_down(30); // cursor on unchecked verify
+        app
+    }
+
+    #[test]
+    fn f_fixes_every_checked_skill_and_ignores_unchecked_cursor_skill() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = batch_fixture(temp.path(), false, false);
+        handle_key(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE),
+        )
+        .unwrap();
+        let FixStep::Confirm { plan } = &app.fix_step else {
+            panic!("expected combined plan");
+        };
+        assert_eq!(plan.changes.len(), 6);
+        assert!(app.fix_body().contains("old/code"));
+        assert!(app.fix_body().contains("old/commit"));
+        assert!(!app.fix_body().contains("old/verify"));
+        app.advance_fix("y").unwrap();
+        for id in ["codex", "claude", "copilot"] {
+            for skill in ["code", "commit"] {
+                assert!(temp.path().join(id).join(skill).join("SKILL.md").is_file());
+            }
+            assert!(!temp.path().join(id).join("verify").exists());
+        }
+    }
+
+    #[test]
+    fn batch_resolves_each_ambiguous_skill_before_any_mutation() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = batch_fixture(temp.path(), true, false);
+        app.start_fix();
+        let FixStep::Choose { row, .. } = &app.fix_step else {
+            panic!("expected first choice");
+        };
+        assert_eq!(row.skill_id.name, "code");
+        app.advance_fix("99").unwrap();
+        assert!(matches!(app.fix_step, FixStep::Choose { .. }));
+        app.advance_fix("1").unwrap();
+        let FixStep::Choose { row, .. } = &app.fix_step else {
+            panic!("expected second choice");
+        };
+        assert_eq!(row.skill_id.name, "commit");
+        assert!(!temp.path().join("codex/code").exists());
+        app.advance_fix("2").unwrap();
+        let FixStep::Confirm { plan } = &app.fix_step else {
+            panic!("expected combined plan");
+        };
+        assert_eq!(plan.changes.len(), 6);
+        assert!(!temp.path().join("codex/commit").exists());
+        app.advance_fix("y").unwrap();
+        assert!(temp.path().join("codex/code/SKILL.md").is_file());
+        assert!(temp.path().join("codex/commit/SKILL.md").is_file());
+        assert!(!temp.path().join("codex/verify").exists());
+    }
+
+    #[test]
+    fn mixed_repair_and_removal_batch_is_cancelled_or_applied_together() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = batch_fixture(temp.path(), false, true);
+        app.start_fix();
+        assert!(app.fix_body().contains("No replacement found"));
+        assert!(app.fix_body().contains("new/code"));
+        app.advance_fix("n").unwrap();
+        for id in ["codex", "claude", "copilot"] {
+            for skill in ["code", "commit", "verify"] {
+                assert!(fs::read_link(temp.path().join(id).join(skill)).is_ok());
+            }
+        }
+        app.start_fix();
+        app.advance_fix("y").unwrap();
+        for id in ["codex", "claude", "copilot"] {
+            assert!(temp.path().join(id).join("code/SKILL.md").is_file());
+            assert!(fs::symlink_metadata(temp.path().join(id).join("commit")).is_err());
+            assert!(fs::read_link(temp.path().join(id).join("verify")).is_ok());
+        }
+    }
+
+    #[test]
+    fn healthy_checks_do_not_fall_back_to_broken_cursor_and_mixed_checks_skip_healthy() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = batch_fixture(temp.path(), false, false);
+        for id in ["codex", "claude", "copilot"] {
+            let link = temp.path().join(id).join("code");
+            fs::remove_file(&link).unwrap();
+            std::os::unix::fs::symlink(temp.path().join("repo/new/code"), link).unwrap();
+        }
+        app.refresh_inventory().unwrap();
+        app.enter_list_mode();
+        app.list_table.move_right(30);
+        app.list_table.move_right(30);
+        app.list_table.toggle_selected_check(); // healthy code
+        app.list_table.move_down(30); // unchecked broken commit
+        app.start_fix();
+        assert_eq!(app.mode, Mode::List);
+        assert!(!temp.path().join("codex/commit").exists());
+        app.list_table.toggle_selected_check();
+        app.list_table.move_down(30); // unchecked verify
+        app.start_fix();
+        let FixStep::Confirm { plan } = &app.fix_step else {
+            panic!("expected plan");
+        };
+        assert_eq!(plan.changes.len(), 3);
+        assert!(app.fix_body().contains("old/commit"));
+        assert!(!app.fix_body().contains("old/verify"));
+        assert!(!app.fix_body().contains("old/code"));
     }
 
     #[test]

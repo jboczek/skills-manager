@@ -115,6 +115,8 @@ pub enum FixStep {
     Choose {
         row: Box<InventoryRow>,
         candidates: Vec<ScanResult>,
+        remaining: Vec<InventoryRow>,
+        plan: ChangePlan,
     },
     Confirm {
         plan: ChangePlan,
