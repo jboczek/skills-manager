@@ -4,6 +4,7 @@
 
 | Time | Change | Docs |
 |---|---|---|
+| 2026-10-31 | Prepared v0.1.6 with the merged Homebrew update and TUI restart fixes. | `Cargo.toml`, `Cargo.lock` |
 | 2026-10-31 | Prepared v0.1.5 and require release retries to use the matching tag ref so artifact attestations stay tag-bound. | `Cargo.toml`, `Cargo.lock`, `README.md`, `features/homebrew-distribution.md`, `../.github/workflows/release.yml`, `../scripts/release_contract.rb` |
 | 2026-10-31 | Moved the ARM64 release build to `macos-15`, keeping the macOS 14.0 deployment target during the `macos-14` runner brownout. | `features/homebrew-distribution.md`, `../.github/workflows/release.yml` |
 | 2026-10-31 | Bumped the package version to `0.1.4` to prepare the next patch release. | `Cargo.toml`, `Cargo.lock` |
