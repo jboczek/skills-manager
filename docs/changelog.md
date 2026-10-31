@@ -4,6 +4,7 @@
 
 | Time | Change | Docs |
 |---|---|---|
+| 2026-10-31 | Moved the ARM64 release build to `macos-15`, keeping the macOS 14.0 deployment target during the `macos-14` runner brownout. | `features/homebrew-distribution.md`, `../.github/workflows/release.yml` |
 | 2026-10-31 | Bumped the package version to `0.1.4` to prepare the next patch release. | `Cargo.toml`, `Cargo.lock` |
 | 2026-10-31 | Reduced source scans to one Git origin lookup per repository per scan; added deterministic performance and freshness regression tests. | `features/skill-source-scanning.md` |
 | 2026-10-31 | Added keyboard-driven selection contract tests for i/x/F, prevented import/remove cursor fallback from ineligible checks, and added a shared-interaction rule to AGENTS.md. | `features/inventory-and-exposure-resolution.md`, `prds/013-broken-skills.md` |

@@ -7,7 +7,7 @@ GitHub Releases. Users install the formula from the separate shared tap with:
 brew install jboczek/tap/skills-manager
 ```
 
-The source release workflow builds `aarch64-apple-darwin` on `macos-14` and
+The source release workflow builds `aarch64-apple-darwin` on `macos-15` and
 `x86_64-apple-darwin` on `macos-15-intel`. Each archive contains the
 `skills-manager` executable, `LICENSE`, and `README.md` at its root. The tap
 publisher validates the release tag, source commit, attestations, and hashes
