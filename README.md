@@ -34,6 +34,14 @@ synchronized with `Cargo.toml`, creates `release/vX.Y.Z` from `origin/main`,
 and pushes the matching tag after the branch. The tag starts the release
 workflow automatically.
 
+To retry an existing release, dispatch from the matching tag ref so artifact
+attestations remain bound to that tag:
+
+```bash
+tag=vX.Y.Z
+gh workflow run release.yml --ref "$tag" --field tag="$tag"
+```
+
 ## Assistant-style TUI
 Skills Manager is a Rust CLI/TUI for discovering directories that contain
 `SKILL.md` and managing their exposures to Codex, Claude, and Copilot. It

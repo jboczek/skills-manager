@@ -14,6 +14,13 @@ class ReleaseContractTest < Minitest::Test
     refute ReleaseContract.valid_identity?(TAG, VERSION, "abc123", "abc123", ["main"])
   end
 
+  def test_release_workflow_requires_the_matching_tag_ref
+    assert ReleaseContract.valid_trigger_ref?(TAG, "tag", TAG)
+    refute ReleaseContract.valid_trigger_ref?(TAG, "branch", "main")
+    refute ReleaseContract.valid_trigger_ref?(TAG, "tag", "v0.2.0")
+    refute ReleaseContract.valid_trigger_ref?("main", "branch", "main")
+  end
+
   def test_release_assets_are_exactly_the_two_native_archives
     names = [ARM_ARCHIVE, INTEL_ARCHIVE]
     sums = {ARM_ARCHIVE => "a" * 64, INTEL_ARCHIVE => "b" * 64}

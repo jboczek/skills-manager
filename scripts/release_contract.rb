@@ -5,6 +5,13 @@ module ReleaseContract
     version.match?(/\A\d+\.\d+\.\d+\z/)
   end
 
+  def self.valid_trigger_ref?(tag, ref_type, ref_name)
+    tag.start_with?("v") &&
+      valid_version?(tag.delete_prefix("v")) &&
+      ref_type == "tag" &&
+      ref_name == tag
+  end
+
   def self.archive_names(version)
     return [] unless valid_version?(version)
 

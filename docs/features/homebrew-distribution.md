@@ -23,6 +23,11 @@ and reports a clear error when `Cargo.lock` is not synchronized with
 `vX.Y.Z` only after the branch is remote, which starts the tag-triggered
 release workflow.
 
+To retry a release, dispatch the workflow with the same tag as its ref and
+input, for example `gh workflow run release.yml --ref vX.Y.Z --field
+tag=vX.Y.Z`. Dispatching from `main` would bind artifact attestations to
+`main` instead of the release tag, so the tap publisher will reject them.
+
 The tap formula is intentionally kept out of this application repository. Its
 trusted renderer and native ARM64/Intel workflow mirror live under
 `homebrew-distribution/tap/`; the public `jboczek/homebrew-tap` repository is
