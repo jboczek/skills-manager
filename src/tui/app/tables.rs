@@ -158,6 +158,10 @@ fn source_path_for_inventory_row(row: &InventoryRow) -> PathBuf {
             .map(|path| path.join(&row.skill_id.name))
             .unwrap_or_else(|| PathBuf::from(&row.skill_id.name));
     };
+    if exposure.connection == ConnectionKind::Broken {
+        return crate::inventory::link_target(&exposure.path)
+            .unwrap_or_else(|| exposure.path.clone());
+    }
     if exposure.connection == ConnectionKind::Symlink {
         return fs::canonicalize(&exposure.path).unwrap_or_else(|_| exposure.path.clone());
     }

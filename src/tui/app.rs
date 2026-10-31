@@ -12,12 +12,15 @@ use crate::tui::source_table::SourceTable;
 use crate::tui::unified_list::{ListFilter, UnifiedListRow, project_rows};
 
 mod command;
+mod fix;
 mod state;
 mod tables;
 mod workflows;
 
 pub use command::{CommandSuggestion, TuiCommand, parse_command};
-pub use state::{AgentSelectionItem, ImportStep, Mode, PendingLoad, RemoveStep, SourceAddStep};
+pub use state::{
+    AgentSelectionItem, FixStep, ImportStep, Mode, PendingLoad, RemoveStep, SourceAddStep,
+};
 pub(crate) use workflows::removable_exposures;
 
 use command::COMMAND_SUGGESTIONS;
@@ -38,6 +41,8 @@ pub struct App {
     pub source_add_step: SourceAddStep,
     pub import_step: ImportStep,
     pub remove_step: RemoveStep,
+    pub fix_step: FixStep,
+    pub fix_scroll: u16,
     pub error_message: Option<String>,
     pub info_message: Option<String>,
     pub loading: bool,
@@ -75,6 +80,8 @@ impl App {
             source_add_step: SourceAddStep::default(),
             import_step: ImportStep::default(),
             remove_step: RemoveStep::default(),
+            fix_step: FixStep::default(),
+            fix_scroll: 0,
             error_message: None,
             info_message: None,
             loading: false,
@@ -206,6 +213,10 @@ impl App {
         self.close_command_menu();
 
         match self.mode {
+            Mode::Fix => {
+                self.advance_fix(input)?;
+                return Ok(false);
+            }
             Mode::SourceAdd => {
                 self.advance_source_add(input)?;
                 return Ok(false);

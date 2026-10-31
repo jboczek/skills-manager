@@ -125,6 +125,11 @@ impl App {
     }
 
     fn start_import_for_inventory_row(&mut self, row: InventoryRow) {
+        if row.is_broken() {
+            self.info_message = Some("Broken links: press F on this skill to fix.".into());
+            return;
+        }
+
         if row.scope == Scope::ProjectLocal {
             self.info_message =
                 Some("Project-local exposures are read-only and cannot be imported.".to_string());
@@ -299,9 +304,9 @@ impl App {
                 let plan = self.build_import_plan(&selected, &target_agents);
                 if plan.is_empty() {
                     self.import_step = ImportStep::Done {
-                        message: "Nothing to do.".to_string(),
+                        message: self.empty_import_message(&selected, &target_agents),
                     };
-                    self.info_message = Some("Nothing to do.".to_string());
+                    self.info_message = Some(self.empty_import_message(&selected, &target_agents));
                 } else {
                     self.import_step = ImportStep::ConfirmPlan {
                         plan,
@@ -500,6 +505,29 @@ impl App {
         }
     }
 
+    fn empty_import_message(
+        &self,
+        selected: &[ScanResult],
+        target_agents: &[AgentTarget],
+    ) -> String {
+        let names = import_target_names(selected);
+        let targets = target_agents
+            .iter()
+            .filter_map(|a| a.global_dir.as_ref())
+            .flat_map(|dir| names.iter().map(move |name| dir.join(name)))
+            .collect::<HashSet<_>>();
+        if self
+            .inventory
+            .iter()
+            .flat_map(|row| &row.exposures)
+            .any(|e| e.connection == ConnectionKind::Broken && targets.contains(&e.path))
+        {
+            "Nothing to do. Broken links occupy import targets; select the broken skill in /list and press F to fix.".into()
+        } else {
+            "Nothing to do.".into()
+        }
+    }
+
     fn build_import_plan(
         &self,
         selected: &[ScanResult],
@@ -579,9 +607,9 @@ impl App {
         if target_agents.len() == 1 {
             let plan = self.build_import_plan(&selected, &target_agents);
             self.import_step = if plan.is_empty() {
-                self.info_message = Some("Nothing to do.".to_string());
+                self.info_message = Some(self.empty_import_message(&selected, &target_agents));
                 ImportStep::Done {
-                    message: "Nothing to do.".to_string(),
+                    message: self.empty_import_message(&selected, &target_agents),
                 }
             } else {
                 ImportStep::ConfirmPlan {
@@ -622,7 +650,7 @@ impl App {
             .map(|agent| agent.display_name.clone())
             .unwrap_or_else(|| exposure.agent_id.0.clone());
         let change = match exposure.connection {
-            ConnectionKind::Symlink => Some(StagedChange::DetachSkill {
+            ConnectionKind::Symlink | ConnectionKind::Broken => Some(StagedChange::DetachSkill {
                 skill_name,
                 agent_id: AgentId(display_name),
                 target_path: exposure.path.clone(),
@@ -637,7 +665,7 @@ impl App {
         ChangePlan::new(change.into_iter().collect())
     }
 
-    fn apply_plan_and_refresh(&mut self, plan: &ChangePlan) -> anyhow::Result<String> {
+    pub(super) fn apply_plan_and_refresh(&mut self, plan: &ChangePlan) -> anyhow::Result<String> {
         for change in &plan.changes {
             if let StagedChange::ExposeSkill { target_path, .. } = change
                 && let Some(parent) = target_path.parent()
@@ -756,7 +784,7 @@ pub(crate) fn removable_exposures(row: &InventoryRow) -> Vec<SkillExposure> {
         .filter(|exposure| {
             matches!(
                 exposure.connection,
-                ConnectionKind::Symlink | ConnectionKind::PhysicalCopy
+                ConnectionKind::Symlink | ConnectionKind::Broken | ConnectionKind::PhysicalCopy
             )
         })
         .filter(|exposure| seen_paths.insert(exposure.path.clone()))
@@ -766,6 +794,9 @@ pub(crate) fn removable_exposures(row: &InventoryRow) -> Vec<SkillExposure> {
 
 fn change_summary(change: &StagedChange, status: &str) -> String {
     match change {
+        StagedChange::FixBroken { target_path, .. } => {
+            format!("  {status} Fixed broken link at {}", target_path.display())
+        }
         StagedChange::ExposeSkill {
             skill_name,
             target_path,

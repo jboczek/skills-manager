@@ -93,6 +93,15 @@ pub fn run(args: ImportArgs) -> Result<()> {
         };
         let target_path = global_dir.join(&skill_name);
         if existing_paths.contains(&target_path) || target_path.exists() {
+            if inventory.iter().flat_map(|r| &r.exposures).any(|e| {
+                e.path == target_path && e.connection == crate::domain::ConnectionKind::Broken
+            }) {
+                println!(
+                    "Broken link at {}. Select the broken skill in TUI /list and press F to fix.",
+                    target_path.display()
+                );
+                continue;
+            }
             println!(
                 "  Skill already exposed to {} at {}, skipping.",
                 agent.display_name,

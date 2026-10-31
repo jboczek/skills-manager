@@ -51,7 +51,10 @@ pub fn estimate_global_context(
 fn selected_exposure<'a>(row: &'a InventoryRow, agent_id: &str) -> Option<&'a SkillExposure> {
     row.exposures
         .iter()
-        .filter(|exposure| exposure.agent_id.0 == agent_id)
+        .filter(|exposure| {
+            exposure.agent_id.0 == agent_id
+                && exposure.connection != crate::domain::ConnectionKind::Broken
+        })
         .min_by_key(|exposure| exposure.path.join("SKILL.md"))
 }
 

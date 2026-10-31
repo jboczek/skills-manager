@@ -10,6 +10,7 @@ pub enum ListFilter {
     Full,
     OnlyExposed,
     OnlyDiscovered,
+    OnlyBroken,
 }
 
 impl ListFilter {
@@ -18,6 +19,7 @@ impl ListFilter {
             Self::Full => "Full",
             Self::OnlyExposed => "Only exposed",
             Self::OnlyDiscovered => "Only discovered not applied",
+            Self::OnlyBroken => "Only broken",
         }
     }
 
@@ -25,7 +27,8 @@ impl ListFilter {
         match self {
             Self::Full => Self::OnlyExposed,
             Self::OnlyExposed => Self::OnlyDiscovered,
-            Self::OnlyDiscovered => Self::Full,
+            Self::OnlyDiscovered => Self::OnlyBroken,
+            Self::OnlyBroken => Self::Full,
         }
     }
 }
@@ -65,6 +68,12 @@ pub fn project_rows(
             .map(UnifiedListRow::Exposed)
             .collect(),
         ListFilter::OnlyDiscovered => discovered.collect(),
+        ListFilter::OnlyBroken => inventory
+            .iter()
+            .filter(|r| r.is_broken())
+            .cloned()
+            .map(UnifiedListRow::Exposed)
+            .collect(),
     }
 }
 
@@ -198,7 +207,8 @@ mod tests {
     fn filter_cycle_is_full_then_exposed_then_discovered() {
         assert_eq!(ListFilter::Full.next(), ListFilter::OnlyExposed);
         assert_eq!(ListFilter::OnlyExposed.next(), ListFilter::OnlyDiscovered);
-        assert_eq!(ListFilter::OnlyDiscovered.next(), ListFilter::Full);
+        assert_eq!(ListFilter::OnlyDiscovered.next(), ListFilter::OnlyBroken);
+        assert_eq!(ListFilter::OnlyBroken.next(), ListFilter::Full);
     }
 
     #[test]

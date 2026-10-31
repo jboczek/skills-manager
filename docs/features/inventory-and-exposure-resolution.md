@@ -85,3 +85,11 @@ SKILL            SOURCE                          CLAUDE   CODEX    COPILOT  SCOP
 `skills-manager list` is read-only. It does not create, delete, link, clone, import, remove, or persist skill files.
 
 Configuration validation completes before source scanning or target inspection. Relative active paths fail instead of resolving against CWD.
+
+## Broken global links
+
+Global symlinks whose targets no longer exist remain in inventory with `broken` connection and their original repository provenance when recoverable from the old target path. They do not grant effective agent availability or contribute to context estimates. Project-local exposures are outside broken detection and repair.
+
+TUI Tab cycles Full, Only exposed, Only discovered not applied, Only broken. A red `!` precedes repository groups containing broken rows; broken rows render red with `broken` connection. Press F on a broken row to review changes for all its broken agent links (shared physical links appear only once).
+
+Find replacement directories with the same skill directory name inside the original repository. A unique match is proposed; multiple matches require choosing a full source path. Without a match, propose removing the broken symlinks only. No matching across unrelated repositories. Preview includes old and new targets, agent and link paths. Applying requires confirmation; Esc or a negative answer preserves links. Source directories are never removed. Recheck link identity and source availability before applying; report partial failures and refresh inventory. Import encountering broken targets directs users to F.

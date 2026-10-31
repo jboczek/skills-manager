@@ -1,5 +1,7 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
+use ratatui::style::{Color, Style};
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table};
 
 use crate::domain::{ConnectionKind, InventoryRow, Scope};
@@ -57,6 +59,7 @@ pub fn render_unified_inventory_table(
             let index = start + offset;
             let selected = source_table.selected_index() == Some(index);
             if let SourceTableRow::Group {
+                key,
                 name,
                 context,
                 count,
@@ -64,9 +67,28 @@ pub fn render_unified_inventory_table(
                 ..
             } = projected_row
             {
+                let broken = source_table
+                    .groups()
+                    .iter()
+                    .find(|group| &group.key == key)
+                    .is_some_and(|group| {
+                        group.items.iter().any(|item| match rows.get(item.item) {
+                            Some(UnifiedListRow::Exposed(row)) => row.is_broken(),
+                            _ => false,
+                        })
+                    });
+                let label = group_label(*expanded, name, context);
+                let label = if broken {
+                    Line::from(vec![
+                        Span::styled("! ", Style::default().fg(Color::Red)),
+                        Span::raw(label),
+                    ])
+                } else {
+                    Line::from(label)
+                };
                 return Some(
                     Row::new(vec![
-                        Cell::from(group_label(*expanded, name, context)),
+                        Cell::from(label),
                         Cell::from(skill_count_label(*count)),
                         Cell::from(""),
                         Cell::from(""),
@@ -97,11 +119,10 @@ pub fn render_unified_inventory_table(
                         .collect::<Vec<_>>()
                         .join(",");
                     let agents = |agent_id: &str| {
-                        if row
-                            .exposures
-                            .iter()
-                            .any(|exposure| exposure.agent_id.0 == agent_id)
-                        {
+                        if row.exposures.iter().any(|exposure| {
+                            exposure.agent_id.0 == agent_id
+                                && exposure.connection != ConnectionKind::Broken
+                        }) {
                             "✓"
                         } else {
                             "-"
@@ -115,7 +136,9 @@ pub fn render_unified_inventory_table(
                         Cell::from(agents("codex")),
                         Cell::from(agents("copilot")),
                         Cell::from(scope_label(row.scope)),
-                        Cell::from(if connections.is_empty() {
+                        Cell::from(if row.is_broken() {
+                            "broken".to_string()
+                        } else if connections.is_empty() {
                             "-".to_string()
                         } else {
                             connections
@@ -135,7 +158,11 @@ pub fn render_unified_inventory_table(
                     ])
                 }
             };
-            Some(if selected {
+            let broken =
+                matches!(rows.get(*item), Some(UnifiedListRow::Exposed(r)) if r.is_broken());
+            Some(if broken {
+                table_row.style(row_style(selected).fg(Color::Red))
+            } else if selected {
                 table_row.style(Theme::selected())
             } else {
                 table_row.style(Theme::default_style())
@@ -216,6 +243,7 @@ fn scope_label(scope: Scope) -> &'static str {
 
 fn connection_label(connection: ConnectionKind) -> &'static str {
     match connection {
+        ConnectionKind::Broken => "broken",
         ConnectionKind::Symlink => "symlink",
         ConnectionKind::PhysicalCopy => "copy",
         ConnectionKind::Missing => "missing",

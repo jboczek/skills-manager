@@ -205,3 +205,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 Product context and durable feature notes live in [`docs/`](docs/), including
 the [TUI feature notes](docs/features/assistant-style-tui-shell.md) and the
 [roadmap](docs/roadmap.md).
+
+### Broken skills
+
+In TUI `/list`, Tab includes **Only broken** for dangling global symlinks. A red `!` marks affected repositories; broken skill rows are red with connection `broken`. Press **F** on a broken row to review repairs for all its broken agent links. Replacements come from the original repository; choose when ambiguous. With no replacement, the plan offers symlink removal only. Confirm before applying; source directories are preserved. Project-local exposures are excluded.

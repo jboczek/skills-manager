@@ -6,6 +6,13 @@ use crate::domain::AgentId;
 /// A single proposed filesystem mutation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StagedChange {
+    FixBroken {
+        skill_name: String,
+        agent_id: AgentId,
+        target_path: PathBuf,
+        old_source: PathBuf,
+        replacement: Option<PathBuf>,
+    },
     ExposeSkill {
         skill_name: String,
         agent_id: AgentId,
@@ -51,6 +58,31 @@ impl ChangePlan {
             rendered.push_str("\n\n");
 
             match change {
+                StagedChange::FixBroken {
+                    skill_name,
+                    agent_id,
+                    target_path,
+                    old_source,
+                    replacement,
+                } => {
+                    let _ = write!(
+                        rendered,
+                        "  Fix {skill_name} for {}\n    Remove broken symlink: {}\n    old source: {}",
+                        agent_id.0,
+                        target_path.display(),
+                        old_source.display()
+                    );
+                    if let Some(source) = replacement {
+                        let _ = write!(
+                            rendered,
+                            "\n    Add symlink at the same path to: {}",
+                            source.display()
+                        );
+                    } else {
+                        rendered.push_str("\n    No replacement found. Remove symlink only.");
+                    }
+                }
+
                 StagedChange::ExposeSkill {
                     skill_name,
                     agent_id,

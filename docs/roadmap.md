@@ -320,3 +320,7 @@ V3 works if Skills Manager becomes the trusted local place to curate, audit, and
 - 2026-05-19: Added V1 PRD links for roadmap items 001-007 and marked those PRDs as drafted.
 - 2026-05-19: Updated PRD Candidates table to include version assignment and ordering dependencies.
 - 2026-05-19: Initial roadmap created from Big Picture, interview notes, and Rust engineering guidelines.
+
+## Broken skills — complete (2026-10-31)
+
+[PRD 013](prds/013-broken-skills.md): global dangling-link inventory, red warnings, Tab filter and confirmed F repair/removal flow. Project-local exposures excluded.
