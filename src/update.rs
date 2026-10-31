@@ -16,6 +16,7 @@ where
     Ok(available_version(&run(&[
         "outdated",
         "--json=v2",
+        "--formula",
         FORMULA,
     ])?))
 }
@@ -34,8 +35,15 @@ fn run_brew_output(args: &[&str]) -> Result<String> {
 }
 
 pub fn install() -> Result<()> {
-    run_brew(["update"])?;
-    run_brew(["upgrade", FORMULA])
+    install_with(run_brew)
+}
+
+fn install_with<F>(mut run: F) -> Result<()>
+where
+    F: FnMut(&[&str]) -> Result<()>,
+{
+    run(&["update"])?;
+    run(&["upgrade", "--formula", FORMULA])
 }
 
 pub fn restart() -> Result<()> {
@@ -54,7 +62,7 @@ pub fn restart() -> Result<()> {
     Ok(())
 }
 
-fn run_brew<const N: usize>(args: [&str; N]) -> Result<()> {
+fn run_brew(args: &[&str]) -> Result<()> {
     let status = Command::new("brew")
         .args(args)
         .status()
@@ -79,7 +87,7 @@ fn launcher_path(prefix: &str) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::{available_version, check_with, launcher_path};
+    use super::{available_version, check_with, install_with, launcher_path};
     use std::path::PathBuf;
 
     #[test]
@@ -118,6 +126,7 @@ mod tests {
                 vec![
                     "outdated".to_string(),
                     "--json=v2".to_string(),
+                    "--formula".to_string(),
                     "skills-manager".to_string(),
                 ],
             ]
@@ -136,6 +145,29 @@ mod tests {
             .is_err()
         );
         assert_eq!(commands, vec![vec!["update".to_string()]]);
+    }
+
+    #[test]
+    fn upgrades_the_formula_after_refreshing_homebrew() {
+        let mut commands = Vec::new();
+
+        install_with(|args| {
+            commands.push(args.iter().map(ToString::to_string).collect::<Vec<_>>());
+            Ok(())
+        })
+        .unwrap();
+
+        assert_eq!(
+            commands,
+            vec![
+                vec!["update".to_string()],
+                vec![
+                    "upgrade".to_string(),
+                    "--formula".to_string(),
+                    "skills-manager".to_string(),
+                ],
+            ]
+        );
     }
 
     #[test]
