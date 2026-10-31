@@ -55,11 +55,25 @@ pub fn restart() -> Result<()> {
         bail!("could not locate Homebrew Skills Manager installation");
     }
 
-    Command::new(launcher_path(&String::from_utf8_lossy(&output.stdout)))
-        .args(std::env::args_os().skip(1))
-        .spawn()
-        .context("could not restart Skills Manager")?;
-    Ok(())
+    let mut command = Command::new(launcher_path(&String::from_utf8_lossy(&output.stdout)));
+    command.args(std::env::args_os().skip(1));
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+
+        // Replace this process so shell wrappers keep the terminal foreground.
+        let error = command.exec();
+        Err(error).context("could not restart Skills Manager")
+    }
+
+    #[cfg(not(unix))]
+    {
+        command
+            .spawn()
+            .context("could not restart Skills Manager")?;
+        Ok(())
+    }
 }
 
 fn run_brew(args: &[&str]) -> Result<()> {
@@ -97,8 +111,14 @@ fn launcher_path(prefix: &str) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::{available_version, check_with, ensure_brew_success, install_with, launcher_path};
+    use super::{
+        available_version, check_with, ensure_brew_success, install_with, launcher_path, restart,
+    };
+    use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
+    use std::process::Command;
 
     #[test]
     fn finds_available_version_in_homebrew_outdated_json() {
@@ -197,5 +217,49 @@ mod tests {
             launcher_path("/opt/homebrew/opt/skills-manager\n"),
             PathBuf::from("/opt/homebrew/opt/skills-manager/bin/skills-manager")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn restart_replaces_the_current_process() {
+        let temp = tempfile::tempdir().unwrap();
+        let bin = temp.path().join("bin");
+        let prefix_bin = temp.path().join("prefix/bin");
+        fs::create_dir_all(&bin).unwrap();
+        fs::create_dir_all(&prefix_bin).unwrap();
+
+        let fake_brew = bin.join("brew");
+        fs::write(
+            &fake_brew,
+            "#!/bin/sh\nprintf '%s\\n' \"$SKILLS_MANAGER_TEST_PREFIX\"\n",
+        )
+        .unwrap();
+        fs::set_permissions(&fake_brew, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let launcher = prefix_bin.join("skills-manager");
+        fs::write(&launcher, "#!/bin/sh\nexit 37\n").unwrap();
+        fs::set_permissions(&launcher, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let status = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "update::tests::restart_exec_child",
+                "--nocapture",
+            ])
+            .env("SKILLS_MANAGER_TEST_RESTART_CHILD", "1")
+            .env("SKILLS_MANAGER_TEST_PREFIX", temp.path().join("prefix"))
+            .env("PATH", &bin)
+            .status()
+            .unwrap();
+
+        assert_eq!(status.code(), Some(37));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn restart_exec_child() {
+        if std::env::var_os("SKILLS_MANAGER_TEST_RESTART_CHILD").is_some() {
+            restart().unwrap();
+        }
     }
 }
