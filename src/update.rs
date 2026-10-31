@@ -43,7 +43,7 @@ where
     F: FnMut(&[&str]) -> Result<()>,
 {
     run(&["update"])?;
-    run(&["upgrade", "--formula", FORMULA])
+    run(&["upgrade", "--formula", "--no-ask", FORMULA])
 }
 
 pub fn restart() -> Result<()> {
@@ -63,14 +63,24 @@ pub fn restart() -> Result<()> {
 }
 
 fn run_brew(args: &[&str]) -> Result<()> {
-    let status = Command::new("brew")
+    let output = Command::new("brew")
         .args(args)
-        .status()
+        .output()
         .context("could not run Homebrew")?;
-    if status.success() {
-        Ok(())
-    } else {
+    ensure_brew_success(output.status.success(), &output.stderr)
+}
+
+fn ensure_brew_success(success: bool, stderr: &[u8]) -> Result<()> {
+    if success {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(stderr);
+    let stderr = stderr.trim();
+    if stderr.is_empty() {
         bail!("Homebrew command failed")
+    } else {
+        bail!("Homebrew command failed: {stderr}")
     }
 }
 
@@ -87,7 +97,7 @@ fn launcher_path(prefix: &str) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::{available_version, check_with, install_with, launcher_path};
+    use super::{available_version, check_with, ensure_brew_success, install_with, launcher_path};
     use std::path::PathBuf;
 
     #[test]
@@ -148,6 +158,16 @@ mod tests {
     }
 
     #[test]
+    fn reports_captured_homebrew_errors() {
+        let error = ensure_brew_success(false, b"Error: the formula is not trusted\n").unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "Homebrew command failed: Error: the formula is not trusted"
+        );
+    }
+
+    #[test]
     fn upgrades_the_formula_after_refreshing_homebrew() {
         let mut commands = Vec::new();
 
@@ -164,6 +184,7 @@ mod tests {
                 vec![
                     "upgrade".to_string(),
                     "--formula".to_string(),
+                    "--no-ask".to_string(),
                     "skills-manager".to_string(),
                 ],
             ]
