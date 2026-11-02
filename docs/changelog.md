@@ -4,6 +4,7 @@
 
 | Time | Change | Docs |
 |---|---|---|
+| 2026-11-02 13:32 | Prepared v0.1.8, including the Homebrew startup update notice fix. | `Cargo.toml`, `Cargo.lock` |
 | 2026-11-02 13:13 | Fixed startup update detection for Homebrew’s formatted JSON output. | `src/update.rs` |
 | 2026-11-02 12:33 | Prepared v0.1.7 with `/import_repo` and `import-repo`, GitHub tree URLs scanning the whole default-branch repository, and same-origin reuse without fetching. | `README.md`, `features/git-source-import.md` |
 | 2026-11-02 11:47 | Completed the PRD-009 follow-up implementation; functional checks and independent review passed. Required Docker screenshots were unavailable, leaving overall verification Inconclusive for visual evidence. | `prds/v2/prd-009-git-url-import-into-managed-source-directory.md`, `roadmap.md` |
