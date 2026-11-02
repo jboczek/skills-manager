@@ -78,7 +78,11 @@ fn handle_key_with_preview_area(
         KeyCode::Enter => {
             if app.command_menu_open() {
                 let input = app.input.clone();
-                let command = if has_command_arguments(&input) {
+                let original_input = input.clone();
+                let had_arguments = has_command_arguments(&input);
+                let was_url_entry = app.mode == Mode::SourceAdd
+                    && matches!(app.source_add_step, SourceAddStep::EnterUrl);
+                let command = if had_arguments {
                     input
                 } else if let Some(command) = app.selected_command_suggestion() {
                     command.label.to_string()
@@ -86,12 +90,26 @@ fn handle_key_with_preview_area(
                     input
                 };
                 let should_quit = app.handle_command(&command)?;
-                app.input.clear();
+                let is_url_entry = app.mode == Mode::SourceAdd
+                    && matches!(app.source_add_step, SourceAddStep::EnterUrl);
+                if !(is_url_entry
+                    && (was_url_entry || had_arguments || app.input != original_input))
+                {
+                    app.input.clear();
+                }
                 return Ok(should_quit);
             }
             let input = app.input.clone();
+            let was_url_entry = app.mode == Mode::SourceAdd
+                && matches!(app.source_add_step, SourceAddStep::EnterUrl);
             let should_quit = app.handle_command(&input)?;
-            app.input.clear();
+            let is_url_entry = app.mode == Mode::SourceAdd
+                && matches!(app.source_add_step, SourceAddStep::EnterUrl);
+            if !(is_url_entry
+                && (was_url_entry || has_command_arguments(&input) || app.input != input))
+            {
+                app.input.clear();
+            }
             return Ok(should_quit);
         }
         KeyCode::Backspace => {
@@ -215,7 +233,7 @@ fn has_command_arguments(input: &str) -> bool {
 }
 
 fn completed_command_input(label: &str) -> String {
-    if label == "/source_add" {
+    if label == "/import_repo" {
         format!("{label} ")
     } else {
         label.to_string()
@@ -948,7 +966,7 @@ mod tests {
 
         assert_eq!(
             app.selected_command_suggestion().map(|item| item.label),
-            Some("/source_add")
+            Some("/import_repo")
         );
 
         handle_key(&mut app, key(KeyCode::Up)).expect("key handled");
@@ -965,12 +983,11 @@ mod tests {
         app.input = "/".to_string();
         app.open_command_menu();
         app.move_command_suggestion_down();
-        app.move_command_suggestion_down();
 
         let should_quit = handle_key(&mut app, key(KeyCode::Enter)).expect("key handled");
 
         assert!(!should_quit);
-        assert_eq!(app.mode, Mode::Config);
+        assert_eq!(app.mode, Mode::SourceAdd);
         assert_eq!(app.input, "");
         assert!(!app.command_menu_open());
     }
@@ -978,12 +995,12 @@ mod tests {
     #[test]
     fn tab_completes_selected_command_suggestion() {
         let mut app = test_app();
-        app.input = "/sou".to_string();
+        app.input = "/impo".to_string();
         app.open_command_menu();
 
         handle_key(&mut app, key(KeyCode::Tab)).expect("key handled");
 
-        assert_eq!(app.input, "/source_add ");
+        assert_eq!(app.input, "/import_repo ");
         assert!(app.command_menu_open());
     }
 
@@ -1017,12 +1034,12 @@ mod tests {
     fn tab_completes_the_command_menu_instead_of_changing_the_list_filter() {
         let mut app = test_app();
         app.mode = Mode::List;
-        app.input = "/sou".to_string();
+        app.input = "/impo".to_string();
         app.open_command_menu();
 
         handle_key(&mut app, key(KeyCode::Tab)).expect("key handled");
 
-        assert_eq!(app.input, "/source_add ");
+        assert_eq!(app.input, "/import_repo ");
         assert_eq!(app.list_filter, ListFilter::Full);
     }
 
@@ -1081,7 +1098,7 @@ mod tests {
     #[test]
     fn enter_submits_typed_command_with_arguments_when_menu_is_open() {
         let mut app = test_app();
-        app.input = "/source_add https://example.com/org/skills.git".to_string();
+        app.input = "/import_repo https://example.com/org/skills.git".to_string();
         app.open_command_menu();
 
         handle_key(&mut app, key(KeyCode::Enter)).expect("key handled");
@@ -1092,6 +1109,86 @@ mod tests {
         assert!(matches!(app.source_add_step, SourceAddStep::Confirm { .. }));
         assert_eq!(app.input, "");
         assert!(!app.command_menu_open());
+    }
+
+    #[test]
+    fn tab_and_enter_from_command_menu_open_import_repo_url_form() {
+        let mut app = test_app();
+        app.input = "/impo".to_string();
+        app.open_command_menu();
+
+        handle_key(&mut app, key(KeyCode::Tab)).expect("tab completes command");
+        assert_eq!(app.input, "/import_repo ");
+        handle_key(&mut app, key(KeyCode::Enter)).expect("enter opens form");
+
+        assert_eq!(app.mode, Mode::SourceAdd);
+        assert!(matches!(app.source_add_step, SourceAddStep::EnterUrl));
+        assert_eq!(app.input, "");
+    }
+
+    #[test]
+    fn invalid_import_repo_url_stays_in_the_prompt_for_correction() {
+        let mut app = test_app();
+        app.handle_command("/import_repo").unwrap();
+        for character in "bad".chars() {
+            handle_key(&mut app, key(KeyCode::Char(character))).unwrap();
+        }
+
+        handle_key(&mut app, key(KeyCode::Enter)).expect("submit URL");
+
+        assert_eq!(app.mode, Mode::SourceAdd);
+        assert_eq!(app.input, "bad");
+        assert!(app.error_message.is_some());
+
+        handle_key(&mut app, key(KeyCode::Backspace)).expect("edit URL");
+        assert_eq!(app.input, "ba");
+    }
+
+    #[test]
+    fn failed_repository_acquire_keeps_the_url_editable() {
+        let temp = tempdir().unwrap();
+        let central = temp.path().join("central");
+        let bad_url = format!(
+            "file://{}",
+            temp.path().join("missing-repository").display()
+        );
+        let mut config = Config::default_config();
+        config.skills.central_dir = central.to_string_lossy().into_owned();
+        let mut app = App::new(config).unwrap();
+        app.input = format!("/import_repo {bad_url}");
+        app.open_command_menu();
+
+        handle_key(&mut app, key(KeyCode::Enter)).expect("preview URL");
+
+        assert!(matches!(app.source_add_step, SourceAddStep::Confirm { .. }));
+        assert!(!central.exists());
+        for character in "y".chars() {
+            handle_key(&mut app, key(KeyCode::Char(character))).unwrap();
+        }
+        handle_key(&mut app, key(KeyCode::Enter)).expect("confirm import");
+
+        assert_eq!(app.mode, Mode::SourceAdd);
+        assert!(matches!(app.source_add_step, SourceAddStep::EnterUrl));
+        assert_eq!(app.input, bad_url);
+        assert!(app.error_message.is_some());
+    }
+
+    #[test]
+    fn escape_cancels_import_repo_url_form() {
+        let temp = tempdir().unwrap();
+        let central = temp.path().join("central");
+        let mut config = Config::default_config();
+        config.skills.central_dir = central.to_string_lossy().into_owned();
+        let mut app = App::new(config).unwrap();
+        app.handle_command("/import_repo").unwrap();
+        assert_eq!(app.mode, Mode::SourceAdd);
+        app.input = "https://example.com/org/skills.git".to_string();
+
+        handle_key(&mut app, key(KeyCode::Esc)).expect("escape cancels");
+
+        assert_eq!(app.mode, Mode::Home);
+        assert!(app.input.is_empty());
+        assert!(!central.exists());
     }
 
     fn agent_selection_app(focused: usize) -> App {

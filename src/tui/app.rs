@@ -270,15 +270,21 @@ impl App {
             }
             TuiCommand::SourceAdd(url) => {
                 if url.is_empty() {
-                    self.error_message =
-                        Some("Usage: /source_add <clone-url> (HTTPS or SSH clone URL)".to_string());
+                    self.mode = Mode::SourceAdd;
+                    self.input.clear();
+                    self.source_add_step = SourceAddStep::EnterUrl;
                 } else {
                     match source::preview(&url, &self.global_context.central_dir) {
                         Ok(preview) => {
                             self.mode = Mode::SourceAdd;
                             self.source_add_step = SourceAddStep::Confirm { preview };
                         }
-                        Err(error) => self.error_message = Some(error.to_string()),
+                        Err(error) => {
+                            self.mode = Mode::SourceAdd;
+                            self.source_add_step = SourceAddStep::EnterUrl;
+                            self.input = url;
+                            self.error_message = Some(error.to_string());
+                        }
                     }
                 }
             }
@@ -1006,19 +1012,78 @@ mod tests {
     }
 
     #[test]
-    fn parse_command_source_add_with_url() {
+    fn parse_command_import_repo_with_url() {
         assert_eq!(
-            parse_command("/source_add https://example.com/org/skills.git"),
+            parse_command("/import_repo https://example.com/org/skills.git"),
             TuiCommand::SourceAdd("https://example.com/org/skills.git".to_string())
         );
     }
 
     #[test]
-    fn parse_command_source_add_with_space_is_unknown() {
+    fn parse_command_source_add_is_unknown() {
         assert_eq!(
-            parse_command("/source add https://example.com/org/skills.git"),
-            TuiCommand::Unknown("/source add https://example.com/org/skills.git".to_string())
+            parse_command("/source_add https://example.com/org/skills.git"),
+            TuiCommand::Unknown("/source_add https://example.com/org/skills.git".to_string())
         );
+    }
+
+    #[test]
+    fn import_repo_without_an_address_opens_url_entry_without_mutation() {
+        let temp = tempdir().expect("tempdir");
+        let central = temp.path().join("central");
+        let mut config = test_config(temp.path());
+        config.skills.central_dir = central.to_string_lossy().into_owned();
+        let mut app = App::new(config).unwrap();
+
+        app.handle_command("/import_repo").unwrap();
+
+        assert_eq!(app.mode, Mode::SourceAdd);
+        assert!(!central.exists());
+        assert!(app.error_message.is_none());
+    }
+
+    #[test]
+    fn invalid_import_repo_address_stays_editable_before_confirmation() {
+        let temp = tempdir().expect("tempdir");
+        let central = temp.path().join("central");
+        let remote = create_git_repo(temp.path().join("remote-skills"));
+        let mut config = test_config(temp.path());
+        config.skills.central_dir = central.to_string_lossy().into_owned();
+        let mut app = App::new(config).unwrap();
+
+        app.handle_command("/import_repo").unwrap();
+        app.handle_command("bad-address").unwrap();
+
+        assert_eq!(app.mode, Mode::SourceAdd);
+        assert!(app.error_message.is_some());
+        assert!(!central.exists());
+
+        app.handle_command(&format!("file://{}", remote.display()))
+            .unwrap();
+
+        assert!(matches!(app.source_add_step, SourceAddStep::Confirm { .. }));
+        assert!(!central.exists());
+    }
+
+    #[test]
+    fn failed_repository_import_returns_to_editable_url_entry() {
+        let temp = tempdir().expect("tempdir");
+        let central = temp.path().join("central");
+        let bad_source = temp.path().join("missing-repository");
+        let mut config = test_config(temp.path());
+        config.skills.central_dir = central.to_string_lossy().into_owned();
+        let mut app = App::new(config).unwrap();
+        let bad_url = format!("file://{}", bad_source.display());
+
+        app.handle_command(&format!("/import_repo {bad_url}"))
+            .unwrap();
+        assert!(matches!(app.source_add_step, SourceAddStep::Confirm { .. }));
+
+        app.advance_source_add("y").unwrap();
+
+        assert_eq!(app.mode, Mode::SourceAdd);
+        assert!(matches!(app.source_add_step, SourceAddStep::EnterUrl));
+        assert_eq!(app.input, bad_url);
     }
 
     #[test]
@@ -1373,7 +1438,7 @@ mod tests {
         config.skills.central_dir = central.to_string_lossy().into_owned();
         let mut app = App::new(config).unwrap();
 
-        app.handle_command(&format!("/source_add file://{}", remote.display()))
+        app.handle_command(&format!("/import_repo file://{}", remote.display()))
             .unwrap();
         app.advance_source_add("n").unwrap();
 
@@ -1390,7 +1455,7 @@ mod tests {
         config.skills.central_dir = central.to_string_lossy().into_owned();
         let mut app = App::new(config).unwrap();
 
-        app.handle_command(&format!("/source_add file://{}", remote.display()))
+        app.handle_command(&format!("/import_repo file://{}", remote.display()))
             .unwrap();
         app.advance_source_add("y").unwrap();
         app.advance_source_add("1").unwrap();
@@ -1422,7 +1487,7 @@ mod tests {
         config.skills.central_dir = temp.path().join("central").to_string_lossy().into_owned();
         let mut app = App::new(config).unwrap();
 
-        app.handle_command(&format!("/source_add file://{}", remote.display()))
+        app.handle_command(&format!("/import_repo file://{}", remote.display()))
             .unwrap();
         app.advance_source_add("y").unwrap();
         app.advance_source_add("2").unwrap();
@@ -1447,7 +1512,7 @@ mod tests {
             .collect::<Vec<_>>();
         let mut app = App::new(config).unwrap();
 
-        app.handle_command(&format!("/source_add file://{}", remote.display()))
+        app.handle_command(&format!("/import_repo file://{}", remote.display()))
             .unwrap();
         app.advance_source_add("y").unwrap();
         app.advance_source_add("1").unwrap();
@@ -1527,7 +1592,7 @@ mod tests {
             labels,
             vec![
                 "/list",
-                "/source_add",
+                "/import_repo",
                 "/config",
                 "/help",
                 "/update",
@@ -1542,13 +1607,13 @@ mod tests {
     }
 
     #[test]
-    fn source_add_suggestion_mentions_clone_url_formats() {
+    fn import_repo_suggestion_mentions_clone_url_formats() {
         let app = test_app();
         let suggestion = app
             .filtered_command_suggestions()
             .into_iter()
-            .find(|suggestion| suggestion.label == "/source_add")
-            .expect("source_add suggestion exists");
+            .find(|suggestion| suggestion.label == "/import_repo")
+            .expect("import_repo suggestion exists");
 
         assert!(suggestion.description.contains("HTTPS"));
         assert!(suggestion.description.contains("SSH"));
@@ -1573,7 +1638,7 @@ mod tests {
     #[test]
     fn command_suggestions_filter_by_command_text_before_arguments() {
         let mut app = test_app();
-        app.input = "/source_add https://example.com/org/skills.git".to_string();
+        app.input = "/import_repo https://example.com/org/skills.git".to_string();
         app.open_command_menu();
 
         let labels = app
@@ -1582,7 +1647,7 @@ mod tests {
             .map(|suggestion| suggestion.label)
             .collect::<Vec<_>>();
 
-        assert_eq!(labels, vec!["/source_add"]);
+        assert_eq!(labels, vec!["/import_repo"]);
     }
 
     #[test]
@@ -1599,7 +1664,7 @@ mod tests {
 
         assert_eq!(
             app.selected_command_suggestion().map(|item| item.label),
-            Some("/source_add")
+            Some("/import_repo")
         );
 
         app.move_command_suggestion_up();

@@ -2,24 +2,19 @@ use std::collections::HashSet;
 
 use anyhow::{Result, bail};
 
-use crate::cli::{ImportArgs, SourceArgs, SourceSubcommand};
+use crate::cli::{ImportArgs, ImportRepoArgs};
 use crate::commands::helpers;
 use crate::scanner::ScanResult;
 use crate::source::{self, AcquireOutcome};
 
-pub fn run(args: SourceArgs) -> Result<()> {
-    match args.subcommand {
-        SourceSubcommand::Add(args) => add(args.git_url),
-    }
-}
-
-fn add(git_url: String) -> Result<()> {
+pub fn import_repo(args: ImportRepoArgs) -> Result<()> {
     let config = helpers::load_config()?;
     let context = config.resolve_global_context()?;
-    let source_preview = source::preview(&git_url, &context.central_dir)?;
+    let source_preview = source::preview(&args.git_url, &context.central_dir)?;
 
-    println!("Source URL: {}", source_preview.url);
+    println!("Repository URL: {}", source_preview.url);
     println!("Destination: {}", source_preview.destination.display());
+    println!("Scan scope: entire repository");
 
     if !helpers::is_interactive() {
         bail!("Cannot add a source in non-interactive mode. Please run interactively.");

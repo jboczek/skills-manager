@@ -96,6 +96,19 @@ impl App {
     pub fn advance_source_add(&mut self, input: &str) -> anyhow::Result<()> {
         self.error_message = None;
         match self.source_add_step.clone() {
+            SourceAddStep::EnterUrl => {
+                let url = input.trim();
+                if url.is_empty() {
+                    self.error_message = Some("Enter an HTTPS or SSH repository URL.".to_string());
+                } else {
+                    match source::preview(url, &self.global_context.central_dir) {
+                        Ok(preview) => {
+                            self.source_add_step = SourceAddStep::Confirm { preview };
+                        }
+                        Err(error) => self.error_message = Some(error.to_string()),
+                    }
+                }
+            }
             SourceAddStep::Confirm { preview } => {
                 let normalized = input.trim().to_ascii_lowercase();
                 if normalized == "y" {
@@ -122,9 +135,8 @@ impl App {
                         }
                         Err(error) => {
                             self.error_message = Some(error.to_string());
-                            self.source_add_step = SourceAddStep::Done {
-                                message: "Source was not added.".to_string(),
-                            };
+                            self.input = preview.url.clone();
+                            self.source_add_step = SourceAddStep::EnterUrl;
                         }
                     }
                 } else if normalized == "n" || normalized.is_empty() {
@@ -544,6 +556,7 @@ impl App {
 
     pub fn source_add_step_hint(&self) -> &'static str {
         match self.source_add_step {
+            SourceAddStep::EnterUrl => "Repository URL:",
             SourceAddStep::Confirm { .. } => "Add this source? [y/N]:",
             SourceAddStep::SelectSkill { .. } => {
                 "Enter skill number to expose, or Enter to keep source only:"

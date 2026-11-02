@@ -25,7 +25,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
                 area,
                 " Home ",
                 &format!(
-                    "{last_operation}Welcome to Skills Manager.\n\nLoaded skills: {}\nEnabled agents: {}\n\nTry /list, /source_add, /config or /help. Use table shortcuts for import and remove actions.",
+                    "{last_operation}Welcome to Skills Manager.\n\nLoaded skills: {}\nEnabled agents: {}\n\nTry /list, /import_repo, /config or /help. Use table shortcuts for import and remove actions.",
                     app.loaded_skills_label(),
                     app.config
                         .agents
@@ -90,17 +90,23 @@ fn render_help(frame: &mut Frame, area: Rect) {
 }
 
 fn help_text() -> &'static str {
-    "Commands\n  /list                       Browse exposed and discovered skills\n  /source_add <clone-url>     Add a source from an HTTPS or SSH clone URL\n  /config                     Show config\n  /help                       Show this help\n  /update                     Install the latest Homebrew version and restart\n  /quit                       Exit\n\nTable actions\n  Tab                Cycle Full, exposed, discovery-only, and broken views\n  Space              Check or uncheck skill rows\n  i                  Import a selected skill or checked skills\n  f                  Fix checked or selected broken global skills after reviewing a plan\n  x                  Remove checked or selected exposed skill rows\n  r                  Refresh the current list view\n  u                  Review/update selected repository\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel repository update\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
+    "Commands\n  /list                       Browse exposed and discovered skills\n  /import_repo [clone-url]    Import a repository from an HTTPS or SSH clone URL; scan the entire repository\n  /config                     Show config\n  /help                       Show this help\n  /update                     Install the latest Homebrew version and restart\n  /quit                       Exit\n\nTable actions\n  Tab                Cycle Full, exposed, discovery-only, and broken views\n  Space              Check or uncheck skill rows\n  i                  Import a selected skill or checked skills\n  f                  Fix checked or selected broken global skills after reviewing a plan\n  x                  Remove checked or selected exposed skill rows\n  r                  Refresh the current list view\n  u                  Review/update selected repository\n\nKeys\n  Enter              Submit prompt / open row details\n  Esc                Return home / cancel repository update\n  Up / Down          Move visible table or command selection\n  Left / Right       Collapse or expand source groups\n  q                  Quit from home\n  ?                  Help from home"
 }
 
 fn render_source_add(frame: &mut Frame, area: Rect, app: &App) {
     match &app.source_add_step {
+        SourceAddStep::EnterUrl => render_text_panel(
+            frame,
+            area,
+            " Import Repository ",
+            "Enter an HTTPS or SSH repository URL below. The whole repository will be scanned.",
+        ),
         SourceAddStep::Confirm { preview } => render_text_panel(
             frame,
             area,
-            " Add Source ",
+            " Import Repository ",
             &format!(
-                "Source URL\n  {}\n\nDestination\n  {}",
+                "Repository URL\n  {}\n\nDestination\n  {}\n\nScan scope\n  Entire repository",
                 preview.url,
                 preview.destination.display()
             ),
@@ -123,7 +129,7 @@ fn render_source_add(frame: &mut Frame, area: Rect, app: &App) {
             render_text_panel(
                 frame,
                 area,
-                " Add Source ",
+                " Import Repository ",
                 &format!(
                     "{action} source\n  {}\n\nDiscovered skills\n{rows}",
                     source_path.display()
@@ -131,7 +137,7 @@ fn render_source_add(frame: &mut Frame, area: Rect, app: &App) {
             );
         }
         SourceAddStep::Done { message } => {
-            render_text_panel(frame, area, " Add Source ", message);
+            render_text_panel(frame, area, " Import Repository ", message);
         }
     }
 }
@@ -354,11 +360,30 @@ mod tests {
     }
 
     #[test]
-    fn help_describes_source_add_clone_url_formats() {
+    fn help_describes_import_repo_and_repository_scope() {
         let text = help_text();
 
-        assert!(text.contains("/source_add <clone-url>"));
+        assert!(text.contains("/import_repo"));
+        assert!(!text.contains("/source_add"));
         assert!(text.contains("HTTPS or SSH clone URL"));
+        assert!(text.contains("entire repository"));
+    }
+
+    #[test]
+    fn import_repo_preview_names_the_repository_and_full_scan_scope() {
+        let mut app = App::new(Config::default_config()).unwrap();
+        app.handle_command("/import_repo https://github.com/Org/Repo/tree/main/skills")
+            .unwrap();
+        let backend = TestBackend::new(100, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| render(frame, frame.area(), &app))
+            .unwrap();
+
+        let output = rendered_lines(&terminal);
+        assert!(output.contains("https://github.com/Org/Repo"), "{output}");
+        assert!(output.contains("Entire repository"), "{output}");
     }
 
     #[test]

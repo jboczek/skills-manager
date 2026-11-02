@@ -19,7 +19,8 @@ pub struct Cli {
 pub enum Commands {
     List,
     Scan,
-    Source(SourceArgs),
+    /// Import a Git repository into the managed source directory.
+    ImportRepo(ImportRepoArgs),
     Import(ImportArgs),
     Remove(RemoveArgs),
     Config(ConfigArgs),
@@ -27,19 +28,7 @@ pub enum Commands {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Parser)]
-pub struct SourceArgs {
-    #[command(subcommand)]
-    pub subcommand: SourceSubcommand,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
-pub enum SourceSubcommand {
-    /// Add a Git repository to the managed source directory.
-    Add(SourceAddArgs),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Parser)]
-pub struct SourceAddArgs {
+pub struct ImportRepoArgs {
     /// Git repository URL.
     pub git_url: String,
 }
@@ -86,22 +75,31 @@ pub enum ConfigSubcommand {
 mod tests {
     use clap::Parser;
 
-    use super::{Cli, Commands, SourceSubcommand};
+    use super::Cli;
 
     #[test]
-    fn parses_source_add_command() {
-        let cli = Cli::try_parse_from([
-            "skills-manager",
-            "source",
-            "add",
-            "https://example.com/org/skills.git",
-        ])
-        .unwrap();
+    fn parses_import_repo_command_and_requires_an_address() {
+        assert!(
+            Cli::try_parse_from([
+                "skills-manager",
+                "import-repo",
+                "https://example.com/org/skills.git",
+            ])
+            .is_ok()
+        );
+        assert!(Cli::try_parse_from(["skills-manager", "import-repo"]).is_err());
+    }
 
-        let Some(Commands::Source(args)) = cli.command else {
-            panic!("expected source command");
-        };
-        let SourceSubcommand::Add(args) = args.subcommand;
-        assert_eq!(args.git_url, "https://example.com/org/skills.git");
+    #[test]
+    fn source_add_is_not_a_cli_alias() {
+        assert!(
+            Cli::try_parse_from([
+                "skills-manager",
+                "source",
+                "add",
+                "https://example.com/org/skills.git",
+            ])
+            .is_err()
+        );
     }
 }
