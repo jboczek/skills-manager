@@ -118,7 +118,7 @@ impl App {
                                 .skills
                                 .sort_by(|left, right| left.skill_id.cmp(&right.skill_id));
                             self.reload_scan_results()?;
-                            self.refresh_inventory()?;
+                            self.refresh_inventory_for_import()?;
                             self.info_message = Some(match acquired.outcome {
                                 AcquireOutcome::Cloned => {
                                     format!("Added source at {}.", acquired.path.display())

@@ -193,13 +193,26 @@ impl App {
 
     /// Refresh inventory from filesystem.
     pub fn refresh_inventory(&mut self) -> anyhow::Result<()> {
+        self.refresh_inventory_with_update_check(true)
+    }
+
+    pub(crate) fn refresh_inventory_for_import(&mut self) -> anyhow::Result<()> {
+        self.refresh_inventory_with_update_check(false)
+    }
+
+    fn refresh_inventory_with_update_check(
+        &mut self,
+        check_repository_updates: bool,
+    ) -> anyhow::Result<()> {
         let raw_scan_results =
             scanner::scan(&helpers::scan_config_from_global(&self.global_context))?;
         self.scan_results = raw_scan_results.clone();
         scanner::exclude_dot_directory_results(&mut self.scan_results);
         scanner::assign_disambiguation_indices(&mut self.scan_results);
-        self.repository_updates.clear();
-        self.start_repository_update_load();
+        if check_repository_updates {
+            self.repository_updates.clear();
+            self.start_repository_update_load();
+        }
         let agents = helpers::agent_targets_from_global(&self.global_context);
         self.inventory = inventory::build_inventory(&InventoryConfig {
             agents: agents.clone(),
@@ -603,6 +616,7 @@ mod tests {
     };
     use crate::plan::{ChangePlan, StagedChange};
     use crate::scanner::SourceKind;
+    use crate::source::AcquireOutcome;
     use crate::tui::source_table::SourceTableRow;
     use crate::tui::unified_list::{ListFilter, UnifiedListRow};
 
@@ -1084,6 +1098,47 @@ mod tests {
         assert_eq!(app.mode, Mode::SourceAdd);
         assert!(matches!(app.source_add_step, SourceAddStep::EnterUrl));
         assert_eq!(app.input, bad_url);
+    }
+
+    #[test]
+    fn importing_a_reused_repository_skips_update_fetch_until_list_refresh() {
+        let temp = tempdir().expect("tempdir");
+        let mut config = test_config(temp.path());
+        let central = temp.path().join("skills");
+        config.skills.central_dir = central.to_string_lossy().into_owned();
+        let repository = create_git_repo(central.join("repository"));
+        git(&[
+            "-C",
+            repository.to_str().unwrap(),
+            "remote",
+            "add",
+            "origin",
+            "file:///missing/repository.git",
+        ]);
+        let mut app = App::new(config).unwrap();
+        let preview = source::preview("file:///missing/repository.git", &central).unwrap();
+        app.mode = Mode::SourceAdd;
+        app.source_add_step = SourceAddStep::Confirm { preview };
+
+        app.advance_source_add("y").unwrap();
+
+        assert!(matches!(
+            app.source_add_step,
+            SourceAddStep::SelectSkill {
+                outcome: AcquireOutcome::Reused,
+                ..
+            }
+        ));
+        assert!(
+            app.repository_update_load.is_none(),
+            "repository reuse must not schedule a background fetch"
+        );
+
+        app.refresh_inventory().unwrap();
+        assert!(
+            app.repository_update_load.is_some(),
+            "normal inventory refresh must retain the /list update check"
+        );
     }
 
     #[test]
