@@ -31,6 +31,7 @@ Supported prompt commands:
 ```text
 list
 /list
+/import_repo [URL]
 config
 /config
 help
@@ -42,7 +43,7 @@ q
 
 Unknown commands keep the user in the shell and show an error message with a help hint.
 
-The slash suggestion menu lists `/list`, `/source_add`, `/config`, `/help`, and `/quit`. Import and remove are table actions in the TUI. If a user types `/import` or `/remove`, the TUI guides them to the row shortcuts instead of starting standalone prompt workflows.
+The slash suggestion menu lists `/list`, `/import_repo [URL]`, `/config`, `/help`, and `/quit`. `/import_repo` without an argument opens the repository URL form; with an argument it opens the preview. `Tab` completes the selected command suggestion, `Enter` submits it, and `Esc` cancels. An invalid URL or acquisition failure returns to the editable URL field. `/source_add` is removed without an alias. Import and remove of individual skills remain table actions; `/import` and `/remove` guide users to those row shortcuts.
 
 ## Modes
 
@@ -61,7 +62,9 @@ Config mode shows the resolved config path and normalized TOML. Ignored legacy f
 
 Help mode lists prompt commands and key behavior.
 
-Import mode is reached from table shortcuts or existing flow state. It guides the user through ambiguity resolution, target-agent selection, staged plan preview, confirmation, apply, rescan, and result rendering.
+Repository source import starts with `/import_repo`. Its preview shows the normalized repository URL, destination, and whole-repository scan scope. A GitHub tree URL is reduced to its repository root; Skills Manager clones the default branch and ignores the branch and subdirectory in the pasted URL. After source acquisition, the user selects skills and confirms their agent exposures in the existing staged workflow. Cancelling that exposure step keeps the source and creates no agent links.
+
+Skill exposure through `import` mode is reached from table shortcuts or existing flow state. It guides the user through ambiguity resolution, target-agent selection, staged plan preview, confirmation, apply, rescan, and result rendering.
 
 Remove mode is reached from table shortcuts or existing flow state. It guides the user through exposure selection when needed, staged plan preview, confirmation, apply, rescan, and result rendering.
 
@@ -108,4 +111,4 @@ The TUI resolves and validates the same global context as the CLI before scannin
 
 ## Boundaries
 
-This shell does not include arbitrary table-cell editing, rich config editing, remote Git imports, arbitrary project targeting, or stable machine-readable output.
+This shell does not include arbitrary table-cell editing, rich config editing, arbitrary project targeting, or stable machine-readable output.

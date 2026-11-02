@@ -5,20 +5,35 @@ Managed Git source import adds repositories to the global skill library without 
 Use the CLI:
 
 ```bash
-skills-manager source add https://github.com/example/skills.git
+skills-manager import-repo https://github.com/example/skills.git
 ```
 
 Or use the TUI prompt:
 
 ```text
-/source add https://github.com/example/skills.git
+/import_repo https://github.com/example/skills.git
 ```
+
+`import-repo` requires an address. It replaces `source add` without an alias;
+the separate `import <skill>` command still handles skill exposure. In the TUI,
+`/import_repo` without an argument opens a URL form, while `/import_repo <URL>`
+opens the preview. `Enter` or `Tab` continues from the command suggestion,
+`Esc` cancels, and invalid input or an acquisition failure returns to an
+editable URL field.
+
+A GitHub tree URL such as
+`https://github.com/example/skills/tree/main/skills` identifies the whole
+repository. Skills Manager drops the branch and subdirectory from the address,
+clones the repository's default branch, and scans the whole checkout. The
+preview shows the normalized repository URL, destination, and whole-repository
+scan scope.
 
 ## Preview And Confirmation
 
-Skills Manager derives the repository name from the URL, removes a trailing `.git`, and previews:
+Skills Manager derives the repository name from the URL, removes a trailing
+`.git`, and previews:
 
-- the requested Git URL
+- the normalized repository URL
 - the final `central_dir/<repository-name>` destination
 
 No directory is created and Git is not invoked until the user confirms. Non-interactive CLI use stops after the preview because acquisition requires an interactive confirmation.
@@ -41,7 +56,10 @@ Skills Manager reads the existing repository's `origin` and compares canonical i
 - preserves repository path case
 - rejects embedded HTTP credentials
 
-A matching origin is reused and scanned as-is. Reuse never runs fetch, pull, reset, or checkout, so dirty, detached, or locally modified repositories remain unchanged.
+A matching origin is reused and scanned as-is. Reuse never runs fetch, pull,
+reset, or checkout, so dirty, detached, or locally modified repositories remain
+unchanged. Reusing a source does not update it; repository updates remain in the
+`/list` `u` flow.
 
 ## Remote Updates
 

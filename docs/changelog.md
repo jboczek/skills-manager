@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-02
+
+| Time | Change | Docs |
+|---|---|---|
+| 2026-11-02 11:19 | Documented the PRD-009 follow-up command names, whole-repository GitHub tree import, and separate source and exposure confirmations; final verification remains pending. | `README.md`, `features/git-source-import.md`, `features/assistant-style-tui-shell.md`, `prds/v2/prd-009-git-url-import-into-managed-source-directory.md`, `roadmap.md` |
+
 ## 2026-10-31
 
 | Time | Change | Docs |
