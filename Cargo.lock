@@ -1576,6 +1576,7 @@ dependencies = [
  "insta",
  "ratatui",
  "serde",
+ "serde_json",
  "tempfile",
  "tiktoken-rs",
  "toml",

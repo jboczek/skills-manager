@@ -99,10 +99,14 @@ fn ensure_brew_success(success: bool, stderr: &[u8]) -> Result<()> {
 }
 
 fn available_version(output: &str) -> Option<String> {
-    let formulae = output.split_once("\"formulae\"")?.1.split_once('[')?.1;
-    let formula = formulae.split_once(']')?.0;
-    let (_, version) = formula.split_once("\"current_version\":\"")?;
-    Some(version.split_once('"')?.0.to_string())
+    let output: serde_json::Value = serde_json::from_str(output).ok()?;
+    output
+        .get("formulae")?
+        .as_array()?
+        .first()?
+        .get("current_version")?
+        .as_str()
+        .map(str::to_owned)
 }
 
 fn launcher_path(prefix: &str) -> PathBuf {
@@ -131,6 +135,24 @@ mod tests {
     }
 
     #[test]
+    fn finds_available_version_in_pretty_homebrew_json() {
+        let output = r#"{
+  "formulae": [
+    {
+      "name": "jboczek/tap/skills-manager",
+      "installed_versions": ["0.1.6"],
+      "current_version": "0.1.7",
+      "pinned": false,
+      "pinned_version": null
+    }
+  ],
+  "casks": []
+}"#;
+
+        assert_eq!(available_version(output), Some("0.1.7".to_string()));
+    }
+
+    #[test]
     fn ignores_empty_homebrew_outdated_result() {
         assert_eq!(available_version(r#"{"formulae":[],"casks":[]}"#), None);
     }
@@ -141,10 +163,19 @@ mod tests {
 
         let update = check_with(|args| {
             commands.push(args.iter().map(ToString::to_string).collect::<Vec<_>>());
-            Ok(
-                r#"{"formulae":[{"name":"skills-manager","current_version":"0.2.0"}],"casks":[]}"#
-                    .to_string(),
-            )
+            Ok(r#"{
+                    "formulae": [
+                        {
+                            "name": "jboczek/tap/skills-manager",
+                            "installed_versions": ["0.1.6"],
+                            "current_version": "0.2.0",
+                            "pinned": false,
+                            "pinned_version": null
+                        }
+                    ],
+                    "casks": []
+                }"#
+            .to_string())
         })
         .unwrap();
 
