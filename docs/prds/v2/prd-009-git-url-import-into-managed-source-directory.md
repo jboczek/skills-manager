@@ -1,7 +1,7 @@
 ---
 title: Git URL import into managed source directory
 summary: Add Git repositories as managed skill sources, scan them safely, and expose selected skills through the existing staged workflow.
-status: in_progress
+status: done
 roadmap: v2
 ---
 
@@ -144,6 +144,7 @@ An existing destination is reused and scanned only when its canonical `origin` m
 - 2026-06-13: Added regression coverage proving no mutation before confirmation, cleanup on failure, no updates during reuse, selective exposure, and source retention after exposure cancellation.
 - 2026-11-02: The follow-up replaces the TUI `/source_add` and CLI `source add` entry points with `/import_repo [URL]` and required-argument `import-repo <address>`, without aliases. GitHub tree URLs resolve to the repository root and preview the whole-repository scan; the clone uses the default branch. TUI URL correction and cancellation keep source acquisition behind confirmation, and exposure keeps its separate confirmation. Stage C reports 272 unit tests, 30 CLI integration tests, formatting, and diff checks passing. Final functional and code-review verification remains for stage E.
 - 2026-11-02: Updated the README, feature documentation, roadmap, and changelog for the follow-up. The PRD remains in progress until stage E completes.
+- 2026-11-02: Completed the implementation and functional verification: formatting, 273 unit tests, 30 CLI integration tests, clippy, and local-repository TUI PTY end-to-end checks passed. Independent code review completed without findings on frozen head `f28d26313998c31a5d3a4d5dd62ab084c7f4b5be`. The required Docker screenshots could not be captured, so overall verification remains **Inconclusive** solely for the visual evidence; this is not a full GREEN verification.
 
 ## Tasks
 
@@ -158,4 +159,4 @@ An existing destination is reused and scanned only when its canonical `origin` m
 - [x] Resolve GitHub tree URLs to the repository root and preview the whole-repository scan.
 - [x] Keep URL acquisition and skill exposure as separately confirmed steps.
 - [x] Update follow-up documentation for the implemented behavior.
-- [ ] Complete stage E functional verification and independent code review.
+- [x] Complete functional verification and independent code review; required Docker screenshot evidence remains unavailable, leaving overall verification Inconclusive.
