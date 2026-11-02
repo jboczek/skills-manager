@@ -32,7 +32,7 @@ Let users add a Git repository to global `central_dir`, verify it contains skill
 
 ## User stories
 
-1. As a user, I want `source add`, so that acquisition stays distinct from exposure.
+1. As a user, I want `import-repo <address>`, so that source acquisition stays distinct from skill exposure.
 2. As a user, I want to preview the URL and destination, so that I understand the mutation.
 3. As a user, I want confirmation before cloning, so that pasted input cannot mutate disk immediately.
 4. As a user, I want sources under global `central_dir`, so that launch location is irrelevant.
@@ -46,13 +46,15 @@ Let users add a Git repository to global `central_dir`, verify it contains skill
 
 ## Proposed experience
 
-The explicit CLI entry point is:
+The CLI entry point is:
 
 ```bash
-skills-manager source add https://example.com/org/skills.git
+skills-manager import-repo https://example.com/org/skills.git
 ```
 
-The TUI provides `/source add <git-url>`. Before mutation, Skills Manager shows the URL and destination, such as `~/skills/skills`, and asks for confirmation.
+The CLI requires an address. `import-repo` replaces `source add` without an alias; the existing `import <skill>` command is unchanged. The TUI provides `/import_repo [URL]`: without a URL it opens an editable address form, and with one it opens the preview. `Enter` or `Tab` continues from the command suggestion, `Esc` cancels, and invalid input or an acquisition failure returns to the URL form.
+
+Before mutation, Skills Manager shows the normalized repository URL, destination, such as `~/skills/skills`, and scan scope, then asks for confirmation. A GitHub tree URL such as `https://github.com/jboczek/skills/tree/main/skills` resolves to the repository root. The branch and subdirectory in the pasted URL are ignored; a new clone uses the remote repository's default branch and scans the whole repository.
 
 After confirmation, the repository is cloned to a unique temporary directory beneath `central_dir`, with submodules disabled, then scanned for `SKILL.md`. No skills means cleanup and no source. Valid clones are promoted to the previewed destination before individual skills enter existing agent selection and staged exposure confirmation.
 
@@ -60,11 +62,14 @@ An existing destination is reused and scanned only when its canonical `origin` m
 
 ## Requirements
 
-- Add an explicit `source add <git-url>` flow; do not reinterpret skill exposure `import`.
+- Add `import-repo <address>` with a required address; remove `source add` without an alias and do not reinterpret skill exposure `import`.
+- Add TUI `/import_repo [URL]`; remove `/source_add` without an alias. No argument opens an editable URL form; an argument opens the preview.
+- Allow a GitHub `/tree/<branch>/<subdirectory>` URL to identify its repository root. Clone the remote default branch and scan the whole repository, not the copied subdirectory.
 - Resolve paths from global `central_dir`, independent of current working directory.
 - Derive the destination name from the URL's repository name, stripping a trailing `.git`.
 - Preview URL and destination before filesystem mutation.
 - Require interactive confirmation; cancellation must leave no new files.
+- Keep source-acquisition confirmation separate from staged exposure confirmation. Cancelling exposure keeps the source and creates no exposures.
 - Clone to a unique temporary directory under `central_dir`.
 - Disable submodule initialization and recursion.
 - Scan before promotion with the existing bounded, non-symlink-following scanner.
@@ -73,6 +78,7 @@ An existing destination is reused and scanned only when its canonical `origin` m
 - Never execute content from the repository.
 - Reuse only when readable canonical `origin` matches the requested URL.
 - Reuse means scan only: do not fetch, pull, reset, checkout, or modify the existing repository.
+- Reusing an existing same-origin source does not update it; repository updates stay in the `/list` `u` flow.
 - Fail for non-Git, unreadable-origin, or different-origin destinations.
 - Never choose a suffixed destination or offer overwrite.
 - Select individual skills and delegate exposures to existing staged confirmation.
@@ -81,6 +87,7 @@ An existing destination is reused and scanned only when its canonical `origin` m
 ## Success criteria
 
 - A Git URL is added to `central_dir/<repo-name>`.
+- A GitHub tree URL adds the whole repository from its default branch, regardless of the branch and subdirectory in the URL.
 - Declining confirmation creates no destination or temporary clone.
 - Repositories without skills are not promoted.
 - Multi-skill repositories allow individual selection and do not expose unselected skills.
@@ -114,9 +121,12 @@ An existing destination is reused and scanned only when its canonical `origin` m
 - Temporary clones use `central_dir` so same-filesystem rename avoids partial destinations.
 - Git operations are limited to clone and origin inspection. Repository content is untrusted scan input.
 - Acquisition and exposure remain separate services within the guided flow.
+- A GitHub tree URL is reduced to its repository root before destination and origin handling; a new clone uses the remote default branch.
 
 ## Testing decisions
 
+- Test that `/import_repo [URL]` and required-argument `import-repo <address>` replace the old source-import commands without aliases; keep `import <skill>` unchanged.
+- Cover the editable TUI URL form, cancellation, invalid-input correction, acquisition retry, and preview of whole-repository scope for GitHub tree URLs.
 - Unit-test destination and canonical URL handling across HTTPS, SSH, SCP-style, suffix, invalid-name, and credential cases.
 - Prove preview and confirmation precede directory creation or Git invocation.
 - Use temporary Git repositories for promotion, multiple skills, no skills, failure, and cleanup tests.
@@ -132,14 +142,21 @@ An existing destination is reused and scanned only when its canonical `origin` m
 - 2026-06-13: Added interactive `skills-manager source add <git-url>` with preview-before-mutation, optional multi-skill selection, and delegation to existing staged CLI exposure plans.
 - 2026-06-13: Added `/source add <git-url>` to the TUI with preview, confirmation, skill selection, and delegation to the existing agent-selection and exposure-plan state.
 - 2026-06-13: Added regression coverage proving no mutation before confirmation, cleanup on failure, no updates during reuse, selective exposure, and source retention after exposure cancellation.
+- 2026-11-02: The follow-up replaces the TUI `/source_add` and CLI `source add` entry points with `/import_repo [URL]` and required-argument `import-repo <address>`, without aliases. GitHub tree URLs resolve to the repository root and preview the whole-repository scan; the clone uses the default branch. TUI URL correction and cancellation keep source acquisition behind confirmation, and exposure keeps its separate confirmation. Stage C reports 272 unit tests, 30 CLI integration tests, formatting, and diff checks passing. Final functional and code-review verification remains for stage E.
+- 2026-11-02: Updated the README, feature documentation, roadmap, and changelog for the follow-up. The PRD remains in progress until stage E completes.
+- 2026-11-02: Completed the implementation and functional verification: formatting, 273 unit tests, 30 CLI integration tests, clippy, and local-repository TUI PTY end-to-end checks passed. Independent code review completed without findings on frozen head `f28d26313998c31a5d3a4d5dd62ab084c7f4b5be`. The required Docker screenshots could not be captured, so overall verification remains **Inconclusive** solely for the visual evidence; this is not a full GREEN verification.
 
 ## Tasks
 
 - [x] Add Git URL canonicalization and repository-name tests.
 - [x] Implement temporary clone, bounded pre-promotion scan, promotion, and cleanup.
 - [x] Implement strict same-origin reuse and collision rejection.
-- [x] Add the interactive CLI `source add` workflow.
-- [x] Add the TUI `/source add` workflow.
+- [x] Add the interactive CLI repository-import workflow, now exposed as required-argument `import-repo` without the former `source add` command.
+- [x] Add the TUI repository-import workflow, now exposed as `/import_repo [URL]` without `/source_add`.
 - [x] Delegate selected skills to existing staged exposure plans.
 - [x] Add CLI, TUI, and temporary Git repository regression coverage.
 - [x] Update README, durable feature documentation, roadmap, and changelog.
+- [x] Resolve GitHub tree URLs to the repository root and preview the whole-repository scan.
+- [x] Keep URL acquisition and skill exposure as separately confirmed steps.
+- [x] Update follow-up documentation for the implemented behavior.
+- [x] Complete functional verification and independent code review; required Docker screenshot evidence remains unavailable, leaving overall verification Inconclusive.

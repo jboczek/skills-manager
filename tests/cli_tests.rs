@@ -14,10 +14,17 @@ fn help_lists_the_v1_commands() {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("help output is utf8");
     for command in [
-        "list", "scan", "source", "import", "remove", "config", "doctor",
+        "list",
+        "scan",
+        "import-repo",
+        "import",
+        "remove",
+        "config",
+        "doctor",
     ] {
         assert!(stdout.contains(command), "missing {command} in help output");
     }
+    assert!(!stdout.contains("source add"));
 }
 
 #[test]
@@ -265,7 +272,7 @@ fn write_config(home: &TempDir, config: &skills_manager::config::Config) {
 }
 
 #[test]
-fn source_add_previews_without_mutating_in_non_interactive_mode() {
+fn import_repo_previews_without_mutating_in_non_interactive_mode() {
     let home = TempDir::new().unwrap();
     let remote = home.path().join("remote-skills");
     let central = home.path().join("managed-sources");
@@ -277,20 +284,33 @@ fn source_add_previews_without_mutating_in_non_interactive_mode() {
     let remote_url = format!("file://{}", remote.display());
 
     let output = config_bin_with_home(&home)
-        .args(["source", "add", &remote_url])
+        .args(["import-repo", &remote_url])
         .output()
-        .expect("source add runs");
+        .expect("import-repo runs");
 
     assert!(!output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stdout.contains(&format!("Source URL: {remote_url}")));
+    assert!(stdout.contains(&format!("Repository URL: {remote_url}")));
     assert!(stdout.contains(&format!(
         "Destination: {}",
         central.join("remote-skills").display()
     )));
+    assert!(stdout.contains("Scan scope: entire repository"));
     assert!(stderr.contains("non-interactive mode"));
     assert!(!central.exists(), "preview must not create central_dir");
+}
+
+#[test]
+fn source_add_is_not_a_cli_alias_for_import_repo() {
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("skills-manager"))
+        .args(["source", "add", "https://example.com/org/skills.git"])
+        .output()
+        .expect("CLI runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("unrecognized subcommand"), "{stderr}");
 }
 
 #[test]

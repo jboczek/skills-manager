@@ -199,7 +199,7 @@ Make Skills Manager independent of the launch directory and reduce manual source
 - **Dependencies:** 003, 006, 008.
 - **Validation signal:** A user can import from a test Git repository and still preview exposures before applying them.
 - **Status:** Done.
-- **Notes / risks:** Source acquisition previews URL and destination, clones with submodules disabled, scans before promotion, cleans failures, reuses only a matching canonical origin without network updates, and delegates selected skills to existing staged exposure plans.
+- **Notes / risks:** The follow-up uses TUI `/import_repo [URL]` and required CLI `import-repo <address>` without aliases for the former commands. GitHub tree URLs resolve to the repository root; a new clone uses the default branch and scans the whole repository. Source acquisition and exposure remain separately confirmed. Same-origin reuse does not fetch; update checks remain in `/list` → `u`. Functional verification passed (formatting, 273 unit tests, 30 CLI integration tests, clippy, and local-repository TUI PTY end-to-end), and independent code review completed without findings on frozen head `f28d26313998c31a5d3a4d5dd62ab084c7f4b5be`. Required Docker screenshots were unavailable, so overall verification remains Inconclusive for visual evidence; this is not full GREEN.
 
 ### 010 - Manual install migration
 
@@ -313,6 +313,7 @@ V3 works if Skills Manager becomes the trusted local place to curate, audit, and
 
 ## Change Log
 
+- 2026-11-02: Completed the PRD-009 follow-up implementation and functional verification. Independent review passed; Docker screenshots remain unavailable, so overall verification is Inconclusive for visual evidence.
 - 2026-07-12: Completed PRD-007 v4: unified the TUI list and source discovery views, added three filter states, preserved safe import/remove boundaries, and removed interactive `/scan`.
 - 2026-06-13: Completed PRD-009 managed Git source import with preview, temporary clone validation, strict origin-aware reuse, CLI/TUI selection, and staged exposure delegation.
 - 2026-06-12: Added and linked the complete V2 PRD set for global execution, managed Git source import, and conservative manual-install migration.

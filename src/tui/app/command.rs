@@ -23,8 +23,8 @@ pub(crate) const COMMAND_SUGGESTIONS: [CommandSuggestion; 6] = [
         description: "Show exposed skills and availability",
     },
     CommandSuggestion {
-        label: "/source_add",
-        description: "Add new skills from Git repository using HTTPS/SSH clone URL",
+        label: "/import_repo",
+        description: "Import a Git repository from an HTTPS/SSH clone URL; scan the entire repository",
     },
     CommandSuggestion {
         label: "/config",
@@ -45,7 +45,7 @@ pub(crate) const COMMAND_SUGGESTIONS: [CommandSuggestion; 6] = [
 ];
 
 /// Parse a command string typed in the prompt.
-/// Accepts "list", "/list", "source_add <git-url>", etc.
+/// Accepts "list", "/list", "import_repo <git-url>", etc.
 pub fn parse_command(input: &str) -> TuiCommand {
     let trimmed = input.trim();
     let normalized = trimmed.strip_prefix('/').unwrap_or(trimmed);
@@ -57,7 +57,7 @@ pub fn parse_command(input: &str) -> TuiCommand {
 
     match command {
         "list" => TuiCommand::List,
-        "source_add" => TuiCommand::SourceAdd(argument),
+        "import_repo" => TuiCommand::SourceAdd(argument),
         "import" => TuiCommand::Import,
         "remove" => TuiCommand::Remove,
         "config" => TuiCommand::Config,

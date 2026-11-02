@@ -31,12 +31,45 @@ pub struct AcquiredSource {
 }
 
 pub fn preview(url: &str, central_dir: &Path) -> Result<SourcePreview> {
-    canonical_origin(url)?;
-    let name = repository_name(url)?;
+    let url = github_tree_repository_root(url);
+    canonical_origin(&url)?;
+    let name = repository_name(&url)?;
     Ok(SourcePreview {
-        url: url.to_string(),
+        url,
         destination: central_dir.join(name),
     })
+}
+
+fn github_tree_repository_root(url: &str) -> String {
+    let cleaned = strip_query_fragment(url).trim_end_matches('/');
+    let Some((scheme, remainder)) = cleaned.split_once("://") else {
+        return url.to_string();
+    };
+    if !scheme.eq_ignore_ascii_case("https") {
+        return url.to_string();
+    }
+
+    let Some((host, path)) = remainder.split_once('/') else {
+        return url.to_string();
+    };
+    if !host.eq_ignore_ascii_case("github.com") {
+        return url.to_string();
+    }
+
+    let mut segments = path.split('/');
+    let (Some(owner), Some(repository), Some("tree"), Some(branch)) = (
+        segments.next(),
+        segments.next(),
+        segments.next(),
+        segments.next(),
+    ) else {
+        return url.to_string();
+    };
+    if owner.is_empty() || repository.is_empty() || branch.is_empty() {
+        return url.to_string();
+    }
+
+    format!("{scheme}://{host}/{owner}/{repository}")
 }
 
 pub fn repository_name(url: &str) -> Result<String> {
@@ -68,7 +101,8 @@ pub fn repository_name(url: &str) -> Result<String> {
 }
 
 pub fn canonical_origin(url: &str) -> Result<String> {
-    let cleaned = strip_git_suffix(strip_query_fragment(url).trim_end_matches('/'));
+    let url = github_tree_repository_root(url);
+    let cleaned = strip_git_suffix(strip_query_fragment(&url).trim_end_matches('/'));
 
     if let Some((scheme, remainder)) = cleaned.split_once("://") {
         let scheme = scheme.to_ascii_lowercase();
@@ -310,6 +344,48 @@ mod tests {
     }
 
     #[test]
+    fn preview_reduces_github_tree_urls_to_the_repository_root() {
+        let central = Path::new("/managed/sources");
+
+        for (url, expected) in [
+            (
+                "https://github.com/jboczek/skills/tree/main/skills",
+                "https://github.com/jboczek/skills",
+            ),
+            (
+                "https://github.com/Org/Repo/tree/feature/branch/subdir/skill",
+                "https://github.com/Org/Repo",
+            ),
+        ] {
+            let preview = preview(url, central).unwrap();
+
+            assert_eq!(preview.url, expected, "URL: {url}");
+            assert_eq!(
+                preview.destination,
+                central.join(expected.rsplit('/').next().unwrap())
+            );
+        }
+    }
+
+    #[test]
+    fn preview_does_not_normalize_non_github_tree_urls_and_rejects_credentials() {
+        let central = Path::new("/managed/sources");
+
+        let other_host = preview("https://gitlab.com/Org/Repo/tree/main/skills", central).unwrap();
+        assert_eq!(
+            other_host.url,
+            "https://gitlab.com/Org/Repo/tree/main/skills"
+        );
+
+        let error = preview(
+            "https://user:secret@github.com/Org/Repo/tree/main/skills",
+            central,
+        )
+        .expect_err("embedded credentials must stay rejected");
+        assert!(error.to_string().contains("credentials"));
+    }
+
+    #[test]
     fn rejects_urls_without_a_safe_repository_name() {
         for url in [
             "https://example.com/.git",
@@ -354,6 +430,10 @@ mod tests {
         assert_eq!(
             canonical_origin("https://example.com/org/Skills.git?ref=main#readme").unwrap(),
             "example.com/org/Skills"
+        );
+        assert_eq!(
+            canonical_origin("https://github.com/Org/Repo/tree/main/skills").unwrap(),
+            "github.com/Org/Repo"
         );
         assert_ne!(
             canonical_origin("https://example.com/org/Skills.git").unwrap(),
@@ -462,6 +542,45 @@ mod tests {
 
         let acquired = acquire(&source_preview, 10).unwrap();
 
+        assert_eq!(acquired.outcome, AcquireOutcome::Reused);
+        assert_eq!(
+            git_output(&["-C", destination.to_str().unwrap(), "rev-parse", "HEAD"]),
+            head_before
+        );
+        assert_eq!(
+            fs::read_to_string(destination.join("local-change.txt")).unwrap(),
+            "keep me"
+        );
+        assert_no_temporary_clone(&central);
+    }
+
+    #[test]
+    fn acquire_reuses_the_github_repository_for_a_tree_url_without_fetching() {
+        let temp = tempdir().unwrap();
+        let central = temp.path().join("central");
+        let destination = central.join("Repo");
+        let origin = "https://github.com/Org/Repo";
+        fs::create_dir_all(&central).unwrap();
+        create_git_repo(&destination, true);
+        git(&[
+            "-C",
+            destination.to_str().unwrap(),
+            "remote",
+            "add",
+            "origin",
+            origin,
+        ]);
+        fs::write(destination.join("local-change.txt"), "keep me").unwrap();
+        let head_before = git_output(&["-C", destination.to_str().unwrap(), "rev-parse", "HEAD"]);
+        let source_preview = preview(
+            "https://github.com/Org/Repo/tree/feature/my-branch/skills",
+            &central,
+        )
+        .unwrap();
+
+        let acquired = acquire(&source_preview, 10).unwrap();
+
+        assert_eq!(source_preview.url, origin);
         assert_eq!(acquired.outcome, AcquireOutcome::Reused);
         assert_eq!(
             git_output(&["-C", destination.to_str().unwrap(), "rev-parse", "HEAD"]),

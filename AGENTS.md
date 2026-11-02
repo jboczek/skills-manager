@@ -30,6 +30,7 @@
 20. When a user reports that a keyboard shortcut still does not work, reproduce the terminal-delivered key event variants in tests before changing the shortcut matcher.
 
 
+
 Before implementation, make a plan and add it to temp file named after the PRD `/docs/temp/prd-xxx-plan.md`. The plan should be a step-by-step outline of how the implementation will proceed and what files need to be modified. Add the plan file but do not commit it.
 
 ## Feature branches

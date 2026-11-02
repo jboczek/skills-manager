@@ -9,6 +9,7 @@ use crate::source::{AcquireOutcome, SourcePreview};
 
 #[derive(Debug, Clone)]
 pub enum SourceAddStep {
+    EnterUrl,
     Confirm {
         preview: SourcePreview,
     },

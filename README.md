@@ -128,12 +128,21 @@ Press `/` from an empty prompt. The palette provides:
 
 ```text
 /list                         Browse exposed and discovered skills
-/source_add <clone-url>       Add a source from an HTTPS or SSH clone URL
+/import_repo [URL]            Add a managed Git source from a URL
 /config                       Show the resolved config and TOML
 /help                         Show commands and keybindings
 /update                       Install the latest Homebrew version and restart
 /quit                         Exit Skills Manager
 ```
+
+`/import_repo` without an argument opens a URL form; with a URL it opens the
+preview directly. Press `Enter` or `Tab` to continue from the command menu,
+`Esc` to cancel. If validation or acquisition fails, the URL field stays
+editable so you can correct it and retry. A GitHub tree URL such as
+`https://github.com/example/skills/tree/main/skills` resolves to the repository
+root. Skills Manager clones its default branch and scans the whole repository.
+Source acquisition and skill exposure have separate confirmations; cancelling
+exposure keeps the source without adding agent links.
 
 ### Inventory navigation
 
@@ -183,10 +192,15 @@ skills-manager config init
 skills-manager config path
 skills-manager config show
 
-skills-manager source add https://github.com/example/skills.git
+skills-manager import-repo https://github.com/example/skills.git
 skills-manager import repo-a/code-review --to claude,codex
 skills-manager remove repo-a/code-review --from claude
 ```
+
+`import-repo` requires a repository address and replaces `source add` without
+an alias. It accepts HTTPS and SSH URLs, including GitHub tree URLs, which
+resolve to the repository root and scan the whole repository from its default
+branch. The existing `import <skill>` command still exposes a selected skill.
 
 `scan` is read-only. `list` reports current exposures, `doctor` checks the
 global setup, and `import` / `remove` print a plan and ask for confirmation
